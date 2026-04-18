@@ -3,6 +3,9 @@ var express = require('express');
 var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
+require("dotenv").config();
+
+const mysql = require('mysql2/promise')
 
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
@@ -22,10 +25,42 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
 
+ 
+// 如何验证  createConnection， createPool
+// const pool = mysql.createPool({
+//   host: process.env.DB_HOST,
+//   user: process.env.DB_USER,
+//   database: process.env.DB_BASE,
+// })
+
+// 每次都连接？
+const connection = mysql.createConnection({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  database: process.env.DB_BASE,
+})
+
+
+app.get('/user', (req, res) => {
+  // 每次都查询？
+  connection
+  .then(q => {
+    q.query(
+      'SELECT * from `users`'
+    ).then(r => {
+      const [data] = r;
+      res.send(data) 
+    })
+  })
+})
+
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
   next(createError(404));
 });
+
+
+
 
 // error handler
 app.use(function(err, req, res, next) {
@@ -37,5 +72,11 @@ app.use(function(err, req, res, next) {
   res.status(err.status || 500);
   res.render('error');
 });
+
+
+
+
+
+
 
 module.exports = app;
