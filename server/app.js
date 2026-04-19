@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import logger from 'morgan';
 import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
+import {to} from 'await-to-js';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -29,8 +30,8 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/', indexRouter);
-app.use('/users', usersRouter);
+// app.use('/', indexRouter);
+// app.use('/users', usersRouter);
 
 // 如何验证 createConnection， createPool
 // const pool = mysql.createPool({
@@ -53,16 +54,33 @@ const initConnection = async () => {
   return connection;
 };
 
-app.get('/user', async (req, res) => {
-  try {
-    const conn = await initConnection();
-    const [data] = await conn.query('SELECT * FROM `users`');
-    res.send(data);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ error: 'Database query failed' });
+app.get('/rooms', async (req, res) => {
+
+  const [, conn] = await to(initConnection());
+  const [error, d] = await to(conn.query('SELECT * FROM `meeting_rooms`'));
+  if (error) {
+     console.error(error);
+     res.status(500).send({ error: 'Database query failed' });
+     return;
   }
+  const [data] = d;
+   res.send(data);
 });
+
+
+app.get('/users', async (req, res) => {
+
+  const [, conn] = await to(initConnection());
+  const [error, d] = await to(conn.query('SELECT * FROM `users`'));
+  if (error) {
+     console.error(error);
+     res.status(500).send({ error: 'Database query failed' });
+     return;
+  }
+  const [data] = d;
+   res.send(data);
+});
+
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {

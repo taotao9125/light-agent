@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      await-to-js:
+        specifier: ^3.0.0
+        version: 3.0.0
       cookie-parser:
         specifier: ~1.4.4
         version: 1.4.7
@@ -76,6 +79,10 @@ packages:
 
   asap@1.0.0:
     resolution: {integrity: sha512-Ej9qjcXY+8Tuy1cNqiwNMwFRXOy9UwgTeMA8LxreodygIPV48lx8PU1ecFxb5ZeU1DpMKxiq6vGLTxcitWZPbA==}
+
+  await-to-js@3.0.0:
+    resolution: {integrity: sha512-zJAaP9zxTcvTHRlejau3ZOY4V7SRpiByf3/dxx2uyKxxor19tpmpV2QRsTKikckwhaPmr2dVpxxMr7jOCYVp5g==}
+    engines: {node: '>=6.0.0'}
 
   aws-ssl-profiles@1.1.2:
     resolution: {integrity: sha512-NZKeq9AfyQvEeNlN0zSYAaWrmBffJh3IELMZfRpJVWgrpEbtEpnjvzqBPf+mxoI287JohRDoa+/nsfqqiZmF6g==}
@@ -626,6 +633,8 @@ snapshots:
   array-flatten@1.1.1: {}
 
   asap@1.0.0: {}
+
+  await-to-js@3.0.0: {}
 
   aws-ssl-profiles@1.1.2: {}
 
