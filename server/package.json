@@ -8,13 +8,15 @@
   "type": "module",
   "dependencies": {
     "await-to-js": "^3.0.0",
+    "bcrypt": "^6.0.0",
     "cookie-parser": "~1.4.4",
     "debug": "~2.6.9",
     "dotenv": "^17.4.2",
     "express": "~4.16.1",
     "http-errors": "~1.6.3",
     "jade": "~1.11.0",
-    "morgan": "~1.9.1"
+    "morgan": "~1.9.1",
+    "rgex": "^1.2.0"
   },
   "devDependencies": {
     "mysql2": "^3.22.1",
