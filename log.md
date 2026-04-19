@@ -101,3 +101,43 @@ app.get('/user', (req, res) => {
 
 问题：
 1. 自己安装这些感觉很麻烦
+
+
+
+## day2
+### 目标
+1. 创建正式数据库：meeting_room_system -> done
+2. 设计并创建 3 张核心表：GUI 工具创建的
+   - users -> done
+   - meeting_rooms -> done
+   - bookings -> done
+3. 用 mysql2 或 SQL 工具验证表可用 -> done，命令行
+4. 写 1~2 个最小接口验证新表查询成功 > done, users, rooms 两个接口
+
+
+## 停车场
+created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+
+ UI 上怎么操作上面
+
+ 如何结构化res
+  ![alt text](./image2.png)
+------
+数据迁移
+我是手动在GUI工具上创建的数据库，字段
+1. 如何从0-1同步都其他环境
+2. 如果表结构变更，如何同步
+
+ 字段设计错误，"status": "active", 如何修改，现存数据如何同步，
+ 传统开发宁愿加字段也不改自断
+ ![alt text](./image.png)
+
+
+![alt text](image-1.png)
+
+
+debug 调试如何添加断点后不重启
+
+
+异步问题，有些异步都有err, 各种异步混杂在一起，这些error如何管理，我目前是遇到一个 if 一个
