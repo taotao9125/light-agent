@@ -12,6 +12,7 @@ import { dirname } from 'path';
 import apiUserRouter from './routes/api/users.js';
 import apiRooms from './routes/api/rooms.js';
 import apiRegister from './routes/api/register.js';
+import apiLogin from './routes/api/login.js';
 
 dotenv.config();
 
@@ -35,6 +36,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/users', apiUserRouter);
 app.use('/api/rooms', apiRooms);
 app.use('/api/register', apiRegister);
+app.use('/api/login', apiLogin);
 
 
 
