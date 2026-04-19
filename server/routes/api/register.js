@@ -15,6 +15,8 @@ const router = express.Router();
  *  */ 
 
 
+const emailReg = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+
 /* GET users listing. */
 router.post('/', async function(req, res, next) {
   const {
@@ -22,7 +24,7 @@ router.post('/', async function(req, res, next) {
     password
   } = req.body;
 
-  if (!username) {
+  if (!emailReg.test(username)) {
     res.status(200).send({ error: '邮箱格式不正确' });
     return;
   }
@@ -32,20 +34,23 @@ router.post('/', async function(req, res, next) {
      return;
   }
 
+   const [err, users] = await to(executeQuery(
+    'SELECT `username` from `users` WHERE `username` = ?',
+    [username]
+  ))
 
-  // const h1 = await bcrypt.hash('111', 10);
-  // const h2 = await bcrypt.hash('111', 10);
+  if (!!users.length) {
+     res.status(200).send({ error: '该用户已注册' });
+     return;
+  }
 
-  // console.log(await bcrypt.compare(h1, h2), 2324)
+  const [pwdErr, pwdResult] = await to(bcrypt.hash(password, 10));
 
-  
-  // const [err, result] = await to(executeQuery('SELECT * FROM `meeting_rooms`'))
-  // if (err) {
-  //   res.status(500).send({ error: 'Database query failed' });
-  // }
-  res.send({
-    a: 1
-  });
+  const [insertErr, insertResult] = await to(executeQuery(
+    'INSERT INTO `users` (username, password_hash) VALUES (?, ?)',
+    [username, pwdResult]
+  ))
+   res.status(200).send({ error: '', code: '1' });
 });
 
 export default router;
