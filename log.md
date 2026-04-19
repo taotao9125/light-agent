@@ -135,23 +135,40 @@ updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ![alt text](image-1.png)
 
 
+
+
+## day 3
+
+创建正式项目数据库
+→ 建 users / meeting_rooms / bookings 三张表
+→ 插入一点测试数据
+→ 写 1~2 个接口验证新表可查
+
+
+## 停车场
 debug 调试如何添加断点后不重启
 
-
 异步问题，有些异步都有err, 各种异步混杂在一起，这些error如何管理，我目前是遇到一个 if 一个
+
+bcrypt.hash 密码入库后，如果后期换了一个加密库，那登录密码还能对上吗？
+答：只要你更换的库是 bcrypt 的标准实现，就不需要任何额外处理。这是因为 bcrypt 算法是公开的行业标准，且所有验证信息都存储在哈希字符串本身中
+
+
+login, register 接口太多重复验证逻辑了
+接口验证字段都是手写
 
 
 day3
 ## 主线
 用户输入用户名密码
-→ 后端查 users 表
-→ bcrypt.compare 校验密码
-→ jwt.sign 生成 token
-→ 返回 token
+→ 后端查 users 表 ✅
+→ bcrypt.compare 校验密码 ✅
+→ jwt.sign 生成 token ✅
+→ 返回 token ✅
 
 ### 任务
-1. 完成 POST /api/auth/login
-2. 登录成功返回 token
-3. 登录失败能正确报错
+1. 完成 POST /api/auth/login ✅
+2. 登录成功返回 token ✅
+3. 登录失败能正确报错 ✅
 4. 预留 authMiddleware 文件
-5. 最好顺手做一个最小 /me 雏形
+5. 最好顺手做一个最小 /me 雏形 
