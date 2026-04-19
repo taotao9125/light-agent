@@ -48,8 +48,7 @@ lsof -i -P | grep mysqld
 lsof -i :3306
 ```
 
-
-
+```javascript
 // 如何验证  createConnection， createPool
 // const pool = mysql.createPool({
 //   host: process.env.DB_HOST,
@@ -86,7 +85,6 @@ app.get('/user', (req, res) => {
   })
 })
 ```
-
 
 
 ### 总结
@@ -141,3 +139,19 @@ debug 调试如何添加断点后不重启
 
 
 异步问题，有些异步都有err, 各种异步混杂在一起，这些error如何管理，我目前是遇到一个 if 一个
+
+
+day3
+## 主线
+用户输入用户名密码
+→ 后端查 users 表
+→ bcrypt.compare 校验密码
+→ jwt.sign 生成 token
+→ 返回 token
+
+### 任务
+1. 完成 POST /api/auth/login
+2. 登录成功返回 token
+3. 登录失败能正确报错
+4. 预留 authMiddleware 文件
+5. 最好顺手做一个最小 /me 雏形
