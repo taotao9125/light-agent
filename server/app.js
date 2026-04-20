@@ -13,6 +13,7 @@ import apiUserRouter from './routes/api/users.js';
 import apiRooms from './routes/api/rooms.js';
 import apiRegister from './routes/api/register.js';
 import apiLogin from './routes/api/login.js';
+import apiMe from './routes/api/me.js';
 
 dotenv.config();
 
@@ -37,6 +38,7 @@ app.use('/api/users', apiUserRouter);
 app.use('/api/rooms', apiRooms);
 app.use('/api/register', apiRegister);
 app.use('/api/login', apiLogin);
+app.use('/api/me', apiMe);
 
 
 

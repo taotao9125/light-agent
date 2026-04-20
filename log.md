@@ -141,6 +141,7 @@ updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 
 创建正式项目数据库
 → 建 users / meeting_rooms / bookings 三张表
+- 写 /users 和 /rooms 接口
 → 插入一点测试数据
 → 写 1~2 个接口验证新表可查
 
@@ -170,5 +171,5 @@ day3
 1. 完成 POST /api/auth/login ✅
 2. 登录成功返回 token ✅
 3. 登录失败能正确报错 ✅
-4. 预留 authMiddleware 文件
-5. 最好顺手做一个最小 /me 雏形 
+4. 预留 authMiddleware 文件 ✅
+5. 最好顺手做一个最小 /me 雏形 ✅

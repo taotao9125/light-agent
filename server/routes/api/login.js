@@ -15,6 +15,7 @@ router.post('/', async function(req, res, next) {
     password
   } = req.body;
 
+
   if (!emailReg.test(username)) {
     res.status(200).send({ error: '邮箱格式不正确' });
     return;
@@ -42,8 +43,9 @@ router.post('/', async function(req, res, next) {
     return;
   }
 
+
   const secretKey = process.env.JWT_SEC;
-  const token = jwt.sign({username}, secretKey, { expiresIn: '1day' });
+  const token = jwt.sign({username, uid: users[0].id}, secretKey, { expiresIn: '1day' });
  
    res.status(200).send({ error: '', code: '1', token});
 });
