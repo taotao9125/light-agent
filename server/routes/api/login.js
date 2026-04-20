@@ -3,6 +3,7 @@ import executeQuery from '../../db.js';
 import wrap from '../../lib/wrapRes.js';
 import {to} from 'await-to-js';
 import bcrypt from 'bcrypt';
+import AppError from '../../errors/appError.js';
 import jwt from 'jsonwebtoken';
 const router = express.Router();
 
@@ -17,32 +18,20 @@ router.post('/', wrap(async function(req, res, next) {
   } = req.body;
 
 
-  if (!emailReg.test(username)) {
-    res.status(200).send({ error: '邮箱格式不正确' });
-    return;
-  }
+  if (!emailReg.test(username)) new AppError('邮箱格式不正确');
 
-  if (!password) {
-     res.status(200).send({ error: '密码不能为空' });
-     return;
-  }
+  if (!password) throw new AppError('密码不能为空');
 
   const [, users] = await to(executeQuery(
     'SELECT * from `users` where username = ?',
     [username]
   ))
 
-  if (users.length === 0) {
-     res.status(200).send({ error: '未注册' });
-     return;
-  }
+  if (users.length === 0) throw new AppError('未注册'); 
 
   const [, isOk] = await to(bcrypt.compare(password, users[0].password_hash));
 
-  if (!isOk) {
-    res.status(200).send({ error: '密码错误' });
-    return;
-  }
+  if (!isOk) throw new AppError('密码错误'); 
 
   const secretKey = process.env.JWT_SEC;
   const token = jwt.sign({username, uid: users[0].id}, secretKey, { expiresIn: '1day' });

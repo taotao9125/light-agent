@@ -2,17 +2,14 @@ import express from 'express';
 import executeQuery from '../../db.js';
 import wrap from '../../lib/wrapRes.js';
 import auth  from '../../middlewares/auth.js';
+import AppError from '../../errors/appError.js';
 import {to} from 'await-to-js';
 const router = express.Router();
 
 
-/* GET users listing. */
 router.get('/', auth, wrap(async function(req, res, next) {
   const [err, result] = await to(executeQuery('SELECT `username`, `role` FROM `users`'))
-  if (err) {
-    res.status(500).send({ error: 'Database query failed' });
-    return;
-  }
+  if (err) throw new AppError(err);
   return result;
 }));
 

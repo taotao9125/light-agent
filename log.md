@@ -159,12 +159,16 @@ login, register 接口太多重复验证逻辑了
 接口验证字段都是手写
 
 
+
+
+
 day3
 ## 主线
 用户输入用户名密码
 → 后端查 users 表 ✅
 → bcrypt.compare 校验密码 ✅
-→ jwt.sign 生成 token ✅
+→ jwt.sign 生成 token ✅ 
+  ? 新生成的 token,那旧token怎么半
 → 返回 token ✅
 
 ### 任务
@@ -173,3 +177,38 @@ day3
 3. 登录失败能正确报错 ✅
 4. 预留 authMiddleware 文件 ✅
 5. 最好顺手做一个最小 /me 雏形 ✅
+
+
+其他
+洋葱模型
+// 输出：
+// 📥 m1 入栈
+// m1 before next
+//   📥 m2 入栈
+//   m2 before next
+//     📥 handler 入栈
+//     handler 执行
+//     📤 handler 出栈
+//   m2 after next
+//   📤 m2 出栈
+// m1 after next
+// 📤 m1 出栈
+
+错误统一处理
+高阶函数统一处理res
+get('/', wrap(res))
+
+
+
+day 4 休息
+
+day 5
+1. 完成 rooms 列表接口
+  ? 是否已被预定
+  ？当前是否在使用
+2. 完成 rooms 详情接口
+3. 完成创建 booking 接口
+   ？预定哪个会议室
+   ？什么时间
+4. 完成我的 booking 列表接口
+5. 有余力的话，完成取消 booking 接口

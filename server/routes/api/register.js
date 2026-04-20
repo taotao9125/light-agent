@@ -3,6 +3,7 @@ import executeQuery from '../../db.js';
 import {to} from 'await-to-js';
 import bcrypt from 'bcrypt';
 import wrap from '../../lib/wrapRes.js';
+import AppError from '../../errors/appError.js';
 const router = express.Router();
 
 
@@ -23,26 +24,16 @@ router.post('/', wrap(async function(req, res, next) {
     username,
     password
   } = req.body;
+  if (!emailReg.test(username)) throw new AppError('邮箱格式不正确');
 
-  if (!emailReg.test(username)) {
-    res.status(200).send({ error: '邮箱格式不正确' });
-    return;
-  }
-
-  if (!password) {
-     res.status(200).send({ error: '密码不能为空' });
-     return;
-  }
+  if (!password) throw new AppError('密码不能为空')
 
    const [err, users] = await to(executeQuery(
     'SELECT `username` from `users` WHERE `username` = ?',
     [username]
   ))
 
-  if (!!users.length) {
-     res.status(200).send({ error: '该用户已注册' });
-     return;
-  }
+  if (!!users.length) throw new AppError('该用户已注册')
 
   const [pwdErr, pwdResult] = await to(bcrypt.hash(password, 10));
 

@@ -1,7 +1,7 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import {to} from 'await-to-js';
-
+import AppError from './errors/appError.js';
 
 dotenv.config();
 let pool = null;
@@ -21,9 +21,7 @@ async function initPool() {
 
 async function executeQuery(sql, p = []) {
   const pool = await initPool();
-  const [e, result] = await to(pool.execute(sql, p)); 
-  if (e) return e
-  return result[0];
+  return pool.execute(sql, p);
 }
 
 export default executeQuery;
