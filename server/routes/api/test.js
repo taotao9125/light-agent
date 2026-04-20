@@ -9,7 +9,6 @@ const router = express.Router();
 /* GET users listing. */
 router.get('/', (req, res) => {
   throw new Error('hahahha')
-
   res.send('23424')
 });
 

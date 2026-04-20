@@ -149,6 +149,11 @@ updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ## 停车场
 debug 调试如何添加断点后不重启
 
+
+1. nodejs --inspect，相当于node启动一个debug服务
+2. vscode 作为客户端去监听debug服务端口
+3. 调试
+
 异步问题，有些异步都有err, 各种异步混杂在一起，这些error如何管理，我目前是遇到一个 if 一个
 
 bcrypt.hash 密码入库后，如果后期换了一个加密库，那登录密码还能对上吗？
@@ -206,7 +211,7 @@ day 5
 1. 完成 rooms 列表接口
   ? 是否已被预定
   ？当前是否在使用
-2. 完成 rooms 详情接口
+2. 完成 rooms 详情接口 ✅
 3. 完成创建 booking 接口
    ？预定哪个会议室
    ？什么时间

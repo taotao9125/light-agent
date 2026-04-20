@@ -3,17 +3,12 @@
   "configurations": [
     {
       "type": "node",
-      "request": "launch",
-      "name": "Pnpm Workspace Debug",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": [
-        "--filter", "server", // 这里的名字要和 package.json 里的 name 一致
-        "exec",
-        "nodemon",
-        "./bin/www"
-      ],
-      "restart": true,
-      "console": "integratedTerminal"
+      "request": "attach",
+      "name": "debug express",
+      "port": 9229, // Node 默认调试端口
+      "restart": true, // nodemon 重启时，调试器也会自动重连
+      "cwd": "${workspaceFolder}/server",
+      "skipFiles": ["<node_internals>/**"]
     }
   ]
 }

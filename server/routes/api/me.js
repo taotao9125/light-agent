@@ -6,10 +6,10 @@ import wrap from '../../lib/wrapRes.js';
 import AppError from '../../errors/appError.js';
 const router = express.Router();
 
-
 router.get('/', auth, wrap(async function(req, res, next) {
+  
   // 不要查pwd
-  const [err, rows] = await to(executeQuery('SELECT2 id, username, create_at FROM `users` WHERE id = ?', [req.uid]));
+  const [err, rows] = await to(executeQuery('SELECT id, username, create_at FROM `users` WHERE id = ?', [req.uid]));
   if (err) throw new AppError(err)
   if (!rows.length) throw new AppError('未查到me信息');
   return rows[0];

@@ -21,7 +21,12 @@ async function initPool() {
 
 async function executeQuery(sql, p = []) {
   const pool = await initPool();
-  return pool.execute(sql, p);
+  try {
+     const [rows] = await pool.execute(sql, p);
+     return rows;
+  } catch (e) {
+     return Promise.reject(e);
+  }
 }
 
 export default executeQuery;

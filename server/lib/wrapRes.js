@@ -4,7 +4,7 @@
 //    -> wrapRes catch 
 //      -> next(err) 
 //        -> 全局错误中间件
-// 在同步代码里，throw new error, 会被 app.use(err) 捕捉到。在异步代码里，不会被捕捉到
+// 在同步代码里，throw new error, 会被 app.use(err) 捕捉到。在异步里，不会被捕捉到
 
 
 const wrap = (fn) => async (req, res, next) => {
