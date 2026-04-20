@@ -1,5 +1,6 @@
 import express from 'express';
 import executeQuery from '../../db.js';
+import wrap from '../../lib/wrapRes.js';
 import {to} from 'await-to-js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -9,7 +10,7 @@ const router = express.Router();
 const emailReg = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
 
 /* GET users listing. */
-router.post('/', async function(req, res, next) {
+router.post('/', wrap(async function(req, res, next) {
   const {
     username,
     password
@@ -43,11 +44,10 @@ router.post('/', async function(req, res, next) {
     return;
   }
 
-
   const secretKey = process.env.JWT_SEC;
   const token = jwt.sign({username, uid: users[0].id}, secretKey, { expiresIn: '1day' });
  
-   res.status(200).send({ error: '', code: '1', token});
-});
+   return token;
+}));
 
 export default router;

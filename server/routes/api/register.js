@@ -2,7 +2,7 @@ import express from 'express';
 import executeQuery from '../../db.js';
 import {to} from 'await-to-js';
 import bcrypt from 'bcrypt';
-// import { patterns } from 'rgex';
+import wrap from '../../lib/wrapRes.js';
 const router = express.Router();
 
 
@@ -18,7 +18,7 @@ const router = express.Router();
 const emailReg = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
 
 /* GET users listing. */
-router.post('/', async function(req, res, next) {
+router.post('/', wrap(async function(req, res, next) {
   const {
     username,
     password
@@ -50,7 +50,7 @@ router.post('/', async function(req, res, next) {
     'INSERT INTO `users` (username, password_hash) VALUES (?, ?)',
     [username, pwdResult]
   ))
-   res.status(200).send({ error: '', code: '1' });
-});
+   return null;
+}));
 
 export default router;
