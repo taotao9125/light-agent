@@ -223,6 +223,7 @@ day 5
 mysql> alter table users
     -> MODIFY COLUMN `id` BIGINT NOT NULL AUTO_INCREMENT;
 
+```javscript
 CREATE TABLE bookings (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
@@ -238,3 +239,38 @@ CREATE TABLE bookings (
   CONSTRAINT fk_bookings_user FOREIGN KEY (user_id) REFERENCES users(id),
   CONSTRAINT fk_bookings_room FOREIGN KEY (room_id) REFERENCES meeting_rooms(id)
 );
+```
+
+
+
+
+// 会议室/预定记录/user三张表，如何将信心聚合到一起
+```javscript
+router.get('/me', auth,wrap(async function(req, res) {
+   const uid = req.uid;
+   // 这里我选择了我定了哪些会议室，但会议室表中只有user_id, 我如何也将把个人信心也拿到，是不是再
+   // 查user表，传userid
+   const [, rows] = await to(executeQuery(
+    `
+      SELECT *
+      FROM bookings
+      WHERE user_id=?
+    `,
+   [uid]
+  ))
+  return rows;
+}))
+```
+
+   SELECT
+        b.*,
+        u.username,
+        u.role,
+        mr.name,
+        mr.location
+      FROM bookings b
+      JOIN users u
+        ON b.user_id = u.id
+      JOIN meeting_rooms mr
+        on b.room_id = mr.id
+      WHERE user_id=?

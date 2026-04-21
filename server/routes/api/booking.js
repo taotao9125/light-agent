@@ -51,4 +51,31 @@ router.post('/', auth, wrap(async function(req, res, next) {
   return null;
 }));
 
+
+
+router.get('/me', auth,wrap(async function(req, res) {
+   const uid = req.uid;
+   // 这里我选择了我定了哪些会议室，但会议室表中只有user_id, 我如何也将把个人信心也拿到，是不是再
+   // 查user表，传userid
+   
+   const [err, rows] = await to(executeQuery(
+    `
+      SELECT
+        b.*,
+        u.username,
+        u.role,
+        mr.name,
+        mr.location
+      FROM bookings b
+      JOIN users u
+        ON b.user_id = u.id
+      JOIN meeting_rooms mr
+        on b.room_id = mr.id
+      WHERE user_id=?
+    `,
+   [uid]
+  ))
+  return rows;
+}))
+
 export default router;
