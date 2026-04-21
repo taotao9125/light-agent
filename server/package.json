@@ -11,6 +11,7 @@
     "await-to-js": "^3.0.0",
     "bcrypt": "^6.0.0",
     "cookie-parser": "~1.4.4",
+    "dayjs": "^1.11.20",
     "debug": "~2.6.9",
     "dotenv": "^17.4.2",
     "express": "~4.16.1",

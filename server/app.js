@@ -14,7 +14,7 @@ import apiRooms from './routes/api/rooms.js';
 import apiRegister from './routes/api/register.js';
 import apiLogin from './routes/api/login.js';
 import apiMe from './routes/api/me.js';
-
+import apiBooking from './routes/api/booking.js';
 
 
 import test from './routes/api/test.js';
@@ -43,6 +43,7 @@ app.use('/api/rooms', apiRooms);
 app.use('/api/register', apiRegister);
 app.use('/api/login', apiLogin);
 app.use('/api/me', apiMe);
+app.use('/api/booking', apiBooking);
 
 
 
@@ -58,7 +59,6 @@ app.use(function(req, res, next) {
 
 // error handler
 app.use(function(err, req, res, next) {
-  console.warn(err, 'app.use统一收口')
 
   // set locals, only providing error in development
   res.locals.message = err.message;

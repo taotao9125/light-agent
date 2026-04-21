@@ -217,3 +217,24 @@ day 5
    ？什么时间
 4. 完成我的 booking 列表接口
 5. 有余力的话，完成取消 booking 接口
+
+
+关联的字段数据类型必须一样
+mysql> alter table users
+    -> MODIFY COLUMN `id` BIGINT NOT NULL AUTO_INCREMENT;
+
+CREATE TABLE bookings (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  room_id BIGINT NOT NULL,
+  start_time DATETIME NOT NULL,
+  end_time DATETIME NOT NULL,
+  status TINYINT NOT NULL DEFAULT 1,
+  cancel_reason VARCHAR(255) DEFAULT NULL,
+  cancelled_at DATETIME DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  
+  CONSTRAINT fk_bookings_user FOREIGN KEY (user_id) REFERENCES users(id),
+  CONSTRAINT fk_bookings_room FOREIGN KEY (room_id) REFERENCES meeting_rooms(id)
+);
