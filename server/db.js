@@ -6,21 +6,28 @@ import AppError from './errors/appError.js';
 dotenv.config();
 let pool = null;
 
-async function initPool() {
-  if (!pool) {
-    pool = mysql.createPool({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      database: process.env.DB_BASE,
-      waitForConnections: true,
-      connectionLimit: 10
-    })
+
+function createPoolFactory() {
+  let pool = null;
+  return function(){
+    if (!pool) {
+       pool = mysql.createPool({
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
+        database: process.env.DB_BASE,
+        waitForConnections: true,
+        connectionLimit: 10
+      })
+    }
+    return pool;
   }
-  return pool;
 }
 
+
+const createPool = createPoolFactory();
+
 async function executeQuery(sql, p = []) {
-  const pool = await initPool();
+  const pool = createPool();
   try {
      const [rows] = await pool.execute(sql, p);
      return rows;
@@ -29,4 +36,6 @@ async function executeQuery(sql, p = []) {
   }
 }
 
+
 export default executeQuery;
+export {createPool};

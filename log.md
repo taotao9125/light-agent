@@ -204,6 +204,11 @@ day3
 get('/', wrap(res))
 
 
+route -> 全局中间件(洋葱模型) -> wrap -> res
+错误处理
+  
+
+
 
 day 4 休息
 
@@ -274,3 +279,16 @@ router.get('/me', auth,wrap(async function(req, res) {
       JOIN meeting_rooms mr
         on b.room_id = mr.id
       WHERE user_id=?
+
+
+
+多个请求抢夺统一资源, 通过mysql事务
+创建连接
+  开启事务  begintransaction
+    等待执行 sql 告诉 sql 当前查询操作锁住 for update
+      结束事务 commit (也会释放锁)
+
+  有错误
+    释放锁 rollback
+  
+  不管怎样都要释放连接 release
