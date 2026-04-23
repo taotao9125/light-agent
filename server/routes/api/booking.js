@@ -13,8 +13,17 @@ const router = express.Router();
  * booking/create 创建
  * booking/:id  admin/user
  * booking/:id/cancel admin/user
- * booking/:id/remove admin
+ * booking/:id/review admin
  */
+
+const bookingStatus = {
+  PENDING: 0,
+  APPROVED: 1,
+  REJECTED: 2,
+  CANCELLED: 3
+}
+
+// 现在我的数据库里 status 字段都是1了，因为之前没加审批，默认就是可用了。 如何批量改数据
 
 /* GET users listing. */
 router.post('/create', auth, wrap(async function(req, res, next) {
@@ -46,7 +55,6 @@ router.post('/create', auth, wrap(async function(req, res, next) {
       SELECT id
       FROM bookings
       WHERE room_id=?
-        AND status=1
         AND ? < end_time
         AND ? > start_time
       FOR UPDATE
@@ -93,6 +101,7 @@ router.get('/', auth,wrap(async function(req, res) {
      SELECT
         b.*,
         u.username,
+        b.status,
         u.role,
         mr.name,
         mr.location
@@ -110,6 +119,61 @@ router.get('/', auth,wrap(async function(req, res) {
 
    return rows;
 }))
+
+
+
+router.patch('/:id/review', auth, wrap(async function(req, res) {
+   const roomId = +req.params.id;
+   const uid = +req.uid;
+   const isAdmin = req.role === 'admin';
+
+   if (!isAdmin) throw new AppError('非管理员无法操作')
+
+
+   const review_reason = req.body.review_reason;
+   const STATUS = +req.body.review === 1 ? bookingStatus.APPROVED : bookingStatus.REJECTED;
+
+   if (!review_reason) {
+    throw new AppError('缺少review备注')
+   }
+
+
+   // 参数要传进去，不要拼接sql
+   const r = await executeQuery(
+    `
+      UPDATE bookings
+        SET 
+          status=?,
+          review_at=?,
+          review_remark=?
+      WHERE id = ?
+    `,
+    [STATUS, dayjs().format('YYYY-MM-DD HH:mm:ss'), review_reason, roomId]
+   )
+
+   if (r.affectedRows > 0) {
+      return {};
+   }
+
+   const rows = await executeQuery(
+    `
+      SELECT id, user_id
+      FROM bookings
+      WHERE id = ?
+    `,
+    [roomId]
+  )
+
+   if (rows.length === 0) {
+    throw new AppError('预定不存在')
+  }
+
+
+  throw new AppError('review失败')
+
+
+}));
+
 
 // 可以多次取消？那最后的取消时间就会变了 ->  AND cancelled_at = NULL
 router.patch('/:id/cancel', auth, wrap(async function(req, res) {
@@ -136,7 +200,7 @@ router.patch('/:id/cancel', auth, wrap(async function(req, res) {
 
   
 
-  
+
   const rows = await executeQuery(
     `
       SELECT id, user_id
