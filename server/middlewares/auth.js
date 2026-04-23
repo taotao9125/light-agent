@@ -12,10 +12,10 @@ export default function auth(req, res, next) {
   const token = authHeader.split(' ')[1];
 
   if (!token) next(new AppError('格式错误')); 
-
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.uid = decoded.uid;
+    req.role = decoded.role;
     next();
   } catch (e) {
     next(e)

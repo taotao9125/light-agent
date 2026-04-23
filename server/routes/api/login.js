@@ -22,20 +22,22 @@ router.post('/', wrap(async function(req, res, next) {
 
   if (!password) throw new AppError('密码不能为空');
 
-  const [, users] = await to(executeQuery(
+  const rows = await executeQuery(
     'SELECT * from `users` where username = ?',
     [username]
-  ))
+  )
 
-  if (users.length === 0) throw new AppError('未注册'); 
+  
+  if (rows.length === 0) throw new AppError('未注册'); 
 
-  const [, isOk] = await to(bcrypt.compare(password, users[0].password_hash));
+  const isOk = await bcrypt.compare(password, rows[0].password_hash)
 
   if (!isOk) throw new AppError('密码错误'); 
-
+  
   const secretKey = process.env.JWT_SEC;
-  const token = jwt.sign({username, uid: users[0].id}, secretKey, { expiresIn: '1day' });
- 
+  const token = jwt.sign({username, uid: rows[0].id, role: rows[0].role}, secretKey, { expiresIn: '1day' });
+
+
    return token;
 }));
 
