@@ -68,8 +68,8 @@ router.post('/create', auth, wrap(async function(req, res, next) {
    console.log('插入', new Date())
     
    await to(trans.execute(
-    'INSERT INTO `bookings` (user_id, room_id, start_time, end_time) VALUES (?, ?, ?, ?)',
-    [uid, room_id, s,e]
+    'INSERT INTO `bookings` (user_id, room_id, start_time, end_time, status) VALUES (?, ?, ?, ?, ?)',
+    [uid, room_id, s,e, bookingStatus.PENDING]
   ))
 
    await trans.commit();
@@ -101,7 +101,6 @@ router.get('/', auth,wrap(async function(req, res) {
      SELECT
         b.*,
         u.username,
-        b.status,
         u.role,
         mr.name,
         mr.location
@@ -111,7 +110,7 @@ router.get('/', auth,wrap(async function(req, res) {
       JOIN meeting_rooms mr
         on b.room_id = mr.id
       ${userSql}
-      ORDER BY start_time ASC
+      ORDER BY b.start_time ASC
   `
 
    const rows = await executeQuery(sql, params);
@@ -121,7 +120,7 @@ router.get('/', auth,wrap(async function(req, res) {
 }))
 
 
-
+// status 0 -> 1/2
 router.patch('/:id/review', auth, wrap(async function(req, res) {
    const roomId = +req.params.id;
    const uid = +req.uid;
@@ -147,6 +146,7 @@ router.patch('/:id/review', auth, wrap(async function(req, res) {
           review_at=?,
           review_remark=?
       WHERE id = ?
+        AND status=0
     `,
     [STATUS, dayjs().format('YYYY-MM-DD HH:mm:ss'), review_reason, roomId]
    )
@@ -175,6 +175,7 @@ router.patch('/:id/review', auth, wrap(async function(req, res) {
 }));
 
 
+// status 0/1 -> 3
 // 可以多次取消？那最后的取消时间就会变了 ->  AND cancelled_at = NULL
 router.patch('/:id/cancel', auth, wrap(async function(req, res) {
   const roomId = +req.params.id;
@@ -184,14 +185,15 @@ router.patch('/:id/cancel', auth, wrap(async function(req, res) {
     `
       UPDATE bookings
       SET 
-        status = 0,
+        status = ?,
         cancelled_at = ?,
         cancel_reason = ?
       WHERE id = ?
        AND user_id = ?
+       AND status IN (0, 1)
        AND cancelled_at IS NULL
     `,
-    [dayjs().format('YYYY-MM-DD HH:mm:ss'), '不鸡吧需要了', roomId, uid]
+    [bookingStatus.CANCELLED, dayjs().format('YYYY-MM-DD HH:mm:ss'), '不鸡吧需要了', roomId, uid]
   )
 
   if (r.affectedRows > 0) {
@@ -203,7 +205,7 @@ router.patch('/:id/cancel', auth, wrap(async function(req, res) {
 
   const rows = await executeQuery(
     `
-      SELECT id, user_id
+      SELECT id, user_id, status
       FROM bookings
       WHERE id = ?
     `,
@@ -218,7 +220,7 @@ router.patch('/:id/cancel', auth, wrap(async function(req, res) {
     throw new AppError('你无权取消别人的预定')
   }
 
-  if (rows[0].cancelled_at !== null) {
+  if (rows[0].status === bookingStatus.CANCELLED) {
     throw new AppError('该预订已经取消过了');
   }
 
