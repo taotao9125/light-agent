@@ -364,3 +364,13 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Inlhbmd0YW80QGdvb2dsZS5jb20
 分层
 数据库orm
 验证散乱
+
+
+modules
+  -bookings
+  -me
+    me.controller.js
+    me.service.js
+    me.repository.js
+    me.route.js
+    index.js
