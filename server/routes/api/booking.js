@@ -22,7 +22,6 @@ const bookingStatus = {
   REJECTED: 2,
   CANCELLED: 3
 }
-
 // 现在我的数据库里 status 字段都是1了，因为之前没加审批，默认就是可用了。 如何批量改数据
 
 /* GET users listing. */
@@ -164,10 +163,16 @@ router.patch('/:id/review', auth, wrap(async function(req, res) {
     [roomId]
   )
 
-   if (rows.length === 0) {
-    throw new AppError('预定不存在')
+
+
+  if (rows.length === 0) {
+    throw new AppError('BOOKING_NOT_FOUND')
   }
 
+
+  if (rows[0].status !== bookingStatus.PENDING) {
+    throw new AppError('此会议预定状态已流转')
+  }
 
   throw new AppError('review失败')
 
@@ -200,8 +205,6 @@ router.patch('/:id/cancel', auth, wrap(async function(req, res) {
     return {};
   }
 
-  
-
 
   const rows = await executeQuery(
     `
@@ -213,7 +216,7 @@ router.patch('/:id/cancel', auth, wrap(async function(req, res) {
   )
 
   if (rows.length === 0) {
-    throw new AppError('预定不存在')
+    throw new AppError('BOOKING_NOT_FOUND')
   }
 
   if (rows[0].user_id !== uid) {

@@ -292,3 +292,75 @@ router.get('/me', auth,wrap(async function(req, res) {
     释放锁 rollback
   
   不管怎样都要释放连接 release
+
+
+
+
+4-24 任务
+1. 修掉我上面说的 3 个问题
+2. 全流程测试：
+   create → pending
+   admin review → approved
+   user cancel → cancelled
+3. 手动造 5 条数据测试边界：
+   - 已审批再审批
+   - 已取消再取消
+   - 非本人取消
+
+
+1.用户注册
+  - 已存在 -> 报错
+  - 不存在 -> 写入 user 表
+2.用户登录
+  - 不存在/密码错误 -> 报错
+  - 已经存在 AND 密码正确 -> 下发 token
+3.会议室列表
+  - 普通用户 -> query 自己的预定
+  - admin -> query 所有的预定
+4.会议室预定 status = pending
+  - 时间冲突 -> 失败
+  - 并发创建 -> 只能创建一个（事务）
+5.会议室取消
+  - admin  -> 可取消所有的 (pending/approved -> canceled)
+  - user 
+    - 取消别人的 -> 报错
+    - 取消自己的 -> pending -> canceled
+6.会议室审批
+  - admin
+    审批通过 -> pending -> approved
+    审批不通过 -> pending -> rejected
+
+系统通过“状态机 + 条件更新（UPDATE ... WHERE status）”
+来保证业务一致性，避免并发和非法状态流转。
+
+状态流转
+  pending(0)
+    -> approved(1)
+    -> rejected(2)
+    -> canceled(3)
+  approved(2)
+    -> canceled(3)
+  reject (2)终态
+  canceled (3) 终态
+  
+
+
+
+
+yangt2@qq.com
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Inlhbmd0MkBxcS5jb20iLCJ1aWQiOjYsInJvbGUiOm51bGwsImlhdCI6MTc3Njk5OTcyMywiZXhwIjoxNzc3MDg2MTIzfQ._akAw-0zvxPC-jbcUt7ecAdgrmBld9J8Cp14FqJSm4k
+
+
+yangtao3@google.com admin
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Inlhbmd0YW8zQGdvb2dsZS5jb20iLCJ1aWQiOjMsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc3NzAwMDEzMSwiZXhwIjoxNzc3MDg2NTMxfQ.o4W6Gk4E3onMyZuXWNhtcI8FX2SJjEaC4ULNJc1U480
+
+yangtao4@google.com
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Inlhbmd0YW80QGdvb2dsZS5jb20iLCJ1aWQiOjQsInJvbGUiOm51bGwsImlhdCI6MTc3NzAwMDE2NCwiZXhwIjoxNzc3MDg2NTY0fQ.3xdwQ5w7ieoE5rD21yrHyYMdS5AOKNmhLTJSFRbSIe0
+
+
+未解决的大问题
+双token机制
+  redis
+分层
+数据库orm
+验证散乱

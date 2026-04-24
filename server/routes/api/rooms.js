@@ -7,8 +7,9 @@ import AppError from '../../errors/appError.js';
 const router = express.Router();
 
 /* GET users listing. */
+
 router.get('/', auth, wrap(async function(req, res, next) {
-  const [err, result] = await to(executeQuery('SELECT2 * FROM `meeting_rooms`'))
+  const [err, result] = await to(executeQuery('SELECT * FROM `meeting_rooms`'))
   if (err) throw new AppError(err);
   return result;
 }));

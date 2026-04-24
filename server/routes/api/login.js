@@ -1,7 +1,6 @@
 import express from 'express';
 import executeQuery from '../../db.js';
 import wrap from '../../lib/wrapRes.js';
-import {to} from 'await-to-js';
 import bcrypt from 'bcrypt';
 import AppError from '../../errors/appError.js';
 import jwt from 'jsonwebtoken';
