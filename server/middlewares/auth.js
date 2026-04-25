@@ -1,8 +1,13 @@
 import jwt from 'jsonwebtoken';
 import AppError from '../errors/appError.js';
 
-const JWT_SECRET = process.env.JWT_SEC;
+
 export default function auth(req, res, next) {
+  const JWT_SECRET = process.env.JWT_SEC;
+  if (!JWT_SECRET) {
+    next(new AppError('JWT_SEC 未配置'));
+    return;
+  }
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
@@ -10,6 +15,7 @@ export default function auth(req, res, next) {
     return;
   }
   const token = authHeader.split(' ')[1];
+
 
   if (!token) next(new AppError('格式错误')); 
   try {

@@ -48,8 +48,10 @@ const service = {
 
 
     try {
+      // 开启事务
       await connection.beginTransaction();
       const confilictBooking = await repository.findConfilictBooking(room_id, s, e);
+
       if (confilictBooking.length > 0) throw new AppError('时间段冲突');
       console.log('查完了，3秒后插入', new Date())
       await new Promise(resolve => setTimeout(resolve, 3000));
@@ -57,12 +59,15 @@ const service = {
 
       await repository.createBooking(room_id, s, e, userId, BookingStatus.PENDING);
 
+      // 提交事务
       await connection.commit();
       return null;
     } catch (e) {
+      // 撤销这次事务里已经做过的所有操作
       connection.rollback();
       throw e;
     } finally {
+      //  把数据库连接还回连接池
       connection.release();
     }
 

@@ -83,9 +83,9 @@ const repository = {
         `
           SELECT id
           FROM bookings
-          WHERE room_id = ?
-            AND ? > start_time
+          WHERE room_id=?
             AND ? < end_time
+            AND ? > start_time
           FOR UPDATE
         `,
         [roomId, startTime, endTime]
