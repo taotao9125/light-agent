@@ -8,13 +8,16 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
+// import apiUserRouter from './routes/api/users.js';
 
-import apiUserRouter from './routes/api/users.js';
-import apiRooms from './routes/api/rooms.js';
-import apiRegister from './routes/api/register.js';
-import apiLogin from './routes/api/login.js';
-import apiMe from './routes/api/me.js';
-import apiBooking from './routes/api/booking.js';
+
+import API_ME from './modules/me/routes.js';
+import API_USERS from './modules/users/routes.js';
+import API_REGISTER from './modules/register/routes.js';
+import API_LOGIN from './modules/login/routes.js';
+import API_BOOKING from './modules/booking/routes.js';
+import API_ROOMS from './modules/rooms/routes.js';
+
 
 
 import test from './routes/api/test.js';
@@ -38,18 +41,16 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
 
-app.use('/api/users', apiUserRouter);
-app.use('/api/rooms', apiRooms);
-app.use('/api/register', apiRegister);
-app.use('/api/login', apiLogin);
-app.use('/api/me', apiMe);
-app.use('/api/booking', apiBooking);
 
-
+app.use('/api/me', API_ME);
+app.use('/api/users', API_USERS);
+app.use('/api/register', API_REGISTER);
+app.use('/api/login', API_LOGIN);
+app.use('/api/booking', API_BOOKING);
+app.use('/api/rooms', API_ROOMS);
 
 
 app.use('/api/test', test);
-
 
 
 // catch 404 and forward to error handler

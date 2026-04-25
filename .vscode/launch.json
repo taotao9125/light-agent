@@ -8,7 +8,7 @@
       "port": 9229, // Node 默认调试端口
       "restart": true, // nodemon 重启时，调试器也会自动重连
       "cwd": "${workspaceFolder}/server",
-      "skipFiles": ["<node_internals>/**"]
+      "skipFiles": ["<node_internals>/**", "node_modules/**"]
     }
   ]
 }

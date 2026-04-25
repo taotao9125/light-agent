@@ -369,8 +369,16 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Inlhbmd0YW80QGdvb2dsZS5jb20
 modules
   -bookings
   -me
-    me.controller.js
     me.service.js
+     createYYY() {
+       业务逻辑xxx
+       各种判断yyy
+       repository.create(a, b);
+     }
+
     me.repository.js
     me.route.js
+      route.get('/xxx', service.getXXX)
+      router.post('/yyy', service.creatYYY)
+
     index.js
