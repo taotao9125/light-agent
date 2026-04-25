@@ -2,10 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt  from  'jsonwebtoken';
 import repository from './repository.js';
 import AppError from '../../errors/appError.js';
-
-
-
-const emailReg = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+import validate, {schema} from '../register/validate.js';
 
 
 const service = {
@@ -14,11 +11,7 @@ const service = {
     const {
       username,
       password
-    } = body;
-
-    
-    if (!emailReg.test(username)) new AppError('邮箱格式不正确');
-    if (!password) throw new AppError('密码不能为空');
+    } = validate(schema, body);
 
     const user = await repository.getUserByUserName(username)
     if (!user) throw new AppError('未注册'); 

@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import repository, { createConnection } from './repository.js';
 import AppError from '../../errors/appError.js';
-
+import validate, {createBookingSchema} from './validate.js';
 
 
 const BookingStatus = {
@@ -34,13 +34,11 @@ const service = {
       room_id,
       start_time,
       end_time
-    } = req.body;
+    } = validate(createBookingSchema, req.body);
+
     const userId = req.uid;
 
-    if (!room_id) throw new AppError('缺少 room_id');
-    if (!start_time) throw new AppError('缺少开始时间');
-    if (!end_time) throw new AppError('结束时间');
-    if (dayjs(start_time).valueOf() >= dayjs(end_time).valueOf()) throw new AppError('开始时间必须小于结束时间');
+
     const s = dayjs(start_time).format('YYYY-MM-DD HH:mm:ss');
     const e = dayjs(end_time).format('YYYY-MM-DD HH:mm:ss');
 
