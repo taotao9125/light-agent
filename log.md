@@ -365,7 +365,7 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Inlhbmd0YW80QGdvb2dsZS5jb20
 数据库orm
 验证散乱
 
-
+✅
 modules
   -bookings
   -me
@@ -382,3 +382,107 @@ modules
       router.post('/yyy', service.creatYYY)
 
     index.js
+
+
+
+
+## todo
+对，你这个判断是对的。现在功能已经够了，剩下是**后端工程闭环**。
+
+你的缺口优先级建议：
+
+```txt
+1. 最小化测试代码
+2. 数据库脚本
+3. 环境配置 / Docker
+4. 部署 / PM2 / 日志
+5. API 文档 / Postman Collection
+6. 安全补强
+7. Node.js 单线程 / 多进程理解
+```
+
+你的清单里我会这样调整：
+
+```txt
+1. 写最小化测试代码
+   必做。
+   重点测 service，不是测所有接口。
+
+2. 数据库脚本
+   必做。
+   包括建表 SQL、初始化 admin、测试数据、状态字段说明。
+
+3. Docker
+   必做但别搞复杂。
+   先 docker-compose 跑 MySQL + 后端。
+
+4. PM2 / 日志 / 部署
+   必做。
+   你要知道服务怎么在线上跑、崩了怎么重启、日志怎么看。
+
+5. Node.js 单线程 / 多线程
+   先理解，不一定要强行用。
+   你的会议室系统主要是 I/O 密集，不太需要 worker_threads。
+```
+
+还缺这些：
+
+```txt
+6. 配置分环境
+   .env.development
+   .env.production
+   JWT_SECRET
+   DB_HOST
+   DB_PASSWORD
+
+7. 统一日志
+   请求日志
+   错误日志
+   SQL 错误日志
+   PM2 日志
+
+8. API 文档
+   最低要求：Postman Collection
+   进阶：Swagger
+
+9. 安全基础
+   密码 hash
+   JWT 过期
+   CORS
+   helmet
+   参数校验
+   SQL 参数化
+   错误信息不要暴露堆栈
+
+10. 数据库备份/迁移意识
+   不一定马上上 migration 工具
+   但至少有 schema.sql / seed.sql
+```
+
+你这个月剩下目标应该是：
+
+```txt
+不是加功能，
+而是把项目从“本地能跑”
+推进到
+“别人拉下来能跑、能测、能部署、能排错”。
+```
+
+最终验收标准：
+
+```txt
+1. npm test 能跑
+2. npm run dev 能跑
+3. docker-compose up 能跑
+4. schema.sql 能建库
+5. seed.sql 能造数据
+6. pm2 能部署
+7. README 能说明启动流程
+8. Postman 能完整测接口
+```
+
+`多线程` 放后面，别把它排太前。这个项目里更核心的是：
+
+```txt
+事务并发控制 > 多线程
+```
