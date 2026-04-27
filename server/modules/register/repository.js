@@ -4,17 +4,18 @@ const repository = {
   async create(username, password) {
     await executeQuery(
       `
-       INSERT INTO USERS (username, password_hash) VALUES (?, ?)
+       INSERT INTO users (username, password_hash) VALUES (?, ?)
       `,
       [username, password]
     )
     return null;
   },
 
+  
   async isUserExist(username) {
-    const rows = executeQuery(
+    const rows = await executeQuery(
       `
-        SELECT id FROM USERS
+        SELECT id FROM users
         WHERE username = ?
       `,
       [username]

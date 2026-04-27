@@ -5,7 +5,7 @@ const repository = {
   async getUserByUserName(userName) {
     const rows = await executeQuery(
       `
-        SELECT * FROM USERS
+        SELECT * FROM users
         WHERE username = ?
       `,
       [userName]

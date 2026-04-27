@@ -421,3 +421,135 @@ mysqldump -u root -p book_rooms_system --no-create-info > seed.sql
   },
   "experimental": false
 }
+
+
+4.26
+
+
+------ docker 学习
+1️⃣ **Image → Container**
+
+* Image = 打包好的环境 + 代码（静态）
+* Container = Image 运行起来（进程）
+
+---
+
+2️⃣ **运行环境**
+
+* 容器里运行的是 Linux + 依赖 + 代码
+* 和本机 macOS / Windows 隔离
+
+---
+
+3️⃣ **端口（网络）**
+
+* 程序在容器里 `listen`
+* `-p 本机端口:容器端口`
+* 本机端口由 Docker 监听 → 转发到容器
+
+---
+
+4️⃣ **数据（文件）**
+
+* 不挂载：数据在容器里，删容器就没了
+* 挂载：`-v 本机目录:容器目录`
+* 文件读写同步到本机
+
+---
+
+5️⃣ **分发**
+
+* Image 可以 push/pull（共享）
+* Volume 只在本机（不共享）
+
+---
+
+6️⃣ **启动规则**
+
+* Image 里有 CMD / ENTRYPOINT
+* Docker run 时执行
+
+---
+
+7️⃣ **配置限制**
+
+* `-p` / `-v` / `-e` 创建容器时确定
+* 不能直接修改 → 需要删掉重建
+
+---
+
+👉 **一句话：**
+
+👉 **Docker = 用 Image 在隔离的 Linux 环境中跑 Container，通过 -p 提供访问，通过 -v 管理数据**
+
+-----
+
+1. 写 docker-compose.yml（MySQL + 后端）
+2. 改数据库连接，支持通过 .env 读取（DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME）
+3. 准备 .env.example（所有必填变量列清楚）
+4. 验证：删除本地数据库 → docker-compose 启动 → 用 schema.sql + seed.sql 初始化 → 项目跑通
+
+5. 接入 PM2（本地模拟生产）
+   - pm2 start
+   - pm2 logs
+   - pm2 restart
+
+6. 安装 pm2-logrotate 并验证日志轮转
+
+7. 导出 Postman Collection（覆盖所有接口）
+8. README 补充：
+   - docker 启动步骤
+   - 数据库初始化步骤
+   - 如何用 Postman 测接口
+
+
+
+  
+本机旧 MySQL
+  ↓ 导出 schema.sql
+```
+// 导入哪个服务器,哪个库，导出到什么
+mysqldump -u root -p book_rooms_system \
+  --no-data \
+  --set-gtid-purged=OFF \
+  > schema.sql
+
+
+mysqldump -u root -p book_rooms_system \
+  --no-create-info \
+  --single-transaction \
+  --set-gtid-purged=OFF \
+  > seed.sql
+
+```
+// 导进哪个服务器，哪个库，导入什么
+// 服务器 x, 库 y, 导入目标 z
+Docker MySQL
+  ↓ 导入 schema.sql
+```
+// 注意这里-p后不能带空格
+docker exec -i meeting_mysql \
+mysql -u root -p123456 book_rooms_system < schema.sql
+```
+验证查看
+```
+docker exec -it meeting_mysql mysql -u root -p123456
+```
+
+
+我尝试把业务代码也放进 docker 里， debug 麻烦，端口映射又得改，--inspect 地址又得 改 127.0.0.1 -> 0.0.0.0 
+docker 占用了 127.0.0.1, 有可能 vscode debug 配置还得改。ROI 太低了。
+
+开发阶段，放弃把业务代码放进docker里
+
+Docker 全量跑 Node + MySQL，留给：
+
+1. 部署前验收
+2. CI 打 image
+3. 测试/线上环境
+
+
+sql 切到 docker 容器里，
+Error: Table 'book_rooms_system.USERS' doesn't exist
+
+docker 环境基于 lunix 的，对大小写敏感，我库里是 users
