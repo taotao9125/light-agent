@@ -4,7 +4,7 @@ import {to} from 'await-to-js';
 import AppError from './errors/appError.js';
 
 dotenv.config();
-let pool = null;
+
 
 
 function createPoolFactory() {
@@ -13,6 +13,8 @@ function createPoolFactory() {
     if (!pool) {
        pool = mysql.createPool({
         host: process.env.DB_HOST,
+        port: process.env.DB_PORT,
+        password: process.env.DB_PASSWORD,
         user: process.env.DB_USER,
         database: process.env.DB_BASE,
         waitForConnections: true,
@@ -22,6 +24,9 @@ function createPoolFactory() {
     return pool;
   }
 }
+
+
+
 
 
 const createPool = createPoolFactory();

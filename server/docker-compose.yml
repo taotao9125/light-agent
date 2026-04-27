@@ -1,0 +1,30 @@
+services:
+  mysql:
+    image: mysql:8
+    container_name: meeting_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: book_rooms_system
+    ports:
+      - "3306:3306"                  # 宿主机:容器
+    volumes:
+      - meeting-mysql-data:/var/lib/mysql   # 数据持久化（named volume）
+    restart: unless-stopped
+
+  backend:
+    build: .
+    image: express_meeting_backend:latest
+    container_name: meeting_backend
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      - mysql
+    volumes:
+      - .:/app                      # 代码热更新（bind mount，开发用）
+      - /app/node_modules           # 避免宿主机 node_modules 覆盖容器内依赖
+    restart: unless-stopped
+
+volumes:
+  meeting-mysql-data:
