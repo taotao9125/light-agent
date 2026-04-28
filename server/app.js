@@ -2,13 +2,13 @@ import createError from 'http-errors';
 import express from 'express';
 import path from 'path';
 import cookieParser from 'cookie-parser';
-import logger from 'morgan';
+// import logger from 'morgan';
 import dotenv from 'dotenv';
 
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
-// import apiUserRouter from './routes/api/users.js';
+import logger from './lib/logger.js';
 
 
 import API_ME from './modules/me/routes.js';
@@ -34,7 +34,7 @@ const __dirname = dirname(__filename);
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'jade');
 
-app.use(logger('dev'));
+// app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
@@ -59,15 +59,13 @@ app.use(function(req, res, next) {
 });
 
 // error handler
+// next 参数 是必须的，否则无法捕获错误
 app.use(function(err, req, res, next) {
-
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
-
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
+  logger.error(err.message, {status: err.status, ...err.context} );
+  res.status(err.status || 500).json({
+    error: err.message || '服务器错误',
+    code: err.code || 'SERVER_ERROR',
+  });
 });
 
 export default app;

@@ -2,6 +2,7 @@ import bcrypt from 'bcrypt';
 import repository from './repository.js';
 import AppError from '../../errors/appError.js';
 import validate, {schema} from './validate.js';
+import { logEvents, errorEvents } from '../../consts/logEvents.js';
 
 
 const service = {
@@ -12,7 +13,10 @@ const service = {
     } = validate(schema, body);
 
     const isUserExist = await repository.isUserExist(username);
-    if (isUserExist) throw new AppError('该用户已注册');
+    if (isUserExist) throw new AppError('该用户已注册', 409, {
+      code: errorEvents.USER_ALREADY_EXISTS,
+      username
+    });
 
     const hashPwd = await bcrypt.hash(password, 10);
 
