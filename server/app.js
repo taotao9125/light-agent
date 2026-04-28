@@ -65,6 +65,7 @@ app.use(function(err, req, res, next) {
   res.status(err.status || 500).json({
     error: err.message || '服务器错误',
     code: err.code || 'SERVER_ERROR',
+    message: err.stack
   });
 });
 

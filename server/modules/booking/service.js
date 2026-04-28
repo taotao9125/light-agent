@@ -49,28 +49,31 @@ const service = {
     try {
       // 开启事务
       await connection.beginTransaction();
-      const confilictBooking = await repository.findConfilictBooking(room_id, s, e);
+      const confilictBooking = await repository.findConfilictBooking(connection, room_id, s, e);
 
-      if (confilictBooking.length > 0) throw new AppError('时间段冲突', 409, {
-        code: errorEvents.TIME_CONFLICT,
-        user_id: userId,
-        room_id,
-        start_time: s,
-        end_time: e
-      });
+      if (confilictBooking.length > 0) {
+        throw new AppError('时间段冲突', 409, {
+          code: errorEvents.TIME_CONFLICT,
+          user_id: userId,
+          room_id,
+          start_time: s,
+          end_time: e
+        });
+      }
       console.log('查完了，3秒后插入', new Date())
       await new Promise(resolve => setTimeout(resolve, 3000));
       console.log('插入', new Date())
 
-      await repository.createBooking(room_id, s, e, userId, BookingStatus.PENDING);
+      await repository.createBooking(connection, room_id, s, e, userId, BookingStatus.PENDING);
 
+     
       // 提交事务
       await connection.commit();
       logger.info('BOOKING_CREATED', {userId, roomId: room_id, startTime: s, endTime: e});
       return null;
     } catch (e) {
       // 撤销这次事务里已经做过的所有操作
-      connection.rollback();
+      await connection.rollback();
       throw e;
     } finally {
       //  把数据库连接还回连接池

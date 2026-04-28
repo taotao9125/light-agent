@@ -8,17 +8,22 @@ import executeQuery, { createPool } from '../../db.js';
 // }
 
 
-function closureConnection() {
-  let connection = null;
-  return async function connectionFactory() {
-     if (connection) return connection;
-     const pool = createPool();
-     connection = await pool.getConnection();
-     return connection;
-  }
+// function closureConnection() {
+//   let connection = null;
+//   return async function connectionFactory() {
+//     if (connection) return connection;
+//     const pool = createPool();
+//     connection = await pool.getConnection();
+//     return connection;
+//   }
+// }
+
+
+async function createConnection() {
+  const pool = createPool();
+  return await pool.getConnection();
 }
 
-const createConnection = closureConnection();
 
 
 
@@ -66,21 +71,19 @@ const repository = {
     return rows;
   },
 
-  async createBooking(roomId, startTime, endTime, userId, status) {
-      const connection = await createConnection();
-      connection.execute(
-        `
+  async createBooking(connection, roomId, startTime, endTime, userId, status) {
+    await connection.execute(
+      `
           INSERT INTO bookings (room_id, start_time, end_time, user_id, status) VALUES (?, ?, ?, ?, ?)
         `,
-        [roomId, startTime, endTime, userId, status]
-      );
-
+      [roomId, startTime, endTime, userId, status]
+    );
+    return null;
   },
 
-  async findConfilictBooking(roomId, startTime, endTime) {
-      const connection = await createConnection();
-      const rows = await connection.execute(
-        `
+  async findConfilictBooking(connection, roomId, startTime, endTime) {
+    const rows = await connection.execute(
+      `
           SELECT id
           FROM bookings
           WHERE room_id=?
@@ -88,10 +91,10 @@ const repository = {
             AND ? > start_time
           FOR UPDATE
         `,
-        [roomId, startTime, endTime]
-      );
-   
-      return rows[0];
+      [roomId, startTime, endTime]
+    );
+
+    return rows[0];
   },
 
   async cancelBooking(roomId, status, cancelReason, canceledAt, userId) {
@@ -136,4 +139,4 @@ const repository = {
 
 export default repository;
 
-export {createConnection};
+export { createConnection };
