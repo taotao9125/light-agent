@@ -1,7 +1,7 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
-import {to} from 'await-to-js';
-import AppError from './errors/appError.js';
+import logger from './lib/logger.js';
+
 
 dotenv.config();
 
@@ -20,6 +20,7 @@ function createPoolFactory() {
         waitForConnections: true,
         connectionLimit: 10
       })
+      logger.info('MySQL connection pool created');
     }
     return pool;
   }
@@ -29,7 +30,9 @@ function createPoolFactory() {
 
 
 
+
 const createPool = createPoolFactory();
+
 
 async function executeQuery(sql, p = []) {
   const pool = createPool();

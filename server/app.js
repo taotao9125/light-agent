@@ -8,7 +8,10 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
+import AppError from './errors/appError.js';
 import logger from './lib/logger.js';
+import { connectRedis } from './config/redis.js';
+import rateLimit from './middlewares/rateLimit.js';
 
 
 import API_ME from './modules/me/routes.js';
@@ -20,9 +23,11 @@ import API_ROOMS from './modules/rooms/routes.js';
 
 
 
-import test from './routes/api/test.js';
+import test from './modules/test.js';
 
 dotenv.config();
+
+connectRedis();
 
 const app = express();
 
@@ -40,6 +45,10 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.use(rateLimit({
+  windowMs: 20 * 1000, 
+  max: 5, 
+}));
 
 
 app.use('/api/me', API_ME);
@@ -55,8 +64,9 @@ app.use('/api/test', test);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
-  next(createError(404));
+  next(new AppError('Not Found', 404, { code: 'NOT_FOUND', path: req.originalUrl }));
 });
+
 
 // error handler
 // next 参数 是必须的，否则无法捕获错误
@@ -68,5 +78,6 @@ app.use(function(err, req, res, next) {
     error: err.stack,
   });
 });
+
 
 export default app;
