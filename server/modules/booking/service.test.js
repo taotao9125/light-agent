@@ -1,9 +1,27 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import repo from './repository.js';
+
+
+// vi.mock('./utils.js', ({
+//   withTransaction: vi.fn(callback => callback())
+// }))
+
+
 import service from './service.js';
+import repo from './repository.js';
+import * as utils from './utils.js';
 
 vi.mock('./repository.js');
+vi.mock('./utils.js');
+
+
+
+
+// vi.mock('./utils.js', ({
+//   withTransaction: vi.fn(callback => callback())
+// }))
+
+
 
 /**
  * 只 mock 测试对象里面的外部依赖， 外部依赖隔离，方便 mock，这也是把route, service, repository 分层的好处。
@@ -16,6 +34,13 @@ vi.mock('./repository.js');
       /  \        集成测试 (适量)
      /____\       单元测试 (大量) ← 你在这里
  */
+
+
+
+beforeEach(() => {
+  vi.clearAllMocks();
+})
+
 
 describe('booking.cancel.service', () => {
 
@@ -61,6 +86,40 @@ describe('booking.cancel.service', () => {
       uid: 3
     })).rejects.toThrow('无预定记录');
   })
+
+
+  it('时间段冲突', async () => {
+
+    utils.withTransaction.mockImplementation((callback) => callback());
+    utils.redisClientRpush.mockImplementation(() => { });
+    repo.findConfilictBooking.mockResolvedValue([{}]);
+
+    await expect(service.createBooking({
+      body: {
+        start_time: 1779611400000,
+        end_time: 1779615000000,
+        room_id: 1
+      },
+      uid: 333
+    })).rejects.toThrow('时间段冲突');
+
+  })
+
+  it('创建成功', async () => {
+    utils.withTransaction.mockImplementation((callback) => callback());
+    utils.redisClientRpush.mockImplementation(() => { });
+    repo.findConfilictBooking.mockResolvedValue([]);
+    await expect(service.createBooking({
+      body: {
+        start_time: 1779611400000,
+        end_time: 1779615000000,
+        room_id: 1
+      },
+      uid: 333
+    })).resolves.toBeNull();
+
+  })
+
 
 
 })
