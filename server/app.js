@@ -1,9 +1,10 @@
-import createError from 'http-errors';
 import express from 'express';
 import path from 'path';
 import cookieParser from 'cookie-parser';
 // import logger from 'morgan';
 import dotenv from 'dotenv';
+import swaggerUi from 'swagger-ui-express';
+import swaggerSpec from './config/swagger.js';
 
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -46,8 +47,8 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(rateLimit({
-  windowMs: 20 * 1000, 
-  max: 5, 
+  windowMs: 60 * 1000,
+  max: 1000,
 }));
 
 
@@ -61,17 +62,22 @@ app.use('/api/rooms', API_ROOMS);
 
 app.use('/api/test', test);
 
+if (process.env.ENABLE_SWAGGER === 'true') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
+
+
 
 // catch 404 and forward to error handler
-app.use(function(req, res, next) {
+app.use(function (req, res, next) {
   next(new AppError('Not Found', 404, { code: 'NOT_FOUND', path: req.originalUrl }));
 });
 
 
 // error handler
 // next 参数 是必须的，否则无法捕获错误
-app.use(function(err, req, res, next) {
-  logger.error(err.message, {status: err.status, ...err.context} );
+app.use(function (err, req, res, next) {
+  logger.error(err.message, { status: err.status, ...err.context });
   res.status(err.status || 500).json({
     code: err.context.code || 'SERVER_ERROR',
     message: err.message || '服务器错误',
