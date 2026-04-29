@@ -4,6 +4,8 @@ import AppError from '../../errors/appError.js';
 import validate, {createBookingSchema} from './validate.js';
 import logger from '../../lib/logger.js';
 import { errorEvents } from '../../consts/logEvents.js';
+import redisClient from '../../config/redis.js';
+import redisKeys from '../../consts/redis.js';
 
 const BookingStatus = {
   PENDING: 0,
@@ -65,6 +67,13 @@ const service = {
       console.log('插入', new Date())
 
       await repository.createBooking(connection, room_id, s, e, userId, BookingStatus.PENDING);
+
+      await redisClient.rPush(redisKeys.NOTIFICATIONS, JSON.stringify({
+        user_id: userId,
+        room_id,
+        start_time: s,
+        end_time: e
+      }));
 
      
       // 提交事务
