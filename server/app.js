@@ -79,9 +79,11 @@ app.use(function (req, res, next) {
 app.use(function (err, req, res, next) {
   logger.error(err.message, { status: err.status, ...err.context });
   res.status(err.status || 500).json({
-    code: err.context.code || 'SERVER_ERROR',
+    code: err.context?.code || 'SERVER_ERROR',
     message: err.message || '服务器错误',
-    error: err.stack,
+    ...(process.env.NODE_ENV !== 'production'
+      ? { error: err.stack }
+      : {}),
   });
 });
 

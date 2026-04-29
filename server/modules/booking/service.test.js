@@ -59,7 +59,7 @@ describe('booking.cancel.service', () => {
         id: 1
       },
       uid: 3
-    })).rejects.toThrow('BOOKING_NOT_FOUND');
+    })).rejects.toThrow('无预定记录');
   })
 
 
