@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  backend:
+    image: meeting_server:latest   # ✅ 用 image，不用 build
+    container_name: meeting_backend
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.prod                 # ✅ 生产环境变量
+    depends_on:
+      - mysql
+      - redis
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8
+    container_name: mysql_meeting_db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_BASE}
+    ports:
+      - "3306:3306"
+    volumes:
+      - meeting-mysql-data:/var/lib/mysql
+    restart: unless-stopped
+
+  redis:
+    image: redis:latest
+    container_name: redis_meeting_db
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - meeting-redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  meeting-mysql-data:
+  meeting-redis-data:

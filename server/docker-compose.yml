@@ -17,9 +17,24 @@ services:
     container_name: redis_meeting_db
     ports:
       - "6379:6379"
+    env_file:
+      - .env
     volumes:
       - meeting-redis-data:/data   # 数据持久化（named volume）
     command: redis-server --appendonly yes
+    restart: unless-stopped
+
+  backend:
+    build: .
+    image: meeting_server:latest
+    container_name: meeting_backend
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.test
+    depends_on:
+      - mysql
+      - redis
     restart: unless-stopped
 
 volumes:

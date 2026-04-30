@@ -26,6 +26,8 @@ import API_ROOMS from './modules/rooms/routes.js';
 
 import test from './modules/test.js';
 
+import health from './modules/health.js';
+
 
 
 connectRedis();
@@ -60,6 +62,7 @@ app.use('/api/booking', API_BOOKING);
 app.use('/api/rooms', API_ROOMS);
 
 
+app.use('/health', health);
 app.use('/api/test', test);
 
 if (process.env.ENABLE_SWAGGER === 'true') {

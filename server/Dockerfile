@@ -13,4 +13,5 @@ COPY . .
 
 EXPOSE 3000
 
-CMD ["pnpm", "run", "debug"]
+
+CMD ["node", "bin/www"]
