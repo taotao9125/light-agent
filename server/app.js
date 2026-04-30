@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import cookieParser from 'cookie-parser';
 // import logger from 'morgan';
-import dotenv from 'dotenv';
+
 import swaggerUi from 'swagger-ui-express';
 import swaggerSpec from './config/swagger.js';
 
@@ -26,7 +26,7 @@ import API_ROOMS from './modules/rooms/routes.js';
 
 import test from './modules/test.js';
 
-dotenv.config();
+
 
 connectRedis();
 

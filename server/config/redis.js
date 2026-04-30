@@ -3,8 +3,12 @@ import logger from '../lib/logger.js';
 import AppError from '../errors/appError.js';
 
 
+
 const redisClient = createClient({
-  url: process.env.REDIS_URL
+  socket: {
+    host: process.env.REDIS_HOST,
+    port: Number(process.env.REDIS_PORT),
+  }
 });
 
 redisClient.on('error', (err) => {
