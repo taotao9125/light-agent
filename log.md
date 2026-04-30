@@ -553,3 +553,11 @@ sql 切到 docker 容器里，
 Error: Table 'book_rooms_system.USERS' doesn't exist
 
 docker 环境基于 lunix 的，对大小写敏感，我库里是 users
+
+
+{
+    "registry-mirrors": [
+        "https://docker.1ms.run",
+        "https://docker.xuanyuan.me",
+    ]
+}
