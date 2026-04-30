@@ -1,4 +1,4 @@
-import executeQuery from '../../db.js';
+import executeQuery from '../../db/db.js';
 
 const repository = {
  

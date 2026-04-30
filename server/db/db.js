@@ -1,6 +1,6 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
-import logger from './lib/logger.js';
+import logger from '../lib/logger.js';
 
 
 dotenv.config();

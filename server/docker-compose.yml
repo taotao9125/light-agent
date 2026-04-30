@@ -1,7 +1,7 @@
 services:
   mysql:
     image: mysql:8
-    container_name: db_meeting_mysql
+    container_name: mysql_meeting_db
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
       MYSQL_DATABASE: ${DB_BASE}
@@ -11,6 +11,17 @@ services:
       - meeting-mysql-data:/var/lib/mysql   # 数据持久化（named volume）
       - ./sql:/docker-entrypoint-initdb.d/
     restart: unless-stopped
+  
+  redis:
+    image: redis:latest
+    container_name: redis_meeting_db
+    ports:
+      - "6379:6379"
+    volumes:
+      - meeting-redis-data:/data   # 数据持久化（named volume）
+    command: redis-server --appendonly yes
+    restart: unless-stopped
 
 volumes:
   meeting-mysql-data:
+  meeting-redis-data:

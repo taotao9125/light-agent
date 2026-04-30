@@ -1,4 +1,5 @@
-import executeQuery, { createPool } from '../../db.js';
+import executeQuery, { createPool } from '../../db/db.js';
+
 
 
 // async function createTransaction() {
