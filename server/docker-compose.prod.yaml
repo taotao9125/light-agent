@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   backend:
-    image: meeting_server:latest   # ✅ 用 image，不用 build
+    image: crpi-la7wsh3alv7tjgix.cn-hangzhou.personal.cr.aliyuncs.com/yangblue/test:latest   # ✅ 用 image，不用 build
     container_name: meeting_backend
     ports:
       - "3000:3000"
