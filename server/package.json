@@ -5,7 +5,8 @@
   "scripts": {
     "start": "nodemon bin/www",
     "debug": "nodemon --inspect bin/www",
-    "test": "vitest"
+    "test": "vitest",
+    "test:ci": "vitest run"
   },
   "type": "module",
   "dependencies": {

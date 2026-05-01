@@ -1,14 +1,33 @@
-name: CI DEMO
+name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./server
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Print Hello CI/C
-        run: echo "Hello CI/CD"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm run test:ci
