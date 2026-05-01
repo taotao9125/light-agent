@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
   test:
@@ -31,3 +31,13 @@ jobs:
 
       - name: Run tests
         run: pnpm run test:ci
+
+      - name: Login DockerHub
+        run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{
+          secrets.DOCKERHUB_USERNAME }}" --password-stdin
+     
+      - name: Build Image
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/meeting-backend:latest .
+      
+      - name: Push Image
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/meeting-backend:latest
