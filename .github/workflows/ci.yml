@@ -1,5 +1,10 @@
 name: CI
 
+
+
+env:
+  IMAGE_NAME: ${{ secrets.DOCKER_REGISTER }}/yangblue/test
+
 on:
   push:
     branches: [ main ]
@@ -32,12 +37,23 @@ jobs:
       - name: Run tests
         run: pnpm run test:ci
 
-      - name: Login DockerHub
-        run: echo "${{ secrets.DOCKER_TOKEN }}" | docker login -u "${{
-          secrets.DOCKER_USERNAME }}" --password-stdin
-     
+      - name: Login ACR
+        run: echo "${{ secrets.DOCKER_REGISTER_PWD }}" | docker login ${{ secrets.DOCKER_REGISTER }} -u ${{ secrets.DOCKER_REGISTER_USERNAME }} --password-stdin
+
+      - name: Generate image tag
+        run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
       - name: Build Image
-        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/meeting-backend:latest .
-      
+        run: docker build -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest .
+
+      - name: Push image by commit tag
+        run: docker push $IMAGE_NAME:$IMAGE_TAG
+
       - name: Push Image
-        run: docker push ${{ secrets.DOCKER_USERNAME }}/meeting-backend:latest
+        run: docker push $IMAGE_NAME:latest
+      # - name: Login DockerHub
+      #   run: echo "${{ secrets.DOCKER_TOKEN }}" | docker login -u "${{
+      #     secrets.DOCKER_USERNAME }}" --password-stdin
+      
+      # - name: Push Image
+      #   run: docker push ${{ secrets.DOCKER_USERNAME }}/meeting-backend:latest
