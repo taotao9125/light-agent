@@ -66,9 +66,9 @@ jobs:
             cd /root/booking
 
             echo "start pull image"
-            docker compose --env-file .env.prod -f docker-compose.prod.yml pull
+            docker-compose --env-file .env.prod -f docker-compose.prod.yml pull
             echo "start run container"
-            docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+            docker-compose --env-file .env.prod -f docker-compose.prod.yaml up -d
 
             echo "Health check"
             for i in {1..10}; do
