@@ -1,7 +1,5 @@
 name: CI
 
-
-
 env:
   IMAGE_NAME: ${{ secrets.DOCKER_REGISTER }}/yangblue/test
 
@@ -38,7 +36,9 @@ jobs:
         run: pnpm run test:ci
 
       - name: Login ACR
-        run: echo "${{ secrets.DOCKER_REGISTER_PWD }}" | docker login ${{ secrets.DOCKER_REGISTER }} -u ${{ secrets.DOCKER_REGISTER_USERNAME }} --password-stdin
+        run: echo "${{ secrets.DOCKER_REGISTER_PWD }}" | docker login ${{
+          secrets.DOCKER_REGISTER }} -u ${{ secrets.DOCKER_REGISTER_USERNAME }}
+          --password-stdin
 
       - name: Generate image tag
         run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
@@ -51,9 +51,42 @@ jobs:
 
       - name: Push Image
         run: docker push $IMAGE_NAME:latest
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_PEM }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} '
+            set -e
+            cd /root/booking
+
+            echo "start pull image"
+            docker compose --env-file .env.prod -f docker-compose.prod.yml pull
+            echo "start run container"
+            docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+
+            echo "Health check"
+            for i in {1..10}; do
+              if curl -f http://localhost:3000/health; then
+                echo "Deploy success"
+                exit 0
+              fi
+              echo "Waiting for app..."
+              sleep 2
+            done
+
+            echo "Deploy failed"
+            docker logs meeting_backend --tail=100
+            exit 1
+          '
       # - name: Login DockerHub
       #   run: echo "${{ secrets.DOCKER_TOKEN }}" | docker login -u "${{
       #     secrets.DOCKER_USERNAME }}" --password-stdin
-      
+
       # - name: Push Image
       #   run: docker push ${{ secrets.DOCKER_USERNAME }}/meeting-backend:latest
