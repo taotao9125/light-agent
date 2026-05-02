@@ -66,7 +66,7 @@ jobs:
             cd /root/booking
 
             echo "start pull image"
-            docker-compose --env-file .env.prod -f docker-compose.prod.yaml pull
+            docker-compose --env-file .env.prod -f docker-compose.prod.yaml pull backend
             echo "start run container"
             docker-compose --env-file .env.prod -f docker-compose.prod.yaml up -d
 
