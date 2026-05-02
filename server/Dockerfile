@@ -1,4 +1,5 @@
-FROM node:24.15.0-bookworm
+# 少 1个 G
+FROM node:22-alpine
 
 WORKDIR /app
 
@@ -7,7 +8,8 @@ RUN corepack prepare pnpm@10.33.0 --activate
 
 COPY package.json pnpm-lock.yaml ./
 
-RUN pnpm install
+# prod 少 100M 
+RUN pnpm install --prod --frozen-lockfile
 
 COPY . .
 
