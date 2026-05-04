@@ -2,12 +2,14 @@ import bcrypt from 'bcrypt';
 import jwt  from  'jsonwebtoken';
 import repository from './repository.js';
 import AppError from '../../errors/appError.js';
-import validate, {schema} from '../register/validate.js';
+import validate from '../../lib/validate.js';
+import {schema} from '../register/validate.js';
 import logger from '../../lib/logger.js';
 import {errorEvents} from '../../consts/logEvents.js';
 
 
 const service = {
+  
   
   async login(body) {
     const {

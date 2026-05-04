@@ -1,5 +1,4 @@
 import {z} from 'zod';
-import AppError from '../../errors/appError.js';
 
 const schema = z.object({
   username: z.email('邮箱格式不正确'),
@@ -10,13 +9,5 @@ const schema = z.object({
     .regex(/[0-9]/, '密码必须包含数字')
 })
 
-
-export default function validate(schema, body) {
-  const result = schema.safeParse(body);
-  if (!result.success) {
-    throw new AppError(result.error.issues[0].message);
-  }
-  return result.data;
-}
 
 export {schema}

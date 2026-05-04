@@ -1,7 +1,8 @@
 import bcrypt from 'bcrypt';
 import repository from './repository.js';
 import AppError from '../../errors/appError.js';
-import validate, {schema} from './validate.js';
+import validate from '../../lib/validate.js';
+import {schema} from './validate.js';
 import { logEvents, errorEvents } from '../../consts/logEvents.js';
 
 

@@ -1,7 +1,8 @@
 import dayjs from 'dayjs';
 import repository from './repository.js';
 import AppError from '../../errors/appError.js';
-import validate, { createBookingSchema } from './validate.js';
+import validate from '../../lib/validate.js';
+import { createBookingSchema } from './validate.js';
 import logger from '../../lib/logger.js';
 import { errorEvents } from '../../consts/logEvents.js';
 import { withTransaction, redisClientRpush } from './utils.js';
