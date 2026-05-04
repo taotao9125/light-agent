@@ -12,7 +12,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: yangblue/test/meeting:latest   # ✅ 用 image，不用 build
+    image: crpi-la7wsh3alv7tjgix.cn-hangzhou.personal.cr.aliyuncs.com/yangblue/test:latest   # ✅ 用 image，不用 build
     container_name: ${APP_NAME}
     ports:
       - "${PORT}:${PORT}"
