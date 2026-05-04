@@ -82,7 +82,7 @@ const repository = {
     return null;
   },
 
-  async findConfilictBooking(connection, roomId, startTime, endTime) {
+  async findConflictBooking(connection, roomId, startTime, endTime) {
     const rows = await connection.execute(
       `
           SELECT id

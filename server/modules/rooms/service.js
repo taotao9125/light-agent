@@ -10,11 +10,11 @@ const service = {
   },
 
   async getRoomById(req) {
-    const roomdId = +req.params.id;
-    const result = await repository.findRoomById(roomdId);
+    const roomId = +req.params.id;
+    const result = await repository.findRoomById(roomId);
     if (!result) throw new AppError('会议室不存在', 404, {
       code: errorEvents.ROOM_NOT_FOUND,
-      room_id: roomdId,
+      room_id: roomId,
       user_id: req.uid,
     });
     return result;

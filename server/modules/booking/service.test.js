@@ -92,7 +92,7 @@ describe('booking.cancel.service', () => {
 
     utils.withTransaction.mockImplementation((callback) => callback());
     utils.redisClientRpush.mockImplementation(() => { });
-    repo.findConfilictBooking.mockResolvedValue([{}]);
+    repo.findConflictBooking.mockResolvedValue([{}]);
 
     await expect(service.createBooking({
       body: {
@@ -108,7 +108,7 @@ describe('booking.cancel.service', () => {
   it('创建成功', async () => {
     utils.withTransaction.mockImplementation((callback) => callback());
     utils.redisClientRpush.mockImplementation(() => { });
-    repo.findConfilictBooking.mockResolvedValue([]);
+    repo.findConflictBooking.mockResolvedValue([]);
     await expect(service.createBooking({
       body: {
         start_time: 1779611400000,

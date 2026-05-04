@@ -71,8 +71,8 @@ const service = {
 
 
     await withTransaction(async function (connection) {
-      const confilictBooking = await repository.findConfilictBooking(connection, room_id, s, e);
-      if (confilictBooking.length > 0) {
+      const conflictBooking = await repository.findConflictBooking(connection, room_id, s, e);
+      if (conflictBooking.length > 0) {
         throw new AppError('时间段冲突', 409, {
           code: errorEvents.TIME_CONFLICT,
           user_id: userId,
@@ -126,7 +126,7 @@ const service = {
 
     const booking = await repository.findBooking(bookingId);
 
-    if (booking.length === 0) throw new AppError('无预定记录', 404, { bookingId, userId: uid, code: errorEvents.BOOKINT_NOT_FOUND });
+    if (booking.length === 0) throw new AppError('无预定记录', 404, { bookingId, userId: uid, code: errorEvents.BOOKING_NOT_FOUND });
     // TODO 管理员可以取消别人的
     if (booking[0].user_id !== uid) throw new AppError('你无权取消别人的预定', 403, { bookingId, userId: uid, code: errorEvents.BOOKING_CANCEL_FORBIDDEN });
     if (booking[0].status === BookingStatus.CANCELLED) throw new AppError('该预订已经取消过了', 409, { bookingId, userId: uid, code: errorEvents.BOOKING_ALREADY_CANCELLED });
@@ -161,7 +161,7 @@ const service = {
     }
 
     const booking = await repository.findBooking(bookingId);
-    if (booking.length === 0) throw new AppError('BOOKING_NOT_FOUND', 404, { bookingId, userId: req.uid, code: errorEvents.BOOKINT_NOT_FOUND });
+    if (booking.length === 0) throw new AppError('BOOKING_NOT_FOUND', 404, { bookingId, userId: req.uid, code: errorEvents.BOOKING_NOT_FOUND });
     if (booking[0].status !== BookingStatus.PENDING) throw new AppError('状态已流转', 409, { bookingId, userId: req.uid, code: errorEvents.BOOKING_UPDATE_FORBIDDEN });
 
     throw new AppError('审核失败', 500, { bookingId, userId: req.uid, status });
