@@ -4,13 +4,14 @@
  * Module dependencies.
  */
 
-import 'dotenv/config.js';
+
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import app from '../app.js';
 import debugModule from 'debug';
 import http from 'http';
 
+import '../initEnv.js';
 
 const debug = debugModule('server:server');
 

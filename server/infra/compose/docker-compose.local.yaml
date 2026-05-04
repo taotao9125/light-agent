@@ -1,13 +1,14 @@
-version: "3.9"
-
 services:
+
+
+
   backend:
-    image: crpi-la7wsh3alv7tjgix.cn-hangzhou.personal.cr.aliyuncs.com/yangblue/test:latest   # ✅ 用 image，不用 build
-    container_name: meeting_backend
+    image: yangblue/test/${APP_NAME}:latest   # ✅ 用 image，不用 build
+    container_name: ${APP_NAME}
     ports:
-      - "3000:3000"
+      - "${PORT}:${PORT}"
     env_file:
-      - .env.prod                 # ✅ 生产环境变量
+      - ../env/.env
     depends_on:
       - mysql
       - redis
@@ -15,25 +16,27 @@ services:
 
   mysql:
     image: mysql:8
-    container_name: mysql_meeting_db
+    container_name: ${MYSQL_CONTAINER_NAME}
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
       MYSQL_DATABASE: ${DB_BASE}
     ports:
-      - "3306:3306"
+      - "${DB_PORT}:3306"
     volumes:
+      - ../mysql/init:/docker-entrypoint-initdb.d/
       - meeting-mysql-data:/var/lib/mysql
     restart: unless-stopped
 
   redis:
     image: redis:latest
-    container_name: redis_meeting_db
+    container_name: ${REDIS_CONTAINER_NAME}
     command: redis-server --appendonly yes
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT}:6379"
     volumes:
       - meeting-redis-data:/data
     restart: unless-stopped
+    
 
 volumes:
   meeting-mysql-data:

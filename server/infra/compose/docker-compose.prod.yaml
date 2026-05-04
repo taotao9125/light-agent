@@ -1,0 +1,52 @@
+services:
+
+  nginx:
+    image: nginx:latest
+    container_name: ${APP_NAME}_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ../nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    image: yangblue/test/meeting:latest   # ✅ 用 image，不用 build
+    container_name: ${APP_NAME}
+    ports:
+      - "${PORT}:${PORT}"
+    env_file:
+      - ../env/.env
+    depends_on:
+      - mysql
+      - redis
+    restart: unless-stopped
+  
+  mysql:
+    image: mysql:8
+    container_name: ${MYSQL_CONTAINER_NAME}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_BASE}
+    ports:
+      - "${DB_PORT}:3306"
+    volumes:
+      - ../mysql/init:/docker-entrypoint-initdb.d/
+      - meeting-mysql-data:/var/lib/mysql
+    restart: unless-stopped
+
+  redis:
+    image: redis:latest
+    container_name: ${REDIS_CONTAINER_NAME}
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - meeting-redis-data:/data
+    restart: unless-stopped
+
+
+volumes:
+  meeting-mysql-data:
+  meeting-redis-data:

@@ -9,10 +9,12 @@ import swaggerSpec from './config/swagger.js';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
+import './initEnv.js';
 import AppError from './errors/appError.js';
 import logger from './lib/logger.js';
 import { connectRedis } from './config/redis.js';
 import rateLimit from './middlewares/rateLimit.js';
+
 
 
 import API_ME from './modules/me/routes.js';
@@ -27,6 +29,7 @@ import API_ROOMS from './modules/rooms/routes.js';
 import test from './modules/test.js';
 
 import health from './modules/health.js';
+
 
 
 

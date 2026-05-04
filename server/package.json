@@ -6,7 +6,10 @@
     "start": "nodemon bin/www",
     "debug": "nodemon --inspect bin/www",
     "test": "vitest",
-    "test:ci": "vitest run"
+    "test:ci": "vitest run",
+    "docker:up": "docker compose --env-file ./infra/env/.env -f ./infra/compose/docker-compose.local.yaml up -d",
+    "docker:down": "docker compose --env-file ./infra/env/.env -f ./infra/compose/docker-compose.local.yaml down",
+    "docker:build:local": "set -a; . ./infra/env/.env; set +a; docker build -t ${DOCKER_REPO}/${APP_NAME}:latest ."
   },
   "type": "module",
   "dependencies": {
