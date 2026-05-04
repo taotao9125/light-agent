@@ -98,7 +98,7 @@ const repository = {
     return rows[0];
   },
 
-  async cancelBooking(roomId, status, cancelReason, canceledAt, userId) {
+  async cancelBooking(bookingId, status, cancelReason, canceledAt, userId) {
     // where => 等于 js filter
     // in(1,2) = x === 1 || x === 2
     const result = await executeQuery(
@@ -113,7 +113,7 @@ const repository = {
           AND status IN (0, 1)
           AND cancelled_at IS NULL
       `,
-      [status, canceledAt, cancelReason, roomId, userId]
+      [status, canceledAt, cancelReason, bookingId, userId]
     )
     return result;
   },

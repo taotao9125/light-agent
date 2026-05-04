@@ -2,18 +2,6 @@ services:
 
 
 
-  backend:
-    image: yangblue/test/${APP_NAME}:latest   # ✅ 用 image，不用 build
-    container_name: ${APP_NAME}
-    ports:
-      - "${PORT}:${PORT}"
-    env_file:
-      - ../env/.env
-    depends_on:
-      - mysql
-      - redis
-    restart: unless-stopped
-
   mysql:
     image: mysql:8
     container_name: ${MYSQL_CONTAINER_NAME}

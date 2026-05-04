@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import repository, { createConnection } from './repository.js';
+import repository from './repository.js';
 import AppError from '../../errors/appError.js';
 import validate, { createBookingSchema } from './validate.js';
 import logger from '../../lib/logger.js';
@@ -12,12 +12,30 @@ const BookingStatus = {
   APPROVED: 1,
   REJECTED: 2,
   CANCELLED: 3
-}
+};
+
+const CANCEL_REASON = '不鸡吧需要了';
 
 
 
 function formatTime(time) {
   return dayjs(time).format('YYYY-MM-DD HH:mm:ss');
+}
+
+function now() {
+  return dayjs().format('YYYY-MM-DD HH:mm:ss');
+}
+
+function getBookingId(req) {
+  return +req.params.id;
+}
+
+function getUserId(req) {
+  return +req.uid;
+}
+
+function canViewAllBookings(req) {
+  return req.role === 'admin';
 }
 
 /**
@@ -32,9 +50,8 @@ function formatTime(time) {
 
 const service = {
   async getBookings(req) {
-    const isAdmin = req.role === 'admin';
-    const uid = req.uid;
-    const result = repository.findAllBookings(!isAdmin ? uid : null);
+    const uid = canViewAllBookings(req) ? null : req.uid;
+    const result = await repository.findAllBookings(uid);
     return result;
   },
 
@@ -87,15 +104,15 @@ const service = {
 
   async cancelBooking(req) {
 
-    const bookingId = +req.params.id;
-    const uid = +req.uid;
+    const bookingId = getBookingId(req);
+    const uid = getUserId(req);
 
 
     const result = await repository.cancelBooking(
       bookingId,
       BookingStatus.CANCELLED,
-      '不鸡吧需要了',
-      dayjs().format('YYYY-MM-DD HH:mm:ss'),
+      CANCEL_REASON,
+      now(),
       uid
     )
 
@@ -118,9 +135,9 @@ const service = {
   },
 
   async reviewBooking(req) {
-    const bookingId = +req.params.id;
+    const bookingId = getBookingId(req);
     // const uid = +req.uid;
-    const isAdmin = req.role === 'admin';
+    const isAdmin = canViewAllBookings(req);
     const {
       review_reason,
       review
@@ -128,14 +145,13 @@ const service = {
 
     const status = +review === 1 ? BookingStatus.APPROVED : BookingStatus.REJECTED;
 
-    if (!isAdmin) throw AppError('非管理员无法操作', 403, { bookingId, userId: req.uid, status, code: errorEvents.BOOKING_UPDATE_FORBIDDEN });
+    if (!isAdmin) throw new AppError('非管理员无法操作', 403, { bookingId, userId: req.uid, status, code: errorEvents.BOOKING_UPDATE_FORBIDDEN });
 
-    const now = dayjs().format('YYYY-MM-DD HH:mm:ss');
     const result = await repository.updateBooking(
       bookingId,
       status,
       review_reason,
-      now
+      now()
     );
 
     if (result.affectedRows > 0) {
@@ -147,6 +163,7 @@ const service = {
     if (booking.length === 0) throw new AppError('BOOKING_NOT_FOUND', 404, { bookingId, userId: req.uid, code: errorEvents.BOOKINT_NOT_FOUND });
     if (booking[0].status !== BookingStatus.PENDING) throw new AppError('状态已流转', 409, { bookingId, userId: req.uid, code: errorEvents.BOOKING_UPDATE_FORBIDDEN });
 
+    throw new AppError('审核失败', 500, { bookingId, userId: req.uid, status });
 
   }
 };
