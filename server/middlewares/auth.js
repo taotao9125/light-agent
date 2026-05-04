@@ -7,7 +7,9 @@ export default function auth(req, res, next) {
   const JWT_SECRET = process.env.JWT_SEC;
   
   if (!JWT_SECRET) {
-    next(new AppError('JWT_SEC 未配置', 500));
+    next(new AppError('JWT_SEC 未配置', 500, {
+      code: errorEvents.JWT_SECRET_NOT_CONFIGURED
+    }));
     return;
   }
 
@@ -27,6 +29,9 @@ export default function auth(req, res, next) {
     req.role = decoded.role;
     next();
   } catch (e) {
-    next(e)
+    next(new AppError('授权信息无效', 401, {
+      code: errorEvents.TOKEN_INVALID,
+      cause: e.message
+    }));
   }
 }
