@@ -7,11 +7,11 @@ import { logEvents, errorEvents } from '../../consts/logEvents.js';
 
 
 const service = {
-  async createUser(body) {
+  async createUser(req) {
     const {
       username,
       password
-    } = validate(schema, body);
+    } = validate(schema, req.body);
 
     const isUserExist = await repository.isUserExist(username);
     if (isUserExist) throw new AppError('该用户已注册', 409, {

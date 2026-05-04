@@ -26,7 +26,7 @@ const router = express.Router();
  *            example:
  *              token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
  */
-router.post('/', wrap((req) => service.login(req.body)));
+router.post('/', wrap((req) => service.login(req)));
 
 
 export default router;

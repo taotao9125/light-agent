@@ -11,11 +11,11 @@ import {errorEvents} from '../../consts/logEvents.js';
 const service = {
   
   
-  async login(body) {
+  async login(req) {
     const {
       username,
       password
-    } = validate(schema, body);
+    } = validate(schema, req.body);
 
     const user = await repository.getUserByUserName(username)
     if (!user) throw new AppError('用户名或密码错误', 401, {

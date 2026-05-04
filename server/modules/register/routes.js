@@ -4,7 +4,7 @@ import service from './service.js';
 const router = express.Router();
 
 
-router.post('/', wrap((req) => service.createUser(req.body)));
+router.post('/', wrap((req) => service.createUser(req)));
 
 
 export default router;

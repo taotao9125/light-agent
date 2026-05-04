@@ -3,9 +3,10 @@ import AppError from '../../errors/appError.js';
 import { errorEvents } from '../../consts/logEvents.js';
 
 const service = {
-  async getUser(id) {
-    const result = await repository.findById(id);
-    if (!result) throw new AppError('用户不存在', 404, { code: errorEvents.USER_NOT_FOUND, userId: id });
+  async getUser(req) {
+    const userId = req.uid;
+    const result = await repository.findById(userId);
+    if (!result) throw new AppError('用户不存在', 404, { code: errorEvents.USER_NOT_FOUND, userId });
     return result;
   }
 };

@@ -22,9 +22,6 @@ const router = express.Router();
  *             username: "john_doe"
  *             email: "xxx@yyy.com"
  */
-router.get('/', auth, wrap((req) => {
-  const userId = req.uid;
-  return service.getUser(userId);
-}));
+router.get('/', auth, wrap((req) => service.getUser(req)));
 
 export default router;
