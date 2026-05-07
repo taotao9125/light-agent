@@ -53,6 +53,8 @@ workflow 跑 task，task 可能会有输入输出，输入来自 workflow 的 co
   - 流程编排 UI
  */
 
+import workflowDefinition from './workflow.definition.js';
+import { deepAssign } from './utils.js';
 
 const WORK_FLOW_STATUS = {
   // WorkflowRunner 的整体生命周期状态。
@@ -68,55 +70,6 @@ const TASK_STATUS = {
   RUNNING: 'running',
   SUCCEEDED: 'succeeded',
   FAILED: 'failed',
-}
-
-const WORKFLOW_CONFIG = {
-  // 工作流定义：描述这个流程是什么，以及包含哪些任务。
-  name: 'book_meeting_room',
-  description: '根据参会人数和会议时间自动预定一个可用会议室',
-  tasks: [
-    {
-      // 当前最小 demo 用 name 作为任务标识；后续可以拆成 key + name。
-      name: 'booking_task',
-      description: '预定会议室',
-      // handler 是任务真正执行的业务函数。
-      handler: bookingRoom
-    }
-  ]
-}
-
-
-// 上面那个 deepAssign 函数直接拿来用
-function deepAssign(target, ...sources) {
-  // 合并 state 时保留已有字段，只覆盖传入 newState 中出现的字段。
-  for (const source of sources) {
-    for (const key in source) {
-      const targetVal = target[key];
-      const sourceVal = source[key];
-      if (typeof sourceVal === "object" && sourceVal !== null && !Array.isArray(sourceVal)) {
-        if (typeof targetVal !== "object" || targetVal === null || Array.isArray(targetVal)) {
-          target[key] = {};
-        }
-        deepAssign(target[key], sourceVal);
-      } else {
-        target[key] = sourceVal;
-      }
-    }
-  }
-  return target;
-}
-
-
-function bookingRoom(context) {
-  // 业务任务函数：读取 workflow context 里的用户输入，返回本任务 output。
-  const { userId, startTime, endTime } = context.userInput;
-  return {
-    bookingId: `booking_${Date.now()}`,
-    userId,
-    roomId: `room_${Math.floor(Math.random() * 100)}`,
-    startTime,
-    endTime
-  }
 }
 
 
@@ -217,6 +170,13 @@ class Task {
     try {
       // handler 的返回值就是这个 task 的 output。
       const ret = await this.handler(context);
+
+      if (!ret.ok) {
+        // 业务错误也当作 task 失败，抛错并在 state 里记录错误信息。
+         this.setState({ status: TASK_STATUS.FAILED });
+         return;
+      }
+
       this.setState({ status: TASK_STATUS.SUCCEEDED });
       return ret;
     } catch (e) {
@@ -262,7 +222,7 @@ const demoInput = {
 
 async function main() {
   // 创建一次 workflow run，并执行。
-  const workflow = new WorkflowRunner(WORKFLOW_CONFIG, demoInput);
+  const workflow = new WorkflowRunner(workflowDefinition, demoInput);
   await workflow.run();
   // 打印最终状态，方便观察 workflow 和 task 的状态变化结果。
   console.log(JSON.stringify(workflow.getState(), null, 2));
