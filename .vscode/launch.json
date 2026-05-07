@@ -8,7 +8,23 @@
       "port": 9229, // Node 默认调试端口
       "restart": true, // nodemon 重启时，调试器也会自动重连
       "cwd": "${workspaceFolder}/server",
-      "skipFiles": ["<node_internals>/**", "node_modules/**"]
+      "skipFiles": [
+        "<node_internals>/**",
+        "node_modules/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug myflow.js",
+      "cwd": "${workspaceFolder}/mcp_server",
+      "runtimeExecutable": "${env:HOME}/.nvm/versions/node/v24.14.1/bin/node",
+      "program": "${workspaceFolder}/mcp_server/src/new_workflow.js",
+      "console": "integratedTerminal",
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/mcp_server/node_modules/**"
+      ]
     }
   ]
 }
