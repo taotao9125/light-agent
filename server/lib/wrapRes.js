@@ -11,6 +11,7 @@ const wrap = (fn) => async (req, res, next) => {
   try {
     const result = await fn(req, res, next);
     res.json({
+      ok: true,
       code: 1,
       data: result || null,
       message: 'success',

@@ -85,6 +85,7 @@ app.use(function (req, res, next) {
 app.use(function (err, req, res, next) {
   logger.error(err.message, { status: err.status, ...err.context });
   res.status(err.status || 500).json({
+    ok: false,
     code: err.context?.code || 'SERVER_ERROR',
     message: err.message || '服务器错误',
     ...(process.env.NODE_ENV !== 'production'
