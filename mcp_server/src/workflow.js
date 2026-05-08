@@ -199,8 +199,6 @@ class Task {
       error: null
     }
 
-
-
     // 保存业务执行函数，run() 时调用。
     this.handler = config.handler;
   }
@@ -215,7 +213,7 @@ class Task {
   }
   async run(context) {
     await this.initDbState();
-    await this.go(context)
+    return await this.go(context)
   }
 
   async go(context) {
@@ -299,7 +297,7 @@ async function main() {
   const workflow = new WorkflowRunner(workflowDefinition, demoInput);
   await workflow.run();
   // 打印最终状态，方便观察 workflow 和 task 的状态变化结果。
-  console.log(JSON.stringify(workflow.getState(), null, 2));
+ // console.log(JSON.stringify(workflow.getState(), null, 2));
 }
 
 main();
