@@ -29,8 +29,6 @@ async function insertTaskToDb(task) {
   try {
     currentTasks = JSON.parse(await fs.readFile(tasksDbPath, 'utf-8'))
   } catch (e) {
-    // 如果文件不存在或内容无效，初始化为空数组。
-    currentTasks = [];
   }
   const newTasks = [...currentTasks, task];
   // 模拟持久化任务状态到数据库，这里直接写文件。
@@ -39,10 +37,18 @@ async function insertTaskToDb(task) {
 
 
 async function updateTaskToDb(task) {
-  const currentTasks = JSON.parse(await fs.readFile(tasksDbPath, 'utf-8')) || [];
+
+  let currentTasks = [];
+  try {
+    currentTasks = JSON.parse(await fs.readFile(tasksDbPath, 'utf-8'))
+  } catch (e) {
+
+  }
+
   const newTasks = currentTasks.map(t => t.id === task.id ? task : t);
-  // 模拟持久化任务状态到数据库，这里直接写文件。
+
   return fs.writeFile(tasksDbPath, JSON.stringify(newTasks, null, 2));
+
 }
 
 async function insertWorkflowToDb(workflowState) {
@@ -50,8 +56,7 @@ async function insertWorkflowToDb(workflowState) {
   try {
     currentWorkflowState = JSON.parse(await fs.readFile(workFlowDbPath, 'utf-8'))
   } catch (e) {
-    // 如果文件不存在或内容无效，初始化为空数组。
-    currentWorkflowState = [];
+
   }
   const newWorkflowState = [...currentWorkflowState, workflowState];
   // 模拟持久化 workflow 状态到数据库，这里直接写文件。
@@ -59,11 +64,16 @@ async function insertWorkflowToDb(workflowState) {
 }
 
 async function updateWorkflowToDb(workflowState) {
-  const currentWorkflowState = JSON.parse(await fs.readFile(workFlowDbPath, 'utf-8')) || [];
+  let currentWorkflowState = [];
+  try {
+    currentWorkflowState = JSON.parse(await fs.readFile(workFlowDbPath, 'utf-8')) || [];
+  } catch (e) {
+
+  }
   const newWorkflowState = currentWorkflowState.map(wf => wf.id === workflowState.id ? workflowState : wf);
   // 模拟持久化 workflow 状态到数据库，这里直接写文件。
   return fs.writeFile(workFlowDbPath, JSON.stringify(newWorkflowState, null, 2));
-} 
+}
 
 async function findWorkflowFromDb(workFlowId) {
   try {
