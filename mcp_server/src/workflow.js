@@ -54,7 +54,7 @@ workflow 跑 task，task 可能会有输入输出，输入来自 workflow 的 co
  */
 
 import workflowDefinition from './workflow.definition.js';
-import { deepAssign, insertTaskToDb, insertWorkflowToDb, updateTaskToDb, updateWorkflowToDb } from './utils.js';
+import { deepAssign, insertTaskToDb, insertWorkflowToDb, updateTaskToDb, updateWorkflowToDb, findWorkflowFromDb } from './utils.js';
 
 
 
@@ -129,20 +129,42 @@ class WorkflowRunner {
     await insertWorkflowToDb(this.getState());
   }
 
-  async run() {
+  async run(workFlowId) {
     await this.initDbState();
-    await this.go();
+    await this.go(workFlowId);
   }
 
-  async go() {
+  async go(workFlowId) {
     // workflow 开始执行。
     this.setState({ status: WORK_FLOW_STATUS.RUNNING });
     await updateWorkflowToDb(this.getState());
+
+    const succeeded = new Set();
+
+    if (workFlowId) {
+      const persistedState = await findWorkflowFromDb(workFlowId);
+      if (persistedState) {
+        this.setState({ ...persistedState })
+        // 恢复时把已成功的任务记录下来，避免重复执行。
+        for (const task of this.state.tasks) {
+          if (task.status === TASK_STATUS.SUCCEEDED) {
+            succeeded.add(task.name);
+          }
+        }
+      }
+    }
 
     try {
       // 当前最小版是顺序执行所有任务。
       for (const task of this.tasksManager.init()) {
         // task run 里的 throw 自动打断这里
+
+        if (succeeded.has(task.getState().name)) {
+          continue;
+        }
+
+        console.log('[WorkflowRunner] Running task:', task.getState().name);
+
         const output = await task.run(this.state.context);
 
         this.setState({
@@ -170,12 +192,15 @@ class WorkflowRunner {
         }
       });
 
+      // 外层 main 去接收这个错误，打印日志或做其他处理。
+      throw e;
 
     }
     finally {
       // 无论成功失败，都把任务状态同步到 workflow state。
       this.setState({ tasks: this.tasksManager.getState() });
       await updateWorkflowToDb(this.getState());
+
     }
   }
 
@@ -297,7 +322,11 @@ async function main() {
   const workflow = new WorkflowRunner(workflowDefinition, demoInput);
   await workflow.run();
   // 打印最终状态，方便观察 workflow 和 task 的状态变化结果。
- // console.log(JSON.stringify(workflow.getState(), null, 2));
+  // console.log(JSON.stringify(workflow.getState(), null, 2));
 }
 
-main();
+main()
+  .catch(e => {
+    console.log(e)
+    process.exit(1);
+  })

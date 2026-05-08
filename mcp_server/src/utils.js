@@ -65,6 +65,15 @@ async function updateWorkflowToDb(workflowState) {
   return fs.writeFile(workFlowDbPath, JSON.stringify(newWorkflowState, null, 2));
 } 
 
+async function findWorkflowFromDb(workFlowId) {
+  try {
+    const currentWorkflowState = JSON.parse(await fs.readFile(workFlowDbPath, 'utf-8')) || [];
+    return currentWorkflowState.find(wf => wf.id === workFlowId)[0] || null;
+  } catch (e) {
+    return null;
+  }
+}
+
 
 
 
@@ -73,5 +82,6 @@ export {
   insertTaskToDb,
   updateTaskToDb,
   insertWorkflowToDb,
-  updateWorkflowToDb
+  updateWorkflowToDb,
+  findWorkflowFromDb
 }
