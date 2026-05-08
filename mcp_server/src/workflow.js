@@ -73,6 +73,24 @@ const TASK_STATUS = {
 }
 
 
+class WorkflowError extends Error {
+  constructor({ code, message, detail = null, cause = null }) {
+    super(message, { cause });
+
+    this.name = 'WorkflowError';
+    this.code = code;
+    this.detail = detail;
+  }
+
+  toJSON() {
+    return {
+      code: this.code,
+      message: this.message,
+      detail: this.detail
+    };
+  }
+}
+
 class WorkflowRunner {
   constructor(config, userInput) {
     this.state = {
@@ -110,7 +128,9 @@ class WorkflowRunner {
     try {
       // 当前最小版是顺序执行所有任务。
       for (const task of this.tasksManager.init()) {
+        // task run 里的 throw 自动打断这里
         const output = await task.run(this.state.context);
+
         this.setState({
           lastTaskId: task.getState().id,
           context: {
@@ -118,16 +138,19 @@ class WorkflowRunner {
               // 把任务输出写入 workflow context，供后续任务或最终状态读取。
               [task.getState().name]: output
             }
-          }
+          },
+          status: WORK_FLOW_STATUS.SUCCEEDED,
         });
       }
 
-      // 所有任务执行完，workflow 成功。
-      this.setState({ status: WORK_FLOW_STATUS.SUCCEEDED, lastTaskId: null });
+
     } catch (e) {
       // 任意任务抛错后，workflow 标记为失败。
-      this.error = e;
-      this.setState({ error: e, status: WORK_FLOW_STATUS.FAILED });
+      // TODO 某一个任务失败了, 需要继续吗？现在的实现是直接停止后续任务执行了。后续可以考虑失败了继续执行（比如有些任务是补偿任务，或者失败了也要继续跑完后续任务），这时候就需要定义一个失败传播策略了。
+      this.setState({
+        status: WORK_FLOW_STATUS.FAILED,
+        error: e.toJSON()
+      });
     }
     finally {
       // 无论成功失败，都把任务状态同步到 workflow state。
@@ -169,20 +192,37 @@ class Task {
     this.setState({ status: TASK_STATUS.RUNNING });
     try {
       // handler 的返回值就是这个 task 的 output。
-      const ret = await this.handler(context);
+      const output = await this.handler(context);
 
-      if (!ret.ok) {
-        // 业务错误也当作 task 失败，抛错并在 state 里记录错误信息。
-         this.setState({ status: TASK_STATUS.FAILED });
-         return;
+      if (!output.ok) {
+        const error = new WorkflowError({
+          code: 'TASK_BIZ_FAILED',
+          message: `Task ${this.state.name} failed with biz error`,
+          detail: { taskId: this.state.id, taskName: this.state.name, output }
+        });
+
+        throw error;
       }
 
       this.setState({ status: TASK_STATUS.SUCCEEDED });
-      return ret;
+      return output;
     } catch (e) {
       // 记录 task 错误，并继续向上抛给 WorkflowRunner。
-      this.setState({ error: e.message, status: TASK_STATUS.FAILED });
-      throw e;
+      // 这里 error 分两种，一种是上面的业务错误，另一种是比如 handler 本身抛错了（比如网络请求异常）, 这两种都算 task 执行失败，workflow 都一样处理，就是标记 workflow 失败，记录错误信息，停止后续任务执行。 
+      const error = e instanceof WorkflowError
+        ? e
+        : new WorkflowError({
+          code: 'TASK_EXECUTION_FAILED',
+          message: `Task ${this.state.name} execution failed`,
+          detail: { taskId: this.state.id, taskName: this.state.name },
+          cause: e
+        })
+
+      this.setState({ status: TASK_STATUS.FAILED, error: error.toJSON() });
+
+      throw error;
+
+
     }
   }
 
