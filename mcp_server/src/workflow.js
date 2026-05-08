@@ -21,12 +21,12 @@ const TASK_STATUS = {
 }
 
 
-class WorkflowError extends Error {
-  constructor({ code, message, detail = null, cause = null }) {
-    super(message, { cause });
 
-    this.name = 'WorkflowError';
+class WorkflowError extends Error {
+  constructor(message, code = 'WORKFLOW_EXECUTION_FAILED', detail = {}) {
+    super(message);
     this.code = code;
+    this.name = 'WorkflowError';
     this.detail = detail;
   }
 
@@ -35,7 +35,7 @@ class WorkflowError extends Error {
       code: this.code,
       message: this.message,
       detail: this.detail
-    };
+    }
   }
 }
 
@@ -62,10 +62,6 @@ class WorkflowRunner {
     // TasksManager 负责把任务配置转换成 Task 实例。
     this.tasksManager = new TasksManager(config.tasks);
 
-  }
-
-  static create() {
-    return new WorkflowRunner(workflowDefinition, userInput);
   }
 
   setState(newState) {
@@ -116,15 +112,21 @@ class WorkflowRunner {
 
       if (e) {
         console.log('[WorkflowRunner] Running failed:', task.getState().name);
+        const structedErrorJson = e.toJSON?.() ?? {
+          code: 'WORKFLOW_EXECUTION_FAILED',
+          message: e.message || 'Unknown workflow error'
+        }
         this.setState({
           status: WORK_FLOW_STATUS.FAILED,
           // 兜底错误结构，区分业务错误和系统错误。
-          error: e.toJSON?.() ?? {
-            code: 'WORKFLOW_EXECUTION_FAILED',
-            message: e.message || 'Unknown workflow error',
-            detail: null
-          },
+          error: structedErrorJson,
           lastTaskId: task.getState().id,
+          context: {
+            outputs: {
+              // 把任务输出写入 workflow context，供后续任务或最终状态读取。
+              [task.getState().name]: structedErrorJson
+            }
+          }
         });
 
         await updateWorkflowToDb(this.getState());
@@ -197,14 +199,12 @@ class Task {
 
     const [e, output] = await to(this.handler(context));
     if (e) {
-      const error = e instanceof WorkflowError
-        ? e
-        : new WorkflowError({
-          code: 'TASK_EXECUTION_FAILED',
-          message: `Task ${this.state.name} execution failed`,
-          detail: { taskId: this.state.id, taskName: this.state.name },
-          cause: e
-        })
+
+
+      const error = new WorkflowError('Task execution failed', 'BIZ_TASK_EXECUTION_FAILED', {
+        taskId: this.state.id,
+        taskName: this.state.name,
+      })
 
       this.setState({ status: TASK_STATUS.FAILED, error: error.toJSON() });
       await updateTaskToDb(this.getState());
@@ -212,11 +212,11 @@ class Task {
     }
 
     if (!output.ok) {
-      const error = new WorkflowError({
-        code: output.code || 'TASK_BIZ_FAILED',
-        message: `Task ${this.state.name} failed with biz error`,
-        detail: { taskId: this.state.id, taskName: this.state.name, output }
+      const error = new WorkflowError('Task biz logic failed', `BIZ_${output.code}` || 'BIZ_TASK_FAILED', {
+        taskId: this.state.id,
+        taskName: this.state.name,
       });
+
 
       this.setState({ status: TASK_STATUS.FAILED, error: error.toJSON() });
       await updateTaskToDb(this.getState());
