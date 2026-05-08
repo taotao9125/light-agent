@@ -1,3 +1,10 @@
+import fs from 'fs/promises';
+import path from 'path';
+
+const tasksDbPath = path.resolve(process.cwd(), 'src/db/tasks.json');
+const workFlowDbPath = path.resolve(process.cwd(), 'src/db/workflow.json');
+
+
 function deepAssign(target, ...sources) {
   // 合并 state 时保留已有字段，只覆盖传入 newState 中出现的字段。
   for (const source of sources) {
@@ -17,6 +24,54 @@ function deepAssign(target, ...sources) {
   return target;
 }
 
+async function insertTaskToDb(task) {
+  let currentTasks = [];
+  try {
+    currentTasks = JSON.parse(await fs.readFile(tasksDbPath, 'utf-8'))
+  } catch (e) {
+    // 如果文件不存在或内容无效，初始化为空数组。
+    currentTasks = [];
+  }
+  const newTasks = [...currentTasks, task];
+  // 模拟持久化任务状态到数据库，这里直接写文件。
+  return fs.writeFile(tasksDbPath, JSON.stringify(newTasks, null, 2));
+}
+
+
+async function updateTaskToDb(task) {
+  const currentTasks = JSON.parse(await fs.readFile(tasksDbPath, 'utf-8')) || [];
+  const newTasks = currentTasks.map(t => t.id === task.id ? task : t);
+  // 模拟持久化任务状态到数据库，这里直接写文件。
+  return fs.writeFile(tasksDbPath, JSON.stringify(newTasks, null, 2));
+}
+
+async function insertWorkflowToDb(workflowState) {
+  let currentWorkflowState = [];
+  try {
+    currentWorkflowState = JSON.parse(await fs.readFile(workFlowDbPath, 'utf-8'))
+  } catch (e) {
+    // 如果文件不存在或内容无效，初始化为空数组。
+    currentWorkflowState = [];
+  }
+  const newWorkflowState = [...currentWorkflowState, workflowState];
+  // 模拟持久化 workflow 状态到数据库，这里直接写文件。
+  return fs.writeFile(workFlowDbPath, JSON.stringify(newWorkflowState, null, 2));
+}
+
+async function updateWorkflowToDb(workflowState) {
+  const currentWorkflowState = JSON.parse(await fs.readFile(workFlowDbPath, 'utf-8')) || [];
+  const newWorkflowState = currentWorkflowState.map(wf => wf.id === workflowState.id ? workflowState : wf);
+  // 模拟持久化 workflow 状态到数据库，这里直接写文件。
+  return fs.writeFile(workFlowDbPath, JSON.stringify(newWorkflowState, null, 2));
+} 
+
+
+
+
 export {
-  deepAssign
+  deepAssign,
+  insertTaskToDb,
+  updateTaskToDb,
+  insertWorkflowToDb,
+  updateWorkflowToDb
 }

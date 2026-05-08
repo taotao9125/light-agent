@@ -54,7 +54,9 @@ workflow 跑 task，task 可能会有输入输出，输入来自 workflow 的 co
  */
 
 import workflowDefinition from './workflow.definition.js';
-import { deepAssign } from './utils.js';
+import { deepAssign, insertTaskToDb, insertWorkflowToDb, updateTaskToDb, updateWorkflowToDb } from './utils.js';
+
+
 
 const WORK_FLOW_STATUS = {
   // WorkflowRunner 的整体生命周期状态。
@@ -121,9 +123,19 @@ class WorkflowRunner {
     this.state = deepAssign(this.state, newState);
   }
 
+  async initDbState() {
+    await insertWorkflowToDb(this.getState());
+  }
+
   async run() {
+    await this.initDbState();
+    await this.go();
+  }
+
+  async go() {
     // workflow 开始执行。
     this.setState({ status: WORK_FLOW_STATUS.RUNNING });
+    await updateWorkflowToDb(this.getState());
 
     try {
       // 当前最小版是顺序执行所有任务。
@@ -144,7 +156,6 @@ class WorkflowRunner {
 
       this.setState({ status: WORK_FLOW_STATUS.SUCCEEDED, lastTaskId: null });
 
-
     } catch (e) {
       // 任意任务抛错后，workflow 标记为失败。
       // TODO 某一个任务失败了, 需要继续吗？现在的实现是直接停止后续任务执行了。后续可以考虑失败了继续执行（比如有些任务是补偿任务，或者失败了也要继续跑完后续任务），这时候就需要定义一个失败传播策略了。
@@ -162,6 +173,7 @@ class WorkflowRunner {
     finally {
       // 无论成功失败，都把任务状态同步到 workflow state。
       this.setState({ tasks: this.tasksManager.getState() });
+      await updateWorkflowToDb(this.getState());
     }
   }
 
@@ -185,6 +197,8 @@ class Task {
       error: null
     }
 
+
+
     // 保存业务执行函数，run() 时调用。
     this.handler = config.handler;
   }
@@ -194,9 +208,18 @@ class Task {
     this.state = deepAssign(this.state, newState);
   }
 
+  async initDbState() {
+    await insertTaskToDb(this.getState());
+  }
   async run(context) {
+    await this.initDbState();
+    await this.go(context)
+  }
+
+  async go(context) {
     // task 开始执行。
     this.setState({ status: TASK_STATUS.RUNNING });
+    await updateTaskToDb(this.getState());
     try {
       // handler 的返回值就是这个 task 的 output。
       const output = await this.handler(context);
@@ -212,6 +235,7 @@ class Task {
       }
 
       this.setState({ status: TASK_STATUS.SUCCEEDED });
+
       return output;
     } catch (e) {
       // 记录 task 错误，并继续向上抛给 WorkflowRunner。
@@ -226,12 +250,13 @@ class Task {
         })
 
       this.setState({ status: TASK_STATUS.FAILED, error: error.toJSON() });
-
+      await updateTaskToDb(this.getState());
       throw error;
 
 
     }
   }
+
 
 
   getState() {

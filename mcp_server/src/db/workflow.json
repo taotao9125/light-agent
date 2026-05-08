@@ -1,0 +1,116 @@
+[
+  {
+    "id": "ovtrry6b3sh",
+    "name": "book_meeting_room",
+    "status": "failed",
+    "error": {
+      "code": "TASK_BIZ_FAILED",
+      "message": "Task booking_task failed with biz error",
+      "detail": {
+        "taskId": "y6q8bt0cjz",
+        "taskName": "booking_task",
+        "output": {
+          "ok": false,
+          "data": {
+            "bookingId": "booking_1778213339431",
+            "userId": "user_001",
+            "roomId": "room_13",
+            "startTime": "2026-05-08 14:00:00",
+            "endTime": "2026-05-08 15:00:00"
+          }
+        }
+      }
+    },
+    "lastTaskId": null,
+    "context": {
+      "userInput": {
+        "userId": "user_001",
+        "startTime": "2026-05-08 14:00:00",
+        "endTime": "2026-05-08 15:00:00"
+      },
+      "outputs": {}
+    },
+    "tasks": [
+      {
+        "id": "y6q8bt0cjz",
+        "name": "booking_task",
+        "status": "failed",
+        "error": {
+          "code": "TASK_BIZ_FAILED",
+          "message": "Task booking_task failed with biz error",
+          "detail": {
+            "taskId": "y6q8bt0cjz",
+            "taskName": "booking_task",
+            "output": {
+              "ok": false,
+              "data": {
+                "bookingId": "booking_1778213339431",
+                "userId": "user_001",
+                "roomId": "room_13",
+                "startTime": "2026-05-08 14:00:00",
+                "endTime": "2026-05-08 15:00:00"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "7u6bal2sed8",
+    "name": "book_meeting_room",
+    "status": "failed",
+    "error": {
+      "code": "TASK_BIZ_FAILED",
+      "message": "Task booking_task failed with biz error",
+      "detail": {
+        "taskId": "vm12vhklaea",
+        "taskName": "booking_task",
+        "output": {
+          "ok": false,
+          "data": {
+            "bookingId": "booking_1778213343268",
+            "userId": "user_001",
+            "roomId": "room_98",
+            "startTime": "2026-05-08 14:00:00",
+            "endTime": "2026-05-08 15:00:00"
+          }
+        }
+      }
+    },
+    "lastTaskId": null,
+    "context": {
+      "userInput": {
+        "userId": "user_001",
+        "startTime": "2026-05-08 14:00:00",
+        "endTime": "2026-05-08 15:00:00"
+      },
+      "outputs": {}
+    },
+    "tasks": [
+      {
+        "id": "vm12vhklaea",
+        "name": "booking_task",
+        "status": "failed",
+        "error": {
+          "code": "TASK_BIZ_FAILED",
+          "message": "Task booking_task failed with biz error",
+          "detail": {
+            "taskId": "vm12vhklaea",
+            "taskName": "booking_task",
+            "output": {
+              "ok": false,
+              "data": {
+                "bookingId": "booking_1778213343268",
+                "userId": "user_001",
+                "roomId": "room_98",
+                "startTime": "2026-05-08 14:00:00",
+                "endTime": "2026-05-08 15:00:00"
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+]
