@@ -19,7 +19,7 @@
       "name": "Debug myflow.js",
       "cwd": "${workspaceFolder}/mcp_server",
       "runtimeExecutable": "${env:HOME}/.nvm/versions/node/v24.14.1/bin/node",
-      "program": "${workspaceFolder}/mcp_server/src/new_workflow.js",
+      "program": "${workspaceFolder}/mcp_server/src/workflow.js",
       "console": "integratedTerminal",
       "skipFiles": [
         "<node_internals>/**",

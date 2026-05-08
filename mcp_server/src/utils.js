@@ -68,7 +68,7 @@ async function updateWorkflowToDb(workflowState) {
 async function findWorkflowFromDb(workFlowId) {
   try {
     const currentWorkflowState = JSON.parse(await fs.readFile(workFlowDbPath, 'utf-8')) || [];
-    return currentWorkflowState.find(wf => wf.id === workFlowId)[0] || null;
+    return currentWorkflowState.find(wf => wf.id === workFlowId);
   } catch (e) {
     return null;
   }

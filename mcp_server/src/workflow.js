@@ -130,7 +130,10 @@ class WorkflowRunner {
   }
 
   async run(workFlowId) {
-    await this.initDbState();
+    if (!workFlowId) {
+       await this.initDbState();
+    }
+   
     await this.go(workFlowId);
   }
 
@@ -187,6 +190,7 @@ class WorkflowRunner {
         status: WORK_FLOW_STATUS.FAILED,
         // 兜底错误结构，区分业务错误和系统错误。
         error: e.toJSON?.() ?? {
+          code: 'WORKFLOW_EXECUTION_FAILED',
           message: e.message || 'Unknown workflow error',
           detail: null
         }
@@ -260,7 +264,7 @@ class Task {
       }
 
       this.setState({ status: TASK_STATUS.SUCCEEDED });
-
+      await updateTaskToDb(this.getState());
       return output;
     } catch (e) {
       // 记录 task 错误，并继续向上抛给 WorkflowRunner。
@@ -277,7 +281,6 @@ class Task {
       this.setState({ status: TASK_STATUS.FAILED, error: error.toJSON() });
       await updateTaskToDb(this.getState());
       throw error;
-
 
     }
   }
