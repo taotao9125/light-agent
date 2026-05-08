@@ -138,10 +138,11 @@ class WorkflowRunner {
               // 把任务输出写入 workflow context，供后续任务或最终状态读取。
               [task.getState().name]: output
             }
-          },
-          status: WORK_FLOW_STATUS.SUCCEEDED,
+          }
         });
       }
+
+      this.setState({ status: WORK_FLOW_STATUS.SUCCEEDED, lastTaskId: null });
 
 
     } catch (e) {
@@ -149,8 +150,14 @@ class WorkflowRunner {
       // TODO 某一个任务失败了, 需要继续吗？现在的实现是直接停止后续任务执行了。后续可以考虑失败了继续执行（比如有些任务是补偿任务，或者失败了也要继续跑完后续任务），这时候就需要定义一个失败传播策略了。
       this.setState({
         status: WORK_FLOW_STATUS.FAILED,
-        error: e.toJSON()
+        // 兜底错误结构，区分业务错误和系统错误。
+        error: e.toJSON?.() ?? {
+          message: e.message || 'Unknown workflow error',
+          detail: null
+        }
       });
+
+
     }
     finally {
       // 无论成功失败，都把任务状态同步到 workflow state。
@@ -196,7 +203,7 @@ class Task {
 
       if (!output.ok) {
         const error = new WorkflowError({
-          code: 'TASK_BIZ_FAILED',
+          code: output.code || 'TASK_BIZ_FAILED',
           message: `Task ${this.state.name} failed with biz error`,
           detail: { taskId: this.state.id, taskName: this.state.name, output }
         });
