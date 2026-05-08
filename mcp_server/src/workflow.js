@@ -95,15 +95,17 @@ class WorkflowError extends Error {
 
 class WorkflowRunner {
   constructor(config, userInput) {
+    const id = Math.random().toString(36).substring(2, 15);
     this.state = {
       // workflow run 的运行态数据；getState() 返回的就是这个对象。
-      id: Math.random().toString(36).substring(2, 15),
+      id,
       name: config.name,
       status: WORK_FLOW_STATUS.CREATED,
       error: null,
       // 记录当前/最近执行的任务 id；当前实现跑完后会清空。
       lastTaskId: null,
       context: {
+        workFlowId: id,
         // 原始用户输入，所有任务都可以读取。
         userInput,
         // 每个任务完成后的 output 会按任务名写到这里。
@@ -218,7 +220,7 @@ class Task {
 
   async go(context) {
     // task 开始执行。
-    this.setState({ status: TASK_STATUS.RUNNING });
+    this.setState({ status: TASK_STATUS.RUNNING, workFlowId: context.workFlowId });
     await updateTaskToDb(this.getState());
     try {
       // handler 的返回值就是这个 task 的 output。
