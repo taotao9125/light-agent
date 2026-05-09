@@ -43,10 +43,18 @@ class WorkflowError extends Error {
 
 
 async function withRetry(taskFactory, options = {}) {
-  const { retries = 3, delay = 3000, retryOnTimeout = false } = options;
-  let attempt = 0;
+  const {
+    maxAttempts = options.maxAttempts ?? 3,
+    delay = options.interval ?? 3000,
+    retryOnTimeout = false
+  } = options;
+
+  let attempted = 0;
   let lastError;
-  while (attempt < retries) {
+
+  // 1 -sleep-> 2 -sleep-> 3
+  while (attempted < maxAttempts) {
+    attempted++;
     const [e, result] = await to(taskFactory());
 
     // 如果有结果, 不用重试， 直接返回
@@ -59,8 +67,10 @@ async function withRetry(taskFactory, options = {}) {
       throw lastError;
     }
 
-    await sleep(delay);
-    attempt++;
+    if (attempted < maxAttempts) {
+      await sleep(delay);
+    }
+
   }
 
   // 最后重试完, 仍出去
