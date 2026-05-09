@@ -8,7 +8,8 @@ async function bookingRoom(context) {
   const { userId, startTime, endTime } = context.userInput;
   await sleep(2000);
   return {
-    ok: false,
+    ok: true,
+    code: 'xxxxx',
     data: {
       bookingId: `booking_${Date.now()}`,
       userId,

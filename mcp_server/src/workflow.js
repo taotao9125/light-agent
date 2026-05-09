@@ -69,6 +69,11 @@ class WorkflowRunner {
     this.state = deepAssign(this.state, newState);
   }
 
+  async transaction(newState) {
+    this.setState(newState);
+    await updateWorkflowToDb(this.getState());
+  }
+
   async initDbState() {
     return insertWorkflowToDb(this.getState());
   }
@@ -83,8 +88,7 @@ class WorkflowRunner {
 
   async go(workFlowId) {
     // workflow 开始执行。
-    this.setState({ status: WORK_FLOW_STATUS.RUNNING });
-    await updateWorkflowToDb(this.getState());
+    this.transaction({ status: WORK_FLOW_STATUS.RUNNING });
 
     const succeeded = new Set();
 
@@ -116,7 +120,7 @@ class WorkflowRunner {
           code: 'WORKFLOW_EXECUTION_FAILED',
           message: e.message || 'Unknown workflow error'
         }
-        this.setState({
+        this.transaction({
           status: WORK_FLOW_STATUS.FAILED,
           // 兜底错误结构，区分业务错误和系统错误。
           error: structedErrorJson,
@@ -129,7 +133,6 @@ class WorkflowRunner {
           }
         });
 
-        await updateWorkflowToDb(this.getState());
 
         // 抛给最外层 main 去接收这个错误，打印日志或做其他处理。
         throw e;
@@ -150,8 +153,7 @@ class WorkflowRunner {
     }
 
     console.log('[WorkflowRunner] Completed workflow');
-    this.setState({ status: WORK_FLOW_STATUS.SUCCEEDED, lastTaskId: null });
-    await updateWorkflowToDb(this.getState());
+    this.transaction({ status: WORK_FLOW_STATUS.SUCCEEDED, lastTaskId: null });
 
   }
 
@@ -192,10 +194,14 @@ class Task {
     return await this.go(context)
   }
 
+  async transaction(newState) {
+    this.setState(newState);
+    await updateTaskToDb(this.getState());
+  }
+
   async go(context) {
     // task 开始执行。
-    this.setState({ status: TASK_STATUS.RUNNING, workFlowId: context.workFlowId });
-    await updateTaskToDb(this.getState());
+    await this.transaction({ status: TASK_STATUS.RUNNING, workFlowId: context.workFlowId })
 
     const [e, output] = await to(this.handler(context));
     if (e) {
@@ -206,8 +212,8 @@ class Task {
         taskName: this.state.name,
       })
 
-      this.setState({ status: TASK_STATUS.FAILED, error: error.toJSON() });
-      await updateTaskToDb(this.getState());
+
+      await this.transaction({ status: TASK_STATUS.FAILED, error: error.toJSON() })
       throw error;
     }
 
@@ -218,15 +224,12 @@ class Task {
       });
 
 
-      this.setState({ status: TASK_STATUS.FAILED, error: error.toJSON() });
-      await updateTaskToDb(this.getState());
+      await this.transaction({ status: TASK_STATUS.FAILED, error: error.toJSON() })
 
       throw error;
     }
 
-
-    this.setState({ status: TASK_STATUS.SUCCEEDED });
-    await updateTaskToDb(this.getState());
+    this.transaction({ status: TASK_STATUS.SUCCEEDED })
     return output;
 
 
