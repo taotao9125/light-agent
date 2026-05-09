@@ -7,20 +7,20 @@ workflow 跑 task，task 可能会有输入输出，输入来自 workflow 的 co
  * TODO
  *  P0：先保证跑得对
 
-  - 任务 key 和 name 分离
-  - WorkflowDefinition / WorkflowRun 分离
-  - TaskDefinition / TaskRun 分离
-  - 统一错误结构：{ code, message, detail }
-  - 失败传播策略：任务失败后 workflow 怎么处理
-  - 任务 input / output 结构固定下来
+  -   任务 key 和 name 分离
+  - ✅ WorkflowDefinition / WorkflowRun 分离
+  - ✅ TaskDefinition / TaskRun 分离
+  - ✅ 统一错误结构：{ code, message, detail }
+  - ✅ 失败传播策略：任务失败后 workflow 怎么处理 ----> task -> workflow -> throw 
+  - ✅ 任务 input / output 结构固定下来
   - 输入校验：至少校验 workflow input
 
   P1：保证失败后能恢复
 
-  - 状态持久化
-  - 恢复执行
-  - 幂等性设计
-  - 重试策略
+  - ✅ 状态持久化
+  - ✅ 恢复执行 new XXX/create | restore/run
+  - 幂等性设计 ----> 数据库那边设计
+  - ✅ 重试策略 ----> workFlowrunner call withRetry(() => promiseFn, retryConfig)
   - task 级超时
   - workflow 级超时
   - 审计日志 / 事件日志

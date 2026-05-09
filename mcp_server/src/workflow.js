@@ -39,6 +39,26 @@ class WorkflowError extends Error {
   }
 }
 
+
+
+const sleep = (delay) => new Promise(resolve => setTimeout(resolve, delay));
+
+async function withRetry(taskFactory, options = {}) {
+  const { retries = 3, delay = 3000 } = options;
+  let attempt = 0;
+  let lastError;
+  while (attempt < retries) {
+    const [e, result] = await to(taskFactory());
+    if (e) lastError = e;
+    if (result) return result;
+    await sleep(delay);
+    attempt++;
+  }
+
+  throw lastError;
+}
+
+
 class WorkflowRunner {
   constructor(config, userInput) {
     const id = Math.random().toString(36).substring(2, 15);
@@ -87,12 +107,11 @@ class WorkflowRunner {
     this.setState(persistedState)
   }
 
-  async run(workFlowId) {
+  async run() {
     // workflow 开始执行。
     await this.transaction({ status: WORK_FLOW_STATUS.RUNNING });
 
     const succeeded = new Set(Object.keys(this.state.context.outputs) || {});
-
 
 
     for (const task of this.tasksManager.init()) {
@@ -101,12 +120,20 @@ class WorkflowRunner {
         continue;
       }
       await task.create();
-      console.log('[WorkflowRunner] Running task:', taskName);
+      
 
-      const [e, output] = await to(task.run(this.state.context));
+
+
+      const [e, output] = await to(
+        withRetry(
+          () => task.run(this.getState().context),
+          task.getRetryPolicy(),
+          // () => {
+          //   console.log(`[WorkflowRunner] Retrying task: ${taskName}`);
+          // }
+        ));
 
       if (e) {
-        console.log('[WorkflowRunner] Running failed:', taskName);
         const structedErrorJson = e.toJSON?.() ?? {
           code: 'WORKFLOW_EXECUTION_FAILED',
           message: e.message || 'Unknown workflow error'
@@ -123,7 +150,6 @@ class WorkflowRunner {
         throw e;
       }
 
-      console.log('[WorkflowRunner] Completed task:', task.getState().name);
       this.setState({
         context: {
           outputs: {
@@ -137,7 +163,6 @@ class WorkflowRunner {
 
     }
 
-    console.log('[WorkflowRunner] Completed workflow');
     await this.transaction({ status: WORK_FLOW_STATUS.SUCCEEDED, lastTaskId: null });
 
   }
@@ -164,6 +189,7 @@ class Task {
 
     // 保存业务执行函数，run() 时调用。
     this.handler = config.handler;
+    this.retryPolicy = config.retryPolicy || {};
   }
 
   setState(newState) {
@@ -180,6 +206,8 @@ class Task {
     console.log('[Task] Created task:', this.state.name);
     return await insertTaskToDb(this.getState());
   }
+
+
 
   async run(context) {
     // task 开始执行。
@@ -220,6 +248,9 @@ class Task {
   }
 
 
+  getRetryPolicy() {
+    return this.retryPolicy;
+  }
 
   getState() {
     // 对外暴露 task 当前状态。

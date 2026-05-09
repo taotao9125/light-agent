@@ -11,7 +11,11 @@ const WORKFLOW_CONFIG = {
       name: 'room_find_task',
       description: '查找可用会议室',
       // handler 是任务真正执行的业务函数。
-      handler: findingRoom
+      handler: findingRoom,
+      retryPolicy: {
+        maxAttempts: 3,
+        interval: 3000
+      }
     },
 
     {
