@@ -74,63 +74,48 @@ class WorkflowRunner {
     await updateWorkflowToDb(this.getState());
   }
 
-  async initDbState() {
-    return insertWorkflowToDb(this.getState());
+  async create() {
+    await insertWorkflowToDb(this.getState());
+  }
+
+  async restore(workFlowId) {
+    const persistedState = await findWorkflowFromDb(workFlowId);
+    if (!persistedState) {
+      throw new WorkflowError('Workflow not found', 'WORKFLOW_NOT_FOUND', { workFlowId });
+    }
+
+    this.setState(persistedState)
   }
 
   async run(workFlowId) {
-    if (!workFlowId) {
-      await this.initDbState();
-    }
-
-    await this.go(workFlowId);
-  }
-
-  async go(workFlowId) {
     // workflow 开始执行。
-    this.transaction({ status: WORK_FLOW_STATUS.RUNNING });
+    await this.transaction({ status: WORK_FLOW_STATUS.RUNNING });
 
-    const succeeded = new Set();
+    const succeeded = new Set(Object.keys(this.state.context.outputs) || {});
 
-    if (workFlowId) {
-      const persistedState = await findWorkflowFromDb(workFlowId);
-      if (persistedState) {
-        this.setState({ ...persistedState })
-        // 恢复时把已成功的任务记录下来，避免重复执行。
-        for (const task of this.state.tasks) {
-          if (task.status === TASK_STATUS.SUCCEEDED) {
-            succeeded.add(task.name);
-          }
-        }
-      }
-    }
 
 
     for (const task of this.tasksManager.init()) {
-      if (succeeded.has(task.getState().name)) {
+      const taskName = task.getState().name;
+      if (succeeded.has(taskName)) {
         continue;
       }
-      console.log('[WorkflowRunner] Running task:', task.getState().name);
+      await task.create();
+      console.log('[WorkflowRunner] Running task:', taskName);
 
       const [e, output] = await to(task.run(this.state.context));
 
       if (e) {
-        console.log('[WorkflowRunner] Running failed:', task.getState().name);
+        console.log('[WorkflowRunner] Running failed:', taskName);
         const structedErrorJson = e.toJSON?.() ?? {
           code: 'WORKFLOW_EXECUTION_FAILED',
           message: e.message || 'Unknown workflow error'
         }
-        this.transaction({
+        await this.transaction({
           status: WORK_FLOW_STATUS.FAILED,
           // 兜底错误结构，区分业务错误和系统错误。
           error: structedErrorJson,
-          lastTaskId: task.getState().id,
-          context: {
-            outputs: {
-              // 把任务输出写入 workflow context，供后续任务或最终状态读取。
-              [task.getState().name]: structedErrorJson
-            }
-          }
+          lastTaskId: task.getState().id
         });
 
 
@@ -153,7 +138,7 @@ class WorkflowRunner {
     }
 
     console.log('[WorkflowRunner] Completed workflow');
-    this.transaction({ status: WORK_FLOW_STATUS.SUCCEEDED, lastTaskId: null });
+    await this.transaction({ status: WORK_FLOW_STATUS.SUCCEEDED, lastTaskId: null });
 
   }
 
@@ -186,26 +171,23 @@ class Task {
     this.state = deepAssign(this.state, newState);
   }
 
-  async initDbState() {
-    return await insertTaskToDb(this.getState());
-  }
-  async run(context) {
-    await this.initDbState();
-    return await this.go(context)
-  }
-
   async transaction(newState) {
     this.setState(newState);
     await updateTaskToDb(this.getState());
   }
 
-  async go(context) {
+  async create() {
+    console.log('[Task] Created task:', this.state.name);
+    return await insertTaskToDb(this.getState());
+  }
+
+  async run(context) {
     // task 开始执行。
+    console.log('[Task] Running task:', this.state.name);
     await this.transaction({ status: TASK_STATUS.RUNNING, workFlowId: context.workFlowId })
 
     const [e, output] = await to(this.handler(context));
     if (e) {
-
 
       const error = new WorkflowError('Task execution failed', 'BIZ_TASK_EXECUTION_FAILED', {
         taskId: this.state.id,
@@ -224,12 +206,14 @@ class Task {
       });
 
 
+      console.log('[Task] Business logic failed:', this.state.name, error.detail);
       await this.transaction({ status: TASK_STATUS.FAILED, error: error.toJSON() })
 
       throw error;
     }
 
-    this.transaction({ status: TASK_STATUS.SUCCEEDED })
+    console.log('[Task] Completed task:', this.state.name);
+    await this.transaction({ status: TASK_STATUS.SUCCEEDED })
     return output;
 
 
@@ -273,9 +257,15 @@ const demoInput = {
 async function main() {
   // 创建一次 workflow run，并执行。
   const workflow = new WorkflowRunner(workflowDefinition, demoInput);
+  await workflow.create();
   await workflow.run();
-  // 打印最终状态，方便观察 workflow 和 task 的状态变化结果。
-  // console.log(JSON.stringify(workflow.getState(), null, 2));
+
+
+  // const workflow = new WorkflowRunner(workflowDefinition, demoInput);
+  // await workflow.restore('rsg6q4b3oy8');
+  // await workflow.run();
+
+
 }
 
 main()
