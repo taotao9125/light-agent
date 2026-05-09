@@ -1,6 +1,6 @@
 import { to } from 'await-to-js';
 import workflowDefinition from './workflow.definition.js';
-import { deepAssign, insertTaskToDb, insertWorkflowToDb, updateTaskToDb, updateWorkflowToDb, findWorkflowFromDb } from './utils.js';
+import { deepAssign, insertTaskToDb, insertWorkflowToDb, updateTaskToDb, updateWorkflowToDb, findWorkflowFromDb, sleep } from './utils.js';
 
 
 
@@ -28,6 +28,7 @@ class WorkflowError extends Error {
     this.code = code;
     this.name = 'WorkflowError';
     this.detail = detail;
+
   }
 
   toJSON() {
@@ -41,21 +42,42 @@ class WorkflowError extends Error {
 
 
 
-const sleep = (delay) => new Promise(resolve => setTimeout(resolve, delay));
-
 async function withRetry(taskFactory, options = {}) {
-  const { retries = 3, delay = 3000 } = options;
+  const { retries = 3, delay = 3000, retryOnTimeout = false } = options;
   let attempt = 0;
   let lastError;
   while (attempt < retries) {
     const [e, result] = await to(taskFactory());
-    if (e) lastError = e;
-    if (result) return result;
+
+    // 如果有结果, 不用重试， 直接返回
+    if (!e) return result;
+
+    lastError = e;
+
+    // 如果有是超时失败, 也打断
+    if (e.code === 'TASK_TIME_OUT' && !retryOnTimeout) {
+      throw lastError;
+    }
+
     await sleep(delay);
     attempt++;
   }
 
+  // 最后重试完, 仍出去
+
   throw lastError;
+}
+
+
+async function withTimeout(taskFactory, timeout = 50000) {
+  return Promise.race([
+    taskFactory(),
+    new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new WorkflowError('TASK TIME OUT', 'TASK_TIME_OUT'))
+      }, timeout)
+    })
+  ])
 }
 
 
@@ -120,17 +142,13 @@ class WorkflowRunner {
         continue;
       }
       await task.create();
-      
 
 
 
       const [e, output] = await to(
         withRetry(
-          () => task.run(this.getState().context),
+          () => withTimeout(() => task.run(this.getState().context), 5000),
           task.getRetryPolicy(),
-          // () => {
-          //   console.log(`[WorkflowRunner] Retrying task: ${taskName}`);
-          // }
         ));
 
       if (e) {

@@ -87,11 +87,15 @@ async function findWorkflowFromDb(workFlowId) {
 
 
 
+const sleep = delay => new Promise(resolve => setTimeout(resolve, delay))
+
+
 export {
   deepAssign,
   insertTaskToDb,
   updateTaskToDb,
   insertWorkflowToDb,
   updateWorkflowToDb,
-  findWorkflowFromDb
+  findWorkflowFromDb,
+  sleep
 }

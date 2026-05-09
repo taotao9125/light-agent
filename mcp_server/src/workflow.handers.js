@@ -1,12 +1,8 @@
-
-function sleep(delay) {
-  return new Promise(resolve => setTimeout(resolve, delay));
-}
-
+import {sleep} from './utils.js';
 async function bookingRoom(context) {
   // 业务任务函数：读取 workflow context 里的用户输入，返回本任务 output。
   const { userId, startTime, endTime } = context.userInput;
-  await sleep(2000);
+  await sleep(6000);
   return {
     ok: false,
     code: 'xxxxx',
