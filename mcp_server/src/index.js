@@ -233,10 +233,51 @@ async function executeToolCalls(toolCalls, contextBuilder) {
   }
 }
 
-async function runToolUseFlow(client, contextBuilder) {
-  const maxRounds = 5;
+function createLoopGuard({ maxReasoningTurns, maxToolCalls, maxDurationMs }) {
+  const state = {
+    reasoningTurns: 0,
+    toolCalls: 0,
+    startAt: Date.now()
+  }
 
-  for (let round = 0; round < maxRounds; round++) {
+  return {
+    assert() {
+      if (state.reasoningTurns >= maxReasoningTurns) {
+        throw new Error(`超过了最大推力轮数: ${maxReasoningTurns}`)
+      }
+
+      if (state.toolCalls >= maxToolCalls) {
+        throw new Error(`超过了最大工具调用次数: ${maxToolCalls}`)
+      }
+
+      if (Date.now() - state.startAt >= maxDurationMs) {
+        throw new Error(`超过最大执行时间: ${maxDurationMs}ms`)
+      }
+    },
+
+    recordReasoningTurns() {
+      state.reasoningTurns++;
+    },
+
+    recordToolCalls(count) {
+      state.toolCalls += count;
+    }
+  }
+}
+
+
+const loopGuard = createLoopGuard({
+  maxReasoningTurns: 4,
+  maxToolCalls: 30,
+  maxDurationMs: 60_1000
+})
+
+async function runToolUseFlow(client, contextBuilder) {
+
+  while (true) {
+
+    loopGuard.assert();
+
     // 构建 context
     const context = contextBuilder.getContext();
     // 等待推理
@@ -254,14 +295,18 @@ async function runToolUseFlow(client, contextBuilder) {
 
     }
 
+    console.log('[info]', `next plan tools:  ${nextPlan.tool_calls.map(tool => tool.function.name).join(' --> ')}`)
 
     // 构建下一轮 context
     contextBuilder.addContext(nextPlan);
 
     await executeToolCalls(nextPlan.tool_calls, contextBuilder);
+
+    loopGuard.recordReasoningTurns();
+    loopGuard.recordToolCalls(nextPlan.tool_calls.length);
   }
 
-  throw new Error(`工具调用超过最大轮数: ${maxRounds}`);
+
 }
 
 
