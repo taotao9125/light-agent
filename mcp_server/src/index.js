@@ -1,7 +1,6 @@
 
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import axios from 'axios';
-import { to } from 'await-to-js';
 import dotenv from 'dotenv';
 import OpenAI from 'openai';
 
@@ -13,7 +12,7 @@ if (process.env.HTTPS_PROXY) {
 }
 
 const MODEL = process.env.AI_MODEL;
-const DEFAULT_INPUT = '我在的时区是东八区，定明天下午两点半到四点半会议室，有空会议室就预定';
+
 
 function assertAIKey() {
   if (!process.env.AI_API_KEY) {
@@ -65,7 +64,7 @@ async function findRooms() {
 }
 
 
-async function createBooking(room_id, start_time, end_time) {
+async function createBooking({ room_id, start_time, end_time }) {
   return axios.request({
     method: 'post',
     url: 'http://localhost:3000/api/booking/create',
@@ -162,13 +161,13 @@ const LLMTools = toolDefinitions.map(tool => ({
 }))
 
 
-const toolHanders = toolDefinitions.reduce((acc, tool) => {
+const toolHandlers = toolDefinitions.reduce((acc, tool) => {
   acc[tool.name] = tool.handler;
   return acc;
 }, {})
 
 async function runToolFromCall(toolCall) {
-  const handler = toolHanders[toolCall.function.name];
+  const handler = toolHandlers[toolCall.function.name];
   if (!handler) {
     return { error: `未知工具: ${toolCall.function.name}` };
   }
@@ -176,54 +175,98 @@ async function runToolFromCall(toolCall) {
   return handler(args);
 }
 
-async function modelResponse(client, messages) {
+async function LLMReasoning(client, context) {
   return client.chat.completions.create({
     model: MODEL,
-    messages,
-    tools: LLMTools,
+    messages: context.messages,
+    tools: context.tools
   });
 }
 
-async function runToolUseFlow(client, userInput) {
-  const messages = [
-    { role: 'user', content: userInput },
-  ];
 
+function buildContext(initMessages = [], initTools = []) {
+  const initContext = {
+    messages: initMessages,
+    tools: initTools
+  }
+
+  return {
+    addContext: (message = {}, tool = {}) => {
+      if (Object.keys(message).length) {
+        initContext.messages.push(message);
+      }
+
+      if (Object.keys(tool).length) {
+        initContext.tools.push(tool);
+      }
+
+      return initContext;
+    },
+
+    getContext() {
+      return initContext;
+    }
+  }
+
+}
+
+
+
+async function getNextLLMReasoningPlan(client, context) {
+  const response = await LLMReasoning(client, context);
+  const message = response.choices[0]?.message;
+  if (!message) {
+    throw new Error('LLM 没有返回 message');
+  }
+  return message;
+}
+
+function isFinalAnswer(message) {
+  return !message.tool_calls?.length;
+}
+
+async function executeToolCalls(toolCalls, contextBuilder) {
+  for (const toolCall of toolCalls) {
+    console.log('[LLM TOOL CALL]', toolCall.function.name, toolCall.function.arguments);
+
+    const toolResult = await runToolFromCall(toolCall);
+    if (toolResult) {
+      console.log('[LLM TOOL CALL]', toolCall.function.name, 'get result success');
+    }
+
+    // 把每次任务计划跑的结果塞回 context, 再一次 LLM 调用
+    contextBuilder.addContext({
+      role: 'tool',
+      tool_call_id: toolCall.id,
+      content: JSON.stringify(toolResult),
+    })
+  }
+}
+
+async function runToolUseFlow(client, contextBuilder) {
   let usedTool = false;
   const maxRounds = 5;
 
   for (let round = 0; round < maxRounds; round++) {
-    const [e, response] = await to(modelResponse(client, messages))
-    if (e) throw e;
+    // 构建 context
+    const currentCtx = contextBuilder.getContext();
 
-    const assistantMessage = response.choices[0]?.message;
+    // 等待 LLM推理规划
+    const nextPlan = await getNextLLMReasoningPlan(client, currentCtx)
 
-    if (!assistantMessage) {
-      return { usedTool, text: '' };
-    }
-
-    messages.push(assistantMessage);
-
-    const toolCalls = assistantMessage.tool_calls ?? [];
-    if (toolCalls.length === 0) {
-      return { usedTool, text: assistantMessage.content ?? '' };
+    if (isFinalAnswer(nextPlan)) {
+      return {
+        usedTool,
+        text: nextPlan.content ?? ''
+      };
     }
 
     usedTool = true;
 
-    for (const toolCall of toolCalls) {
-      console.log('[LLM TOOL CALL]', toolCall.function.name, toolCall.function.arguments);
+    // 构建下一轮 context
+    contextBuilder.addContext(nextPlan);
 
-      const toolResult = await runToolFromCall(toolCall);
-      if (toolResult) {
-        console.log('[LLM TOOL CALL]', toolCall.function.name, 'get result success');
-      }
-      messages.push({
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        content: JSON.stringify(toolResult),
-      });
-    }
+    await executeToolCalls(nextPlan.tool_calls, contextBuilder);
   }
 
   throw new Error(`工具调用超过最大轮数: ${maxRounds}`);
@@ -234,7 +277,13 @@ async function main() {
   assertAIKey();
   const client = createClient();
 
-  const { usedTool, text } = await runToolUseFlow(client, DEFAULT_INPUT);
+  const DEFAULT_INPUT = '我在的时区是东八区，定明天下午两点半到四点半会议室，有空会议室就预定';
+
+
+  const contextBuilder = buildContext([{ role: 'user', content: DEFAULT_INPUT }], LLMTools);
+
+
+  const { usedTool, text } = await runToolUseFlow(client, contextBuilder);
 
   if (!usedTool) {
     console.log(text);
