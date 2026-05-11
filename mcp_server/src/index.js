@@ -211,18 +211,28 @@ function buildContext(initMessages = [], initTools = []) {
 }
 
 
+function emitAgentEvent(type, payload = {}) {
+  console.log(
+    JSON.stringify({
+      type,
+      at: new Date().toISOString(),
+      ...payload
+    })
+  )
+}
+
+
 function isFinalAnswer(message) {
   return !message.tool_calls?.length;
 }
 
 async function executeToolCalls(toolCalls, contextBuilder) {
   for (const toolCall of toolCalls) {
-    console.log('[LLM TOOL CALL]', toolCall.function.name, toolCall.function.arguments);
 
+    emitAgentEvent('tool:start', { id: toolCall.id, name: toolCall.function.name, arg:  toolCall.function.arguments })
     const toolResult = await runToolFromCall(toolCall);
-    if (toolResult) {
-      console.log('[LLM TOOL CALL]', toolCall.function.name, 'get result success');
-    }
+    emitAgentEvent('tool:end', { id: toolCall.id, name: toolCall.function.name })
+
 
     // 把每次任务计划跑的结果塞回 context, 再一次 LLM 调用
     contextBuilder.addContext({
@@ -243,7 +253,7 @@ function createLoopGuard({ maxReasoningTurns, maxToolCalls, maxDurationMs }) {
   return {
     assert() {
       if (state.reasoningTurns >= maxReasoningTurns) {
-        throw new Error(`超过了最大推力轮数: ${maxReasoningTurns}`)
+        throw new Error(`超过了最大推理轮数: ${maxReasoningTurns}`)
       }
 
       if (state.toolCalls >= maxToolCalls) {
@@ -261,6 +271,10 @@ function createLoopGuard({ maxReasoningTurns, maxToolCalls, maxDurationMs }) {
 
     recordToolCalls(count) {
       state.toolCalls += count;
+    },
+
+    getState() {
+      return state;
     }
   }
 }
@@ -277,13 +291,17 @@ async function runToolUseFlow(client, contextBuilder) {
   while (true) {
 
     loopGuard.assert();
+    emitAgentEvent('reasoning:start', { round: loopGuard.getState().reasoningTurns })
 
     // 构建 context
     const context = contextBuilder.getContext();
     // 等待推理
     const response = await LLMReasoning(client, context);
-    // 判断推理结果
+    // 执行推理的下一步计划
     const nextPlan = response.choices[0]?.message;
+
+    emitAgentEvent('reasoning:end', { round: loopGuard.getState().reasoningTurns, content: nextPlan.content, role: nextPlan.role })
+
     if (!nextPlan) {
       throw new Error('LLM 没有返回');
     }
@@ -295,7 +313,7 @@ async function runToolUseFlow(client, contextBuilder) {
 
     }
 
-    console.log('[info]', `next plan tools:  ${nextPlan.tool_calls.map(tool => tool.function.name).join(' --> ')}`)
+
 
     // 构建下一轮 context
     contextBuilder.addContext(nextPlan);
@@ -314,7 +332,7 @@ async function main() {
   assertAIKey();
   const client = createClient();
 
-  const DEFAULT_INPUT = '我在的时区是东八区，定明天下午两点半到四点半会议室，有空会议室就预定';
+  const DEFAULT_INPUT = '我在的时区是东八区，定后天下午两点半到四点半会议室，有空会议室就预定';
 
 
   const contextBuilder = buildContext([{ role: 'user', content: DEFAULT_INPUT }], LLMTools);
