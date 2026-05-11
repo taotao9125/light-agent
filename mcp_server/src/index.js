@@ -211,16 +211,6 @@ function buildContext(initMessages = [], initTools = []) {
 }
 
 
-
-async function getNextLLMReasoningPlan(client, context) {
-  const response = await LLMReasoning(client, context);
-  const message = response.choices[0]?.message;
-  if (!message) {
-    throw new Error('LLM 没有返回 message');
-  }
-  return message;
-}
-
 function isFinalAnswer(message) {
   return !message.tool_calls?.length;
 }
@@ -244,24 +234,26 @@ async function executeToolCalls(toolCalls, contextBuilder) {
 }
 
 async function runToolUseFlow(client, contextBuilder) {
-  let usedTool = false;
   const maxRounds = 5;
 
   for (let round = 0; round < maxRounds; round++) {
     // 构建 context
-    const currentCtx = contextBuilder.getContext();
-
-    // 等待 LLM推理规划
-    const nextPlan = await getNextLLMReasoningPlan(client, currentCtx)
+    const context = contextBuilder.getContext();
+    // 等待推理
+    const response = await LLMReasoning(client, context);
+    // 判断推理结果
+    const nextPlan = response.choices[0]?.message;
+    if (!nextPlan) {
+      throw new Error('LLM 没有返回');
+    }
 
     if (isFinalAnswer(nextPlan)) {
       return {
-        usedTool,
         text: nextPlan.content ?? ''
       };
+
     }
 
-    usedTool = true;
 
     // 构建下一轮 context
     contextBuilder.addContext(nextPlan);
@@ -283,12 +275,9 @@ async function main() {
   const contextBuilder = buildContext([{ role: 'user', content: DEFAULT_INPUT }], LLMTools);
 
 
-  const { usedTool, text } = await runToolUseFlow(client, contextBuilder);
+  const { text } = await runToolUseFlow(client, contextBuilder);
 
-  if (!usedTool) {
-    console.log(text);
-    return;
-  }
+
 
   console.log('\n[FINAL]');
   console.log(text);
