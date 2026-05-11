@@ -21,7 +21,7 @@ workflow 跑 task，task 可能会有输入输出，输入来自 workflow 的 co
   - ✅ 恢复执行 new XXX/create | restore/run
   - 幂等性设计 ----> 数据库那边设计
   - ✅ 重试策略 ----> workFlowrunner call withRetry(() => promiseFn, retryConfig)
-  - task 级超时
+  - ✅ task 级超时
   - workflow 级超时
   - 审计日志 / 事件日志
 
