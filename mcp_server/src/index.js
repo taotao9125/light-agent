@@ -17,10 +17,39 @@ if (process.env.HTTPS_PROXY) {
 const MODEL = process.env.AI_MODEL;
 
 
+class AgentRuntimeError extends Error {
+  constructor(message, code = '', detail = {}) {
+    super(message);
+    this.code = code;
+    this.name = 'AGENT_RUMTIME_ERROR';
+    this.detail = detail;
+  }
+
+  toJSON() {
+    return {
+      code: this.code,
+      message: this.message,
+      detail: this.detail
+    }
+  }
+}
+
+const ErrorCode = {
+  UNKNOW_TOOl: 'UNKNOW_TOOl',
+  JSON_PARSE_ERROR: 'JSON_PARSE_ERROR',
+  TOOL_CALL_ARGS_ERROR: 'TOOL_CALL_ARGS_ERROR',
+
+
+  MAX_LLM_TURN_ERROR: 'MAX_LLM_TURN_ERROR',
+  MAX_TOOL_CALL_ERROR: 'MAX_TOOL_CALL_ERROR',
+  MAX_DURATION_ERROR: 'MAX_DURATION_ERROR',
+
+  CONFIG_ERROR: 'MAX_DURATION_ERROR'
+}
+
 function assertAIKey() {
   if (!process.env.AI_API_KEY) {
-    console.error('请在 mcp_server/.env 中设置 AI_API_KEY');
-    process.exit(1);
+    throw new AgentRuntimeError('请在 mcp_server/.env 中设置 AI_API_KEY', Error.ErrorCode)
   }
 }
 
@@ -83,8 +112,6 @@ async function createBooking({ room_id, start_time, end_time }) {
     }
   }).then(r => r.data)
 }
-
-
 
 
 
@@ -158,7 +185,6 @@ const LLMTools = toolDefinitions.map(tool => ({
 }))
 
 
-
 const toolHandlers = toolDefinitions.reduce((acc, tool) => {
   acc[tool.name] = {
     handler: tool.handler,
@@ -172,12 +198,16 @@ async function runToolFromCall(toolCall) {
   const toolCallArguments = toolCall.function.arguments;
   const handlerObject = toolHandlers[toolCallName];
   if (!handlerObject) {
-    return { error: `未知工具: ${toolCallName}` };
+    throw new AgentRuntimeError(`为查询到可用工具 ${toolCallName}`, ErrorCode.UNKNOW_TOOl)
   }
   if (!toolCallArguments || toolCallArguments === '{}') return handlerObject.handler();
 
-  const jsonArgs = JSON.parse(toolCallArguments);
-
+  let jsonArgs;
+  try {
+    jsonArgs = JSON.parse(toolCallArguments);
+  } catch (e) {
+    throw new AgentRuntimeError(`JSON parse LLM 的 function.arguments 错误`, ErrorCode.JSON_PARSE_ERROR)
+  }
 
 
   if (!handlerObject.zodSchema) {
@@ -188,11 +218,10 @@ async function runToolFromCall(toolCall) {
   const parsed = handlerObject.zodSchema.safeParse(jsonArgs);
 
   if (parsed.success) {
-    return handlerObject.handler(args);
+    return handlerObject.handler(jsonArgs);
   }
 
-
-  throw new Error(`${toolCallName} tool call 参数错误: ${parsed.error.issues[0].message}`);
+  throw new AgentRuntimeError(`${toolCallName} tool call 参数错误: ${parsed.error.issues[0].message}`, ErrorCode.TOOL_CALL_ARGS_ERROR);
 }
 
 async function LLMReasoning(client, context) {
@@ -273,15 +302,15 @@ function createLoopGuard({ maxReasoningTurns, maxToolCalls, maxDurationMs }) {
   return {
     assert() {
       if (state.reasoningTurns >= maxReasoningTurns) {
-        throw new Error(`超过了最大推理轮数: ${maxReasoningTurns}`)
+        throw new AgentRuntimeError(`超过了最大推理轮数: ${maxReasoningTurns}`, ErrorCode.MAX_LLM_TURN_ERROR);
       }
 
       if (state.toolCalls >= maxToolCalls) {
-        throw new Error(`超过了最大工具调用次数: ${maxToolCalls}`)
+        throw new AgentRuntimeError(`超过了最大工具调用次数: ${maxToolCalls}`, ErrorCode.MAX_TOOL_CALL_ERROR);
       }
 
       if (Date.now() - state.startAt >= maxDurationMs) {
-        throw new Error(`超过最大执行时间: ${maxDurationMs}ms`)
+        throw new AgentRuntimeError(`超过最大执行时间: ${maxDurationMs}ms`, ErrorCode.MAX_DURATION_ERROR);
       }
     },
 
@@ -301,7 +330,7 @@ function createLoopGuard({ maxReasoningTurns, maxToolCalls, maxDurationMs }) {
 
 
 const loopGuard = createLoopGuard({
-  maxReasoningTurns: 4,
+  maxReasoningTurns: 10,
   maxToolCalls: 30,
   maxDurationMs: 60_1000
 })
@@ -309,7 +338,6 @@ const loopGuard = createLoopGuard({
 async function runToolUseFlow(client, contextBuilder) {
 
   while (true) {
-
 
     loopGuard.assert();
     emitAgentEvent('reasoning:start', { round: loopGuard.getState().reasoningTurns })
@@ -333,8 +361,6 @@ async function runToolUseFlow(client, contextBuilder) {
       };
 
     }
-
-
 
     // 构建下一轮 context
     contextBuilder.addContext(nextPlan);
@@ -360,8 +386,6 @@ async function main() {
 
 
   const { text } = await runToolUseFlow(client, contextBuilder);
-
-
 
   console.log('\n[FINAL]');
   console.log(text);
