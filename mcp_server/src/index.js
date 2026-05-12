@@ -1,4 +1,4 @@
-
+import { z } from 'zod';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import axios from 'axios';
 import dotenv from 'dotenv';
@@ -6,6 +6,9 @@ import OpenAI from 'openai';
 
 
 dotenv.config();
+
+
+
 
 if (process.env.HTTPS_PROXY) {
   setGlobalDispatcher(new ProxyAgent(process.env.HTTPS_PROXY));
@@ -64,6 +67,8 @@ async function findRooms() {
 }
 
 
+
+
 async function createBooking({ room_id, start_time, end_time }) {
   return axios.request({
     method: 'post',
@@ -79,17 +84,16 @@ async function createBooking({ room_id, start_time, end_time }) {
   }).then(r => r.data)
 }
 
+
+
+
+
+
 const toolDefinitions = [
   {
     name: 'findRooms',
     description: '查询系统中所有会议室的基础信息，包括会议室 id、名称、容量、位置、设备和状态。',
     kind: 'read',
-    schema: {
-      type: 'object',
-      properties: {},
-      required: [],
-      additionalProperties: false,
-    },
     handler: findRooms,
     requiresConfirmation: false
   },
@@ -98,25 +102,13 @@ const toolDefinitions = [
     name: 'findRoomBookings',
     description: '查询已有会议室预订记录，用于判断指定时间段哪些会议室已经被占用。',
     kind: 'read',
-    schema: {
-      type: 'object',
-      properties: {},
-      required: [],
-      additionalProperties: false,
-    },
     handler: findRoomBookings,
     requiresConfirmation: false
   },
   {
     name: 'checkHealth',
-    description: '调用工具前必须检查服务器健康状况，如果没返回200，停止继续',
+    description: '调用工具前必须检查服务器健康状况，如果没返回200，停止继续。',
     kind: 'read',
-    schema: {
-      type: 'object',
-      properties: {},
-      required: [],
-      additionalProperties: false,
-    },
     handler: checkHealth,
     requiresConfirmation: false
   },
@@ -133,17 +125,22 @@ const toolDefinitions = [
           description: '要预订的会议室 id。',
         },
         start_time: {
-          type: 'number',
-          description: '预订开始时间，完整日期时间戳',
+          type: 'string',
+          description: '预订开始时间，标准是ISO, 格式为 YYYY-MM-DDTHH:mm:ssZ，例如 2026-05-14T14:30:00Z。用户未指定时区时，默认使用东八区。',
         },
         end_time: {
           type: 'string',
-          description: '预定结束时间，完整日期时间戳,',
+          description: '预订结束时间，标准是ISO, 格式为 YYYY-MM-DDTHH:mm:ssZ，例如 2026-05-14T16:30:00Z。用户未指定时区时，默认使用东八区。',
         },
       },
       required: ['room_id', 'start_time', 'end_time'],
       additionalProperties: false,
     },
+    zodSchema: z.object({
+      room_id: z.number(),
+      start_time: z.string(),
+      end_time: z.string(),
+    }),
     handler: createBooking,
     requiresConfirmation: true
 
@@ -161,18 +158,41 @@ const LLMTools = toolDefinitions.map(tool => ({
 }))
 
 
+
 const toolHandlers = toolDefinitions.reduce((acc, tool) => {
-  acc[tool.name] = tool.handler;
+  acc[tool.name] = {
+    handler: tool.handler,
+    zodSchema: tool.zodSchema
+  }
   return acc;
 }, {})
 
 async function runToolFromCall(toolCall) {
-  const handler = toolHandlers[toolCall.function.name];
-  if (!handler) {
-    return { error: `未知工具: ${toolCall.function.name}` };
+  const toolCallName = toolCall.function.name;
+  const toolCallArguments = toolCall.function.arguments;
+  const handlerObject = toolHandlers[toolCallName];
+  if (!handlerObject) {
+    return { error: `未知工具: ${toolCallName}` };
   }
-  const args = JSON.parse(toolCall.function.arguments);
-  return handler(args);
+  if (!toolCallArguments || toolCallArguments === '{}') return handlerObject.handler();
+
+  const jsonArgs = JSON.parse(toolCallArguments);
+
+
+
+  if (!handlerObject.zodSchema) {
+    return handlerObject.handler(jsonArgs);
+  }
+
+
+  const parsed = handlerObject.zodSchema.safeParse(jsonArgs);
+
+  if (parsed.success) {
+    return handlerObject.handler(args);
+  }
+
+
+  throw new Error(`${toolCallName} tool call 参数错误: ${parsed.error.issues[0].message}`);
 }
 
 async function LLMReasoning(client, context) {
@@ -229,7 +249,7 @@ function isFinalAnswer(message) {
 async function executeToolCalls(toolCalls, contextBuilder) {
   for (const toolCall of toolCalls) {
 
-    emitAgentEvent('tool:start', { id: toolCall.id, name: toolCall.function.name, arg:  toolCall.function.arguments })
+    emitAgentEvent('tool:start', { id: toolCall.id, name: toolCall.function.name, arg: toolCall.function.arguments })
     const toolResult = await runToolFromCall(toolCall);
     emitAgentEvent('tool:end', { id: toolCall.id, name: toolCall.function.name })
 
@@ -290,6 +310,7 @@ async function runToolUseFlow(client, contextBuilder) {
 
   while (true) {
 
+
     loopGuard.assert();
     emitAgentEvent('reasoning:start', { round: loopGuard.getState().reasoningTurns })
 
@@ -332,7 +353,7 @@ async function main() {
   assertAIKey();
   const client = createClient();
 
-  const DEFAULT_INPUT = '我在的时区是东八区，定后天下午两点半到四点半会议室，有空会议室就预定';
+  const DEFAULT_INPUT = '我在的时区是东八区，定9月7号下午两点半到四点半会议室，有空会议室就预定';
 
 
   const contextBuilder = buildContext([{ role: 'user', content: DEFAULT_INPUT }], LLMTools);
