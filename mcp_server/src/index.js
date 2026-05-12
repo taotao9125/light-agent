@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import axios from 'axios';
+import {to} from 'await-to-js';
 import dotenv from 'dotenv';
 import OpenAI from 'openai';
 
@@ -110,7 +111,7 @@ async function createBooking({ room_id, start_time, end_time }) {
     headers: {
       Authorization: `Bearer ${process.env.bearer_token}`
     }
-  }).then(r => r.data)
+  }).then(r => r.data);
 }
 
 
@@ -200,13 +201,19 @@ async function runToolFromCall(toolCall) {
   if (!handlerObject) {
     throw new AgentRuntimeError(`为查询到可用工具 ${toolCallName}`, ErrorCode.UNKNOW_TOOl)
   }
-  if (!toolCallArguments || toolCallArguments === '{}') return handlerObject.handler();
+  if (!toolCallArguments || toolCallArguments === '{}') {
+    const [e, res] = await to(handlerObject.handler());
+    if (e) {
+      throw new AgentRuntimeError(e.message, e.code, e.toJSON())
+    }
+    return res;
+  }
 
   let jsonArgs;
   try {
     jsonArgs = JSON.parse(toolCallArguments);
   } catch (e) {
-    throw new AgentRuntimeError(`JSON parse LLM 的 function.arguments 错误`, ErrorCode.JSON_PARSE_ERROR)
+    throw new AgentRuntimeError(`invalid JSON: JSON parse LLM 的 function.arguments 错误`, ErrorCode.JSON_PARSE_ERROR)
   }
 
 
@@ -218,7 +225,11 @@ async function runToolFromCall(toolCall) {
   const parsed = handlerObject.zodSchema.safeParse(jsonArgs);
 
   if (parsed.success) {
-    return handlerObject.handler(jsonArgs);
+    const [e, res] = await to(handlerObject.handler(jsonArgs));
+    if (e) {
+      throw new AgentRuntimeError(e.message, e.code, e.toJSON())
+    }
+    return res;
   }
 
   throw new AgentRuntimeError(`${toolCallName} tool call 参数错误: ${parsed.error.issues[0].message}`, ErrorCode.TOOL_CALL_ARGS_ERROR);
