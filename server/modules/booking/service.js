@@ -19,10 +19,6 @@ const CANCEL_REASON = '不鸡吧需要了';
 
 
 
-function formatTime(time) {
-  return dayjs(time).format('YYYY-MM-DD HH:mm:ss');
-}
-
 function now() {
   return dayjs().format('YYYY-MM-DD HH:mm:ss');
 }
@@ -66,19 +62,16 @@ const service = {
     const userId = req.uid;
 
 
-    const s = formatTime(start_time);
-    const e = formatTime(end_time);
-
 
     await withTransaction(async function (connection) {
-      const conflictBooking = await repository.findConflictBooking(connection, room_id, s, e);
+      const conflictBooking = await repository.findConflictBooking(connection, room_id, start_time, end_time);
       if (conflictBooking.length > 0) {
         throw new AppError('时间段冲突', 409, {
           code: errorEvents.TIME_CONFLICT,
           user_id: userId,
           room_id,
-          start_time: s,
-          end_time: e
+          start_time,
+          end_time
         });
       }
 
@@ -86,15 +79,22 @@ const service = {
       await new Promise(resolve => setTimeout(resolve, 3000));
       console.log('插入', new Date());
 
-      await repository.createBooking(connection, room_id, s, e, userId, BookingStatus.PENDING);
-      logger.info('BOOKING_CREATED', { userId, roomId: room_id, startTime: s, endTime: e });
-
+      await repository.createBooking(
+        connection, 
+        room_id, 
+        // mysql 不支持 UTC ISO
+        dayjs(start_time).format('YYYY-MM-DD HH:mm:ss'),
+        dayjs(end_time).format('YYYY-MM-DD HH:mm:ss'),
+        userId, 
+        BookingStatus.PENDING
+      );
+      logger.info('BOOKING_CREATED', { userId, roomId: room_id, startTime: start_time, endTime: end_time });
 
       await redisClientRpush(redisKeys.NOTIFICATIONS, {
         user_id: userId,
         room_id,
-        start_time: s,
-        end_time: e
+        start_time,
+        end_time
       })
     })
 
