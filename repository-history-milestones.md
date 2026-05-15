@@ -1248,3 +1248,727 @@ packages/ai
 - [c6fc0845](https://github.com/earendil-works/pi/commit/c6fc0845)：unified extensions。
 - [a5b27367](https://github.com/earendil-works/pi/commit/a5b27367)：harness 起点。
 
+## 这些演进里用到的设计模式
+
+这里不按“模式定义”讲，而是按仓库里遇到的问题讲：before 是如果没有这个模式，代码通常会变成什么样；after 是这个仓库逐步演进出的形态。
+
+### 1. Facade：AgentSession 包住复杂会话流程
+
+对应问题：
+
+CLI / RPC / interactive 都需要做这些事：
+
+- 加载 session。
+- 追加用户消息。
+- 运行 agent loop。
+- 订阅事件。
+- 保存事件。
+- 触发 compaction。
+- 执行工具。
+
+如果没有 Facade，每个入口会重复写流程。
+
+Before：
+
+```ts
+async function runTextMode(input: string) {
+  const session = await loadSession();
+  session.messages.push({ role: "user", content: input });
+
+  await maybeCompact(session);
+
+  for await (const event of runAgentLoop(session)) {
+    if (event.type === "tool_call") {
+      const result = await executeTool(event);
+      session.messages.push(toToolResult(result));
+    }
+
+    printText(event);
+    await saveSession(session);
+  }
+}
+
+async function runRpcMode(input: string) {
+  const session = await loadSession();
+  session.messages.push({ role: "user", content: input });
+
+  await maybeCompact(session);
+
+  for await (const event of runAgentLoop(session)) {
+    sendRpcEvent(event);
+    await saveSession(session);
+  }
+}
+```
+
+After：
+
+```ts
+const session = await AgentSession.open(options);
+
+session.on("event", event => {
+  output.write(event);
+});
+
+await session.prompt(input);
+```
+
+解决的问题：
+
+- 入口层不再知道 session 内部细节。
+- text/json/rpc/interactive 只换 output adapter。
+- session persistence、compaction、tool execution 只有一套逻辑。
+
+相关 commit：
+
+- [29d96ab2](https://github.com/earendil-works/pi/commit/29d96ab2)：AgentSession basic structure。
+- [eba196f4](https://github.com/earendil-works/pi/commit/eba196f4)：event subscription and persistence。
+- [e9f6de7c](https://github.com/earendil-works/pi/commit/e9f6de7c)：CLI using AgentSession。
+- [0020de85](https://github.com/earendil-works/pi/commit/0020de85)：InteractiveMode using AgentSession。
+
+### 2. Strategy：不同 provider 用同一个调用策略接口
+
+对应问题：
+
+OpenAI、Anthropic、Gemini、DeepSeek 等 provider 的 SDK 和协议不同，但 agent loop 只想表达一件事：
+
+```ts
+给我 messages/tools，返回 assistant event stream。
+```
+
+如果没有 Strategy，agent loop 会充满 provider 分支。
+
+Before：
+
+```ts
+async function callModel(api: string, request: AgentRequest) {
+  if (api === "openai") {
+    return callOpenAI(request);
+  }
+
+  if (api === "anthropic") {
+    return callAnthropic(request);
+  }
+
+  if (api === "gemini") {
+    return callGemini(request);
+  }
+
+  throw new Error(`Unknown api: ${api}`);
+}
+```
+
+After：
+
+```ts
+type ApiProvider = {
+  stream(options: StreamOptions): AssistantMessageEventStream;
+};
+
+const provider = await providerRegistry.load(api);
+return provider.stream(options);
+```
+
+解决的问题：
+
+- 新增 provider 不改 agent loop。
+- provider 能力通过统一接口接入。
+- provider 选择变成运行时策略选择。
+
+相关 commit：
+
+- [f064ea0e](https://github.com/earendil-works/pi/commit/f064ea0e)：统一 AI package。
+- [8364ecde](https://github.com/earendil-works/pi/commit/8364ecde)：OpenAI providers。
+- [e5aedfed](https://github.com/earendil-works/pi/commit/e5aedfed)：Anthropic provider。
+- [a8ba19f0](https://github.com/earendil-works/pi/commit/a8ba19f0)：Gemini provider。
+
+### 3. Adapter：把厂商 SDK 输出转成统一事件
+
+对应问题：
+
+provider 不只是调用方式不同，流式输出格式也不同。OpenAI chunk、Anthropic event、Gemini stream 不能直接给 agent loop。
+
+如果没有 Adapter，上层必须理解每家 provider 的 chunk 结构。
+
+Before：
+
+```ts
+for await (const chunk of openaiStream) {
+  const delta = chunk.choices[0]?.delta;
+
+  if (delta?.content) {
+    renderText(delta.content);
+  }
+
+  if (delta?.tool_calls) {
+    parseOpenAIToolCall(delta.tool_calls);
+  }
+}
+```
+
+换 Anthropic 又是另一套：
+
+```ts
+for await (const event of anthropicStream) {
+  if (event.type === "content_block_delta") {
+    renderText(event.delta.text);
+  }
+
+  if (event.type === "message_delta") {
+    parseAnthropicStopReason(event.delta.stop_reason);
+  }
+}
+```
+
+After：
+
+```ts
+async function* streamOpenAI(options: StreamOptions) {
+  for await (const chunk of openaiStream) {
+    yield* normalizeOpenAIChunk(chunk);
+  }
+}
+
+async function* streamAnthropic(options: StreamOptions) {
+  for await (const event of anthropicStream) {
+    yield* normalizeAnthropicEvent(event);
+  }
+}
+```
+
+上层只处理统一事件：
+
+```ts
+for await (const event of provider.stream(options)) {
+  if (event.type === "text") appendText(event.text);
+  if (event.type === "tool_call") executeTool(event);
+  if (event.type === "stop") finish(event.reason);
+}
+```
+
+解决的问题：
+
+- SDK 格式变化不会直接影响 agent/TUI/RPC。
+- tool call、thinking、usage、stop reason 都能统一表达。
+- provider 差异被限制在 `packages/ai`。
+
+相关 commit：
+
+- [004de3c9](https://github.com/earendil-works/pi/commit/004de3c9)：AsyncIterable streaming API。
+- [39c626b6](https://github.com/earendil-works/pi/commit/39c626b6)：partial JSON parsing for streaming tool calls。
+- [2296dc40](https://github.com/earendil-works/pi/commit/2296dc40)：typed errors and stop reasons。
+
+### 4. Observer / Pub-Sub：事件发生后，多种输出同时响应
+
+对应问题：
+
+同一个 agent event 可能要被不同消费者处理：
+
+- TUI 渲染。
+- RPC 推送。
+- JSON output。
+- session persistence。
+- hooks / extensions。
+
+如果直接调用，会互相耦合。
+
+Before：
+
+```ts
+for await (const event of runAgentLoop(state)) {
+  renderTui(event);
+  sendRpc(event);
+  writeJson(event);
+  await saveEvent(event);
+  await runHooks(event);
+}
+```
+
+实际问题：
+
+- agent loop 知道太多输出细节。
+- 新增一个消费者要改主循环。
+- 某个消费者失败可能影响整个流程。
+
+After：
+
+```ts
+session.on("event", event => tui.render(event));
+session.on("event", event => rpc.send(event));
+session.on("event", event => json.write(event));
+session.on("event", event => sessionStore.persist(event));
+session.on("event", event => extensionRuntime.dispatch(event));
+
+session.emit("event", event);
+```
+
+解决的问题：
+
+- agent loop 只负责 emit。
+- 输出层、持久化层、extension 可以独立订阅。
+- 新增消费者不改 agent loop。
+
+相关 commit：
+
+- [eba196f4](https://github.com/earendil-works/pi/commit/eba196f4)：event subscription and persistence。
+- [9c9e6822](https://github.com/earendil-works/pi/commit/9c9e6822)：event bus for tool/hook communication。
+- [3559a43b](https://github.com/earendil-works/pi/commit/3559a43b)：typed RPC protocol and client。
+
+### 5. Command：tool call 是可查找、可执行的命令
+
+对应问题：
+
+模型不会直接执行代码，它只会输出：
+
+```json
+{ "name": "read_file", "input": { "path": "src/app.ts" } }
+```
+
+如果没有 Command 抽象，tool 执行会变成 switch。
+
+Before：
+
+```ts
+async function executeToolCall(call: ToolCall) {
+  if (call.name === "read_file") {
+    return readFile(call.input.path);
+  }
+
+  if (call.name === "write_file") {
+    return writeFile(call.input.path, call.input.content);
+  }
+
+  if (call.name === "bash") {
+    return runBash(call.input.command);
+  }
+}
+```
+
+After：
+
+```ts
+type Tool = {
+  name: string;
+  schema: unknown;
+  execute(input: unknown, context: ToolContext): Promise<ToolResult>;
+};
+
+toolRegistry.register(readFileTool);
+toolRegistry.register(bashTool);
+
+const tool = toolRegistry.get(call.name);
+const result = await tool.execute(call.input, context);
+```
+
+解决的问题：
+
+- 新增工具不改中央 switch。
+- schema、权限、执行逻辑可以绑定在同一个 tool 对象上。
+- custom tools / extensions 可以动态注册工具。
+
+相关 commit：
+
+- [186169a8](https://github.com/earendil-works/pi/commit/186169a8)：read-only exploration tools。
+- [e7097d91](https://github.com/earendil-works/pi/commit/e7097d91)：custom tools with session lifecycle。
+- [c6fc0845](https://github.com/earendil-works/pi/commit/c6fc0845)：custom tools merged into unified extensions。
+
+### 6. Registry：按名字注册和查找 provider/tool/extension
+
+对应问题：
+
+系统里很多能力都不是写死的：
+
+- provider 可以内置，也可以用户自定义。
+- tools 可以内置，也可以 extension 提供。
+- skills/hooks/extensions 可以被发现后加载。
+
+如果没有 Registry，就会到处写硬编码分支。
+
+Before：
+
+```ts
+function getProvider(api: string) {
+  switch (api) {
+    case "openai": return openaiProvider;
+    case "anthropic": return anthropicProvider;
+    case "gemini": return geminiProvider;
+  }
+}
+```
+
+After：
+
+```ts
+registerApiProvider("openai", loadOpenAI);
+registerApiProvider("anthropic", loadAnthropic);
+registerApiProvider("gemini", loadGemini);
+
+const provider = await apiProviderRegistry.load(api);
+```
+
+Tool 也是同一类问题：
+
+```ts
+toolRegistry.register({
+  name: "read_file",
+  schema,
+  execute,
+});
+
+const tool = toolRegistry.get(call.name);
+```
+
+解决的问题：
+
+- 能力可以动态添加。
+- 用户配置可以覆盖内置能力。
+- 扩展系统有统一接入口。
+
+相关 commit：
+
+- [0c5cbd00](https://github.com/earendil-works/pi/commit/0c5cbd00)：custom models/providers via `models.json`。
+- [243104fa](https://github.com/earendil-works/pi/commit/243104fa)：custom providers override built-ins。
+- [9794868b](https://github.com/earendil-works/pi/commit/9794868b)：extension discovery with package manifest。
+
+### 7. Lazy Initialization / Lazy Import：用到 provider 时才加载
+
+对应问题：
+
+provider 数量增长后，静态 import 会带来启动和运行时问题：
+
+- CLI 启动加载所有 provider。
+- browser/Vite 扫到 Node-only 依赖。
+- 可选依赖缺失影响不用它的用户。
+
+Before：
+
+```ts
+import { streamOpenAI } from "./providers/openai";
+import { streamAnthropic } from "./providers/anthropic";
+import { streamVertex } from "./providers/vertex";
+import { streamCopilot } from "./providers/copilot";
+
+const providers = {
+  openai: streamOpenAI,
+  anthropic: streamAnthropic,
+  vertex: streamVertex,
+  copilot: streamCopilot,
+};
+```
+
+After：
+
+```ts
+registerApiProvider("vertex", async () => {
+  const provider = await loadVertexProvider();
+  return provider;
+});
+
+const provider = await registry.load("vertex");
+return provider.stream(options);
+```
+
+解决的问题：
+
+- 不用的 provider 不加载。
+- Node-only provider 不必进入 browser-safe 路径。
+- provider 初始化成本被推迟到真正使用时。
+
+相关 commit：
+
+- [0c5cbd00](https://github.com/earendil-works/pi/commit/0c5cbd00)：custom providers。
+- [214e7dae](https://github.com/earendil-works/pi/commit/214e7dae)：Vertex AI provider。
+- [1650041a](https://github.com/earendil-works/pi/commit/1650041a)：OpenAI Codex OAuth provider。
+
+### 8. Bridge：Web UI 和执行环境隔离
+
+对应问题：
+
+Web UI 不能直接调用 Node API：
+
+```ts
+import { spawn } from "node:child_process";
+
+spawn("npm", ["run", "check"]);
+```
+
+如果 UI 直接依赖执行环境，browser 构建会失败，权限边界也不清楚。
+
+Before：
+
+```ts
+// web-ui component
+async function onRunCommand(command: string) {
+  const result = await spawn(command);
+  setOutput(result.stdout);
+}
+```
+
+After：
+
+```ts
+// web-ui
+async function onRunCommand(command: string) {
+  const result = await runtimeBridge.runCommand(command);
+  setOutput(result.stdout);
+}
+```
+
+```ts
+// runtime side
+class NodeRuntimeBridge {
+  async runCommand(command: string) {
+    return nodeExecutionEnv.run(command);
+  }
+}
+```
+
+解决的问题：
+
+- UI 不直接 import Node 模块。
+- Web / Node runtime 可以独立变化。
+- artifact、REPL、tool execution 可以通过 bridge 控制权限和生命周期。
+
+相关 commit：
+
+- [c2793d80](https://github.com/earendil-works/pi/commit/c2793d80)：runtime bridge for artifacts and REPL。
+- [bbbc232c](https://github.com/earendil-works/pi/commit/bbbc232c)：unified storage architecture。
+
+### 9. Repository：session storage 隐藏存储实现
+
+对应问题：
+
+session 可能存在不同地方：
+
+- CLI 文件系统。
+- Web IndexedDB。
+- 测试内存仓库。
+- harness 专用 session repo。
+
+如果业务代码直接读写文件：
+
+```ts
+await fs.writeFile(sessionPath, JSON.stringify(session));
+const session = JSON.parse(await fs.readFile(sessionPath, "utf8"));
+```
+
+Web 和测试都会被 Node fs 绑定住。
+
+After：
+
+```ts
+interface SessionRepository {
+  load(id: string): Promise<SessionData>;
+  save(session: SessionData): Promise<void>;
+  list(): Promise<SessionSummary[]>;
+}
+```
+
+不同运行时给不同实现：
+
+```ts
+const sessionRepo =
+  runtime === "node" ? new FileSessionRepository(configDir) :
+  runtime === "browser" ? new IndexedDbSessionRepository() :
+  new MemorySessionRepository();
+```
+
+解决的问题：
+
+- session 逻辑不绑定具体存储。
+- CLI/Web/test 可以复用 session 流程。
+- harness 可以用可控 repository 测试。
+
+相关 commit：
+
+- [e5cf25a2](https://github.com/earendil-works/pi/commit/e5cf25a2)：session storage。
+- [bbbc232c](https://github.com/earendil-works/pi/commit/bbbc232c)：unified storage architecture。
+- [cdde2e89](https://github.com/earendil-works/pi/commit/cdde2e89)：harness session abstraction。
+
+### 10. Plugin Architecture：hooks / skills / custom tools 统一成 extension
+
+对应问题：
+
+用户扩展需求会不断增加：
+
+- 增加 tool。
+- 增加 skill。
+- 监听事件。
+- 修改 tool availability。
+- 增加快捷键或 CLI 行为。
+
+如果分别加载：
+
+```ts
+loadHooks(config);
+loadSkills(config);
+loadCustomTools(config);
+loadShortcuts(config);
+```
+
+每套机制都会重复 discovery、context、权限和生命周期。
+
+After：
+
+```ts
+const extensions = await discoverExtensions();
+
+for (const extension of extensions) {
+  extensionRuntime.register(extension, {
+    session,
+    eventBus,
+    toolRegistry,
+    skillRegistry,
+  });
+}
+```
+
+扩展统一描述能力：
+
+```ts
+type Extension = {
+  hooks?: HookDefinition[];
+  tools?: ToolDefinition[];
+  skills?: SkillDefinition[];
+};
+```
+
+解决的问题：
+
+- 扩展发现统一。
+- 扩展上下文统一。
+- hooks/tools/skills 共享生命周期。
+- 后续新增扩展能力不需要再做一套加载系统。
+
+相关 commit：
+
+- [04d59f31](https://github.com/earendil-works/pi/commit/04d59f31)：hooks system。
+- [09bca967](https://github.com/earendil-works/pi/commit/09bca967)：skills system。
+- [e7097d91](https://github.com/earendil-works/pi/commit/e7097d91)：custom tools。
+- [2846c7d1](https://github.com/earendil-works/pi/commit/2846c7d1)：unified extensions system。
+- [c6fc0845](https://github.com/earendil-works/pi/commit/c6fc0845)：merge hooks and custom-tools。
+
+### 11. Pipeline：输入到输出是一条可分层处理的流水线
+
+对应问题：
+
+从用户输入到模型输出，中间有很多阶段。如果写成一个大函数，很难插入调试、事件、compaction、tool call。
+
+Before：
+
+```ts
+async function handleInput(input: string) {
+  const messages = buildMessages(input);
+  const response = await callModel(messages);
+  const text = parseResponse(response);
+  console.log(text);
+}
+```
+
+After：
+
+```ts
+const input = await cli.readInput();
+await session.prompt(input);
+```
+
+内部流水线：
+
+```ts
+input
+  -> append user message
+  -> maybe compact
+  -> agent loop
+  -> provider stream
+  -> normalize events
+  -> execute tools
+  -> emit events
+  -> render output
+  -> persist session
+```
+
+代码形态：
+
+```ts
+for await (const event of runAgentLoop(state)) {
+  await eventPipeline.process(event);
+}
+```
+
+解决的问题：
+
+- 每一层只处理自己的输入输出。
+- 可以在任意阶段插入日志、debug、hooks。
+- TUI/RPC/JSON 共享同一条事件流。
+
+相关 commit：
+
+- [004de3c9](https://github.com/earendil-works/pi/commit/004de3c9)：streaming API。
+- [29d96ab2](https://github.com/earendil-works/pi/commit/29d96ab2)：AgentSession。
+- [3559a43b](https://github.com/earendil-works/pi/commit/3559a43b)：typed RPC protocol。
+
+### 12. State Machine：Agent turn 是状态迁移，不是一次函数调用
+
+对应问题：
+
+Agent 运行时有明显状态：
+
+- idle。
+- user input received。
+- thinking。
+- streaming text。
+- running tool。
+- compacting。
+- persisting。
+- done。
+- error / aborted。
+
+如果状态散落在布尔值里：
+
+```ts
+let isThinking = false;
+let isRunningTool = false;
+let isCompacting = false;
+let isDone = false;
+
+// 多个 flag 组合后容易出现非法状态
+```
+
+After：
+
+```ts
+type AgentTurnState =
+  | { status: "idle" }
+  | { status: "thinking" }
+  | { status: "streaming" }
+  | { status: "running_tool"; toolName: string }
+  | { status: "compacting" }
+  | { status: "done" }
+  | { status: "error"; error: Error };
+```
+
+状态通过事件推进：
+
+```ts
+function reduceTurnState(state: AgentTurnState, event: AgentEvent) {
+  if (event.type === "start") return { status: "thinking" };
+  if (event.type === "text") return { status: "streaming" };
+  if (event.type === "tool_call") {
+    return { status: "running_tool", toolName: event.name };
+  }
+  if (event.type === "stop") return { status: "done" };
+  return state;
+}
+```
+
+解决的问题：
+
+- UI 可以稳定显示当前状态。
+- harness 可以 snapshot turn state。
+- 避免多个 boolean 组合出非法运行状态。
+
+相关 commit：
+
+- [95d04019](https://github.com/earendil-works/pi/commit/95d04019)：model selector TUI and session management。
+- [0119d761](https://github.com/earendil-works/pi/commit/0119d761)：model/thinking/queue mode。
+- [322759a3](https://github.com/earendil-works/pi/commit/322759a3)：snapshot harness turn state。
