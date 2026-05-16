@@ -61,17 +61,19 @@ const service = {
 
     const userId = req.uid;
 
+    const s_time =  dayjs(start_time).format('YYYY-MM-DD HH:mm:ss');
+    const e_time = dayjs(end_time).format('YYYY-MM-DD HH:mm:ss');
 
 
     await withTransaction(async function (connection) {
-      const conflictBooking = await repository.findConflictBooking(connection, room_id, start_time, end_time);
+      const conflictBooking = await repository.findConflictBooking(connection, room_id, s_time, e_time);
       if (conflictBooking.length > 0) {
         throw new AppError('时间段冲突', 409, {
           code: errorEvents.TIME_CONFLICT,
           user_id: userId,
           room_id,
-          start_time,
-          end_time
+          s_time,
+          e_time
         });
       }
 
@@ -83,18 +85,18 @@ const service = {
         connection, 
         room_id, 
         // mysql 不支持 UTC ISO
-        dayjs(start_time).format('YYYY-MM-DD HH:mm:ss'),
-        dayjs(end_time).format('YYYY-MM-DD HH:mm:ss'),
+        s_time,
+        e_time,
         userId, 
         BookingStatus.PENDING
       );
-      logger.info('BOOKING_CREATED', { userId, roomId: room_id, startTime: start_time, endTime: end_time });
+      logger.info('BOOKING_CREATED', { userId, roomId: room_id, startTime: s_time, endTime: e_time });
 
       await redisClientRpush(redisKeys.NOTIFICATIONS, {
         user_id: userId,
         room_id,
-        start_time,
-        end_time
+        s_time,
+        e_time
       })
     })
 
