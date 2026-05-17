@@ -1,0 +1,26 @@
+{
+  "name": "agent",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "check": "biome check --write"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.33.0",
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.15",
+    "@types/node": "^25.8.0",
+    "tsx": "^4.22.0",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@google/genai": "^2.3.0",
+    "dotenv": "^17.4.2",
+    "openai": "^6.38.0",
+    "undici": "^8.3.0"
+  }
+}

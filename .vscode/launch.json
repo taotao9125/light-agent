@@ -2,6 +2,23 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "AGENT",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/agent/src/cli/index.ts",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/agent",
+      "skipFiles": [
+        "<node_internals>/**",
+       "node_modules/**"
+      ]
+    },
+    {
       "type": "node",
       "request": "attach",
       "name": "debug express",

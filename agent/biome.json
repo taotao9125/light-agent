@@ -1,0 +1,33 @@
+{
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"style": {
+				"noNonNullAssertion": "off",
+				"useConst": "error",
+				"useNodejsImportProtocol": "off"
+			},
+			"suspicious": {
+				"noExplicitAny": "off",
+				"noControlCharactersInRegex": "off",
+				"noEmptyInterface": "off"
+			}
+		}
+	},
+	"formatter": {
+		"enabled": true,
+		"formatWithErrors": false,
+		"indentStyle": "tab",
+		"indentWidth": 4,
+		"lineWidth": 120
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "single"
+		}
+	},
+	"files": {
+		"includes": ["src/**/*.ts", "!**/node_modules/**/*", "!!**/node_modules", "!dist"]
+	}
+}
