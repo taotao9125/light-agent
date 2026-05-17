@@ -2,29 +2,29 @@ import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 
 
-type provider = 'openai' | 'google';
-type role = 'user' | 'assistant' | 'system';
+type Provider = 'openai' | 'google';
+type Role = 'user' | 'assistant' | 'system';
 
-type message = {
-	role: role;
+type Message = {
+	role: Role;
 	content: string;
 };
 
-type TAiRequestConfig = {
+type AiRequestConfig = {
 	model: string;
-	messages: message[];
+	messages: Message[];
 };
 
-type TAiResponse = {
-	message: message;
+type AiResponse = {
+	message: Message;
 };
 
 interface AI {
-	chat(requestConfig: TAiRequestConfig): Promise<TAiResponse>;
+	chat(requestConfig: AiRequestConfig): Promise<AiResponse>;
 }
 
 type clientConfig = {
-	provider: provider;
+	provider: Provider;
 	apiKey: string;
 	baseURL?: string;
 };
@@ -38,7 +38,7 @@ class OpenAIAdaptor implements AI {
 		});
 	}
 
-	async chat(requestConfig: TAiRequestConfig): Promise<TAiResponse> {
+	async chat(requestConfig: AiRequestConfig): Promise<AiResponse> {
 		const response = await this.client.chat.completions.create({
 			model: requestConfig.model,
 			messages: requestConfig.messages,
@@ -60,7 +60,7 @@ class GoogleGenAIAdaptor implements AI {
 			apiKey: config.apiKey,
 		});
 	}
-	async chat(requestConfig: TAiRequestConfig): Promise<TAiResponse> {
+	async chat(requestConfig: AiRequestConfig): Promise<AiResponse> {
 		const response = await this.client.models.generateContent({
 			model: requestConfig.model,
 			contents: requestConfig.messages,
@@ -84,20 +84,18 @@ class GoogleGenAIAdaptor implements AI {
 	}
 }
 
-const AiAdaptors = new Map<provider, (p: clientConfig) => AI>();
 
-AiAdaptors.set('openai', (config: clientConfig): AI => {
-	return new OpenAIAdaptor(config);
-});
+type AiConstructor = new (config: clientConfig) => AI;
+const AiAdaptors = new Map<Provider, AiConstructor>();
 
-AiAdaptors.set('google', (config: clientConfig): AI => {
-	return new GoogleGenAIAdaptor(config);
-});
+AiAdaptors.set('openai', OpenAIAdaptor);
+
+AiAdaptors.set('google', GoogleGenAIAdaptor);
 
 
 export function createClient(config: clientConfig): AI {
 	const { provider } = config;
 	const adaptor = AiAdaptors.get(provider);
 	if (!adaptor) throw new Error('unknow provider');
-	return adaptor(config);
+	return new adaptor(config);
 }
