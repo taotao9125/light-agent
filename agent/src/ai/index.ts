@@ -5,10 +5,6 @@ import type { ToolMeta } from '../tools/index';
 type Provider = 'openai' | 'google' | 'deepseek';
 type Role = 'user' | 'assistant';
 
-// type StreamEvent = {
-// 	type: 'start' | 'text_delta' | 'end' | 'stop' | 'tool_calls'
-// 	partial: Message
-// }
 
 type AiRequestConfig = {
 	model: string;
@@ -17,12 +13,20 @@ type AiRequestConfig = {
 };
 
 type AiResponse = {
-	message: { content: string; role: Role };
+	content: string;
+	role: Role;
 	tool_calls?: { name: string; args: unknown }[];
 };
 
+type AiStreamResponse = {
+	content: string;
+	role: Role;
+	type: 'start' | 'text_delta' | 'end' | 'error';
+}
+
 interface AI {
 	chat(requestConfig: AiRequestConfig): Promise<AiResponse>;
+	stream(requestConfig: AiRequestConfig): AsyncIterable<AiStreamResponse>
 }
 
 type clientConfig = {
@@ -32,20 +36,20 @@ type clientConfig = {
 };
 
 
-const AiProviders = new Map<Provider, new (config: clientConfig) => AI>();
+const AiProvidersFactory = new Map<Provider, new (config: clientConfig) => AI>();
 
 // openai
-AiProviders.set('openai', OpenAIAdaptor);
+AiProvidersFactory.set('openai', OpenAIAdaptor);
 // deepseek 兼容 open sdk
-AiProviders.set('deepseek', OpenAIAdaptor);
+AiProvidersFactory.set('deepseek', OpenAIAdaptor);
 // google
-AiProviders.set('google', GoogleGenAIAdaptor);
+// AiProvidersFactory.set('google', GoogleGenAIAdaptor);
 
-// 其他不用 export, input, output类型都可以内置函数拿到
+// 其他 type 不用 export, input 和 output 类型都可以从 ts 内置工具函数拿到
 export type CreateClient = (p: clientConfig) => AI;
 export const createClient: CreateClient = (config) => {
 	const { provider } = config;
-	const adaptor = AiProviders.get(provider);
+	const adaptor = AiProvidersFactory.get(provider);
 	if (!adaptor) throw new Error('unknow provider');
 	return new adaptor(config);
 };

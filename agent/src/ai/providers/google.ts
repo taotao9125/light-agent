@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import type {CreateClient} from '../index';
+import type { CreateClient } from '../index';
 
 
 type AI = ReturnType<CreateClient>;
@@ -21,18 +21,14 @@ export default class GoogleGenAIAdaptor implements AI {
 
     if (!response.candidates?.length) {
       return {
-        message: {
-          role: 'assistant',
-          content: '',
-        },
+        role: 'assistant',
+        content: '',
       };
     }
 
     return {
-      message: {
-        role: 'assistant',
-        content: response.candidates?.[0].content?.parts?.[0].text || '',
-      },
+      role: 'assistant',
+      content: response.candidates?.[0].content?.parts?.[0].text || '',
     };
   }
 }
