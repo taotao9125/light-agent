@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import type { ToolDefinition } from './index';
+import type { ToolDefinition } from './types';
 
 export const readFileTool: ToolDefinition<{ path: string }, Promise<string>> = {
 	name: 'read_tile',
@@ -15,7 +15,7 @@ export const readFileTool: ToolDefinition<{ path: string }, Promise<string>> = {
 		},
 	},
 
-	excute(p) {
+	execute(p) {
 		const realPath = path.join(process.cwd(), 'agent', p.path);
 		return fs.readFile(realPath, { encoding: 'utf8' });
 	},

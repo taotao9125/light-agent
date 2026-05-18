@@ -3,7 +3,7 @@
 
 ```typescript
 for await (const toolCall of tools) {
-  const result = await toolCallFactory.get(toolCall.name).excute(toolCall.arguments);
+  const result = await toolRegistry.get(toolCall.name).execute(toolCall.arguments);
 }
 ```
 
@@ -17,9 +17,13 @@ type tools = {
 ```
 ## 模型 tool 输出
 ```typescript
+
+
+
 type toolCalls = {
+  toolCallId: string;
   name: string;
-  arguments: Record<string, any>
+  args: unknown;
 }[]
 
 ```
@@ -29,7 +33,7 @@ type toolCalls = {
 ```typescript
 // T: tool input. U: tool output
 export interface ToolDefinition<T, U> extends ToolMeta {
-	excute(p: T): U;
+	execute(p: T): U;
 }
 ```
 
@@ -38,12 +42,12 @@ export interface ToolDefinition<T, U> extends ToolMeta {
 
 const read_file: ToolDefinition<{path: string}, Promise<string>> = {
   name: 'xxx',
-  excute(p) {
+  execute(p) {
     return fs.readFile(p.path)
   }
 }
 
-ToolFactory.register(name, Tool);
+toolRegistry.register(name, Tool);
 
 // agent 查找 tool
 const toolCalls = {
@@ -53,5 +57,5 @@ const toolCalls = {
   }
 }[];
 
-ToolFactory.get(toolCalls[0].name).excute(modelToolCall[0].arguments);
+toolRegistry.get(toolCalls[0].name).execute(modelToolCall[0].arguments);
 ```

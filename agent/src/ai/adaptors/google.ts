@@ -1,19 +1,16 @@
 import { GoogleGenAI } from '@google/genai';
-import type { CreateClient } from '../index';
+import type { clientConfig, AiProvider, AiRequestConfig } from '../index';
 
 
-type AI = ReturnType<CreateClient>;
-type clientConfig = Parameters<CreateClient>[0];
 
-
-export default class GoogleGenAIAdaptor implements AI {
+export default class GoogleGenAIAdaptor {
   private client: GoogleGenAI;
   constructor(config: clientConfig) {
     this.client = new GoogleGenAI({
       apiKey: config.apiKey,
     });
   }
-  async chat(requestConfig: Parameters<AI['chat']>[0]): ReturnType<AI['chat']> {
+  async chat(requestConfig: AiRequestConfig): ReturnType<AiProvider['chat']> {
     const response = await this.client.models.generateContent({
       model: requestConfig.model,
       contents: requestConfig.messages,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import { createClient } from '../ai/index';
-import toolFactory from '../tools';
+import toolRegistry from '../tools';
 import 'dotenv/config';
 
 import OpenAI from 'openai';
@@ -17,31 +17,34 @@ async function main() {
 		baseURL: process.env.AI_DEEP_SEEK_API_HOST as string,
 	});
 
-	// TODO:  ai stream 接口
-	// const _ret = await client.chat({
-	// 	model: 'deepseek-v4-flash',
-	// 	messages: [{ role: 'user', content: '帮我读下 package.json' }],
-	// 	tools: toolFactory.list(),
-	// });
-
-
-	const _ret = client.stream({
+	const _ret = await client.chat({
 		model: 'deepseek-v4-flash',
 		messages: [{ role: 'user', content: '帮我读下 package.json' }],
-		tools: toolFactory.list(),
+		tools: toolRegistry.list(),
 	});
 
-	for await (const thunk of _ret) {
-		process.stdout.write(thunk.type + '|');
-	}
+
+	const _t = _ret;
+	
+
+
+	// const _ret = client.stream({
+	// 	model: 'deepseek-v4-flash',
+	// 	messages: [{ role: 'user', content: '帮我读下 package.json' }],
+	// 	tools: toolRegistry.list(),
+	// });
+
+	// for await (const thunk of _ret) {
+	// 	process.stdout.write(thunk.type + '|');
+	// }
 
 
 	// const _m = _ret;
 
 	// for await (const toolCall of ret.message.tools || []) {
-	// 	const tool = toolFactory.get(toolCall.name);
+	// 	const tool = toolRegistry.get(toolCall.name);
 	// 	if (tool) {
-	// 		tool.excute(tool.parseArgs(toolCall.args))
+	// 		tool.execute(tool.parseArgs(toolCall.args))
 	// 	}
 
 	// }

@@ -1,26 +1,8 @@
 import { readFileTool } from './buildins';
 
-export type ToolMeta = {
-	name: string;
-	description: string;
-	schema: {
-		type: 'object';
-		properties: Record<
-			string,
-			{
-				type: unknown;
-				description: string;
-			}
-		>;
-		required?: string[];
-	};
-};
+import type {ToolDefinition} from './types';
 
-export interface ToolDefinition<T, U> extends ToolMeta {
-	excute(p: T): U;
-}
-
-class ToolFactoryCls {
+class ToolRegistry {
 	private tools = new Map<string, ToolDefinition<any, any>>();
 
 	register(name: string, tool: ToolDefinition<any, any>): void {
@@ -31,7 +13,7 @@ class ToolFactoryCls {
 		return this.tools.get(name);
 	}
 
-	list(): Omit<ToolDefinition<any, any>, 'excute'>[] {
+	list(): Omit<ToolDefinition<any, any>, 'execute'>[] {
 		return Array.from(this.tools.values()).map((tool) => ({
 			name: tool.name,
 			description: tool.description,
@@ -40,8 +22,8 @@ class ToolFactoryCls {
 	}
 }
 
-const ToolFactory = new ToolFactoryCls();
+const toolRegistry = new ToolRegistry();
 
-ToolFactory.register(readFileTool.name, readFileTool);
+toolRegistry.register(readFileTool.name, readFileTool);
 
-export default ToolFactory;
+export default toolRegistry;
