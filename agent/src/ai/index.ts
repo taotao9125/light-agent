@@ -1,28 +1,38 @@
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
+import { ToolDefinition } from '../tools/index';
 
 type Provider = 'openai' | 'google' | 'deepseek'
-type Role = 'user' | 'assistant' | 'system';
+type Role = 'user' | 'assistant';
 
-type Message = {
-	role: Role;
-	content: string;
-};
+// type Message = {
+// 	role: Role;
+// 	content: string;
+//   tools?: { name: string; args: Record<string, any> }[];
+// };
+
+
+// type StreamEvent = {
+// 	type: 'start' | 'text_delta' | 'end' | 'stop' | 'tool_calls'
+// 	partial: Message
+// }
+
 
 type AiRequestConfig = {
 	model: string;
-	messages: Message[];
+	messages: { content: string, role: Role }[];
+	tools?: Omit<ToolDefinition, 'parseArgs' | 'excute'>[]
 };
 
 type AiResponse = {
-	message: Message;
+	message: { content: string, role: Role };
+	tool_calls?: { name: string; args: unknown }[]
 };
-
-
 
 interface AI {
 	chat(requestConfig: AiRequestConfig): Promise<AiResponse>;
 }
+
 
 
 type clientConfig = {
@@ -30,6 +40,11 @@ type clientConfig = {
 	apiKey: string;
 	baseURL?: string;
 };
+
+type CreateClient = (p: clientConfig) => AI;
+
+
+
 
 class OpenAIAdaptor implements AI {
 	private client: OpenAI;
@@ -44,6 +59,16 @@ class OpenAIAdaptor implements AI {
 		const response = await this.client.chat.completions.create({
 			model: requestConfig.model,
 			messages: requestConfig.messages,
+			tools: requestConfig.tools?.map(tool => ({
+				type: 'function',
+				function: {
+					name: tool.name,
+					description: tool.description,
+					parameters: tool.schema
+				},
+				tool_choice: 'auto'
+			}))
+
 		});
 
 		return {
@@ -51,6 +76,12 @@ class OpenAIAdaptor implements AI {
 				role: response.choices[0].message.role,
 				content: response.choices[0].message.content ?? '',
 			},
+			tool_calls: (response.choices[0].message.tool_calls ?? []).map(tool => {
+				return {
+					name: tool.function.name,
+					args: JSON.parse(tool.function.arguments)
+				}
+			})
 		};
 	}
 }
@@ -88,18 +119,20 @@ class GoogleGenAIAdaptor implements AI {
 
 
 
-const AiAdaptors = new Map<Provider, new (config: clientConfig) => AI>();
+const AiProviders = new Map<Provider, new (config: clientConfig) => AI>();
 
 // openai
-AiAdaptors.set('openai', OpenAIAdaptor);
+AiProviders.set('openai', OpenAIAdaptor);
 // deepseek 兼容 open sdk
-AiAdaptors.set('deepseek', OpenAIAdaptor);
+AiProviders.set('deepseek', OpenAIAdaptor);
 // google
-AiAdaptors.set('google', GoogleGenAIAdaptor);
+AiProviders.set('google', GoogleGenAIAdaptor);
 
-export function createClient(config: clientConfig): AI {
+
+export const createClient: CreateClient = (config) => {
 	const { provider } = config;
-	const adaptor = AiAdaptors.get(provider);
+	const adaptor = AiProviders.get(provider);
 	if (!adaptor) throw new Error('unknow provider');
 	return new adaptor(config);
 }
+
