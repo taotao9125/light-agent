@@ -19,6 +19,8 @@ async function main() {
 		tools: toolFactory.list(),
 	});
 
+	const _m = _ret;
+
 	// for await (const toolCall of ret.message.tools || []) {
 	// 	const tool = toolFactory.get(toolCall.name);
 	// 	if (tool) {
