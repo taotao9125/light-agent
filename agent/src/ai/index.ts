@@ -1,8 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 
-
-type Provider = 'openai' | 'google';
+type Provider = 'openai' | 'google' | 'deepseek'
 type Role = 'user' | 'assistant' | 'system';
 
 type Message = {
@@ -19,9 +18,12 @@ type AiResponse = {
 	message: Message;
 };
 
+
+
 interface AI {
 	chat(requestConfig: AiRequestConfig): Promise<AiResponse>;
 }
+
 
 type clientConfig = {
 	provider: Provider;
@@ -38,7 +40,7 @@ class OpenAIAdaptor implements AI {
 		});
 	}
 
-	async chat(requestConfig: AiRequestConfig): Promise<AiResponse> {
+	async chat(requestConfig: Parameters<AI['chat']>[0]): ReturnType<AI['chat']> {
 		const response = await this.client.chat.completions.create({
 			model: requestConfig.model,
 			messages: requestConfig.messages,
@@ -60,7 +62,7 @@ class GoogleGenAIAdaptor implements AI {
 			apiKey: config.apiKey,
 		});
 	}
-	async chat(requestConfig: AiRequestConfig): Promise<AiResponse> {
+	async chat(requestConfig: Parameters<AI['chat']>[0]): ReturnType<AI['chat']> {
 		const response = await this.client.models.generateContent({
 			model: requestConfig.model,
 			contents: requestConfig.messages,
@@ -85,13 +87,15 @@ class GoogleGenAIAdaptor implements AI {
 }
 
 
-type AiConstructor = new (config: clientConfig) => AI;
-const AiAdaptors = new Map<Provider, AiConstructor>();
 
+const AiAdaptors = new Map<Provider, new (config: clientConfig) => AI>();
+
+// openai
 AiAdaptors.set('openai', OpenAIAdaptor);
-
+// deepseek 兼容 open sdk
+AiAdaptors.set('deepseek', OpenAIAdaptor);
+// google
 AiAdaptors.set('google', GoogleGenAIAdaptor);
-
 
 export function createClient(config: clientConfig): AI {
 	const { provider } = config;
