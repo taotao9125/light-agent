@@ -1,39 +1,29 @@
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
-import { ToolDefinition } from '../tools/index';
+import type { ToolMeta } from '../tools/index';
 
-type Provider = 'openai' | 'google' | 'deepseek'
+type Provider = 'openai' | 'google' | 'deepseek';
 type Role = 'user' | 'assistant';
-
-// type Message = {
-// 	role: Role;
-// 	content: string;
-//   tools?: { name: string; args: Record<string, any> }[];
-// };
-
 
 // type StreamEvent = {
 // 	type: 'start' | 'text_delta' | 'end' | 'stop' | 'tool_calls'
 // 	partial: Message
 // }
 
-
 type AiRequestConfig = {
 	model: string;
-	messages: { content: string, role: Role }[];
-	tools?: Omit<ToolDefinition, 'parseArgs' | 'excute'>[]
+	messages: { content: string; role: Role }[];
+	tools?: ToolMeta[];
 };
 
 type AiResponse = {
-	message: { content: string, role: Role };
-	tool_calls?: { name: string; args: unknown }[]
+	message: { content: string; role: Role };
+	tool_calls?: { name: string; args: unknown }[];
 };
 
 interface AI {
 	chat(requestConfig: AiRequestConfig): Promise<AiResponse>;
 }
-
-
 
 type clientConfig = {
 	provider: Provider;
@@ -42,9 +32,6 @@ type clientConfig = {
 };
 
 type CreateClient = (p: clientConfig) => AI;
-
-
-
 
 class OpenAIAdaptor implements AI {
 	private client: OpenAI;
@@ -59,16 +46,15 @@ class OpenAIAdaptor implements AI {
 		const response = await this.client.chat.completions.create({
 			model: requestConfig.model,
 			messages: requestConfig.messages,
-			tools: requestConfig.tools?.map(tool => ({
+			tools: requestConfig.tools?.map((tool) => ({
 				type: 'function',
 				function: {
 					name: tool.name,
 					description: tool.description,
-					parameters: tool.schema
+					parameters: tool.schema,
 				},
-				tool_choice: 'auto'
-			}))
-
+				tool_choice: 'auto',
+			})),
 		});
 
 		return {
@@ -76,12 +62,12 @@ class OpenAIAdaptor implements AI {
 				role: response.choices[0].message.role,
 				content: response.choices[0].message.content ?? '',
 			},
-			tool_calls: (response.choices[0].message.tool_calls ?? []).map(tool => {
+			tool_calls: (response.choices[0].message.tool_calls ?? []).map((tool) => {
 				return {
 					name: tool.function.name,
-					args: JSON.parse(tool.function.arguments)
-				}
-			})
+					args: JSON.parse(tool.function.arguments),
+				};
+			}),
 		};
 	}
 }
@@ -117,8 +103,6 @@ class GoogleGenAIAdaptor implements AI {
 	}
 }
 
-
-
 const AiProviders = new Map<Provider, new (config: clientConfig) => AI>();
 
 // openai
@@ -128,11 +112,9 @@ AiProviders.set('deepseek', OpenAIAdaptor);
 // google
 AiProviders.set('google', GoogleGenAIAdaptor);
 
-
 export const createClient: CreateClient = (config) => {
 	const { provider } = config;
 	const adaptor = AiProviders.get(provider);
 	if (!adaptor) throw new Error('unknow provider');
 	return new adaptor(config);
-}
-
+};

@@ -33,10 +33,10 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Debug myflow.js",
+      "name": "Debug workflow index",
       "cwd": "${workspaceFolder}/mcp_server",
       "runtimeExecutable": "${env:HOME}/.nvm/versions/node/v24.14.1/bin/node",
-      "program": "${workspaceFolder}/mcp_server/src/workflow.js",
+      "program": "${workspaceFolder}/mcp_server/src/index.js",
       "console": "integratedTerminal",
       "skipFiles": [
         "<node_internals>/**",
