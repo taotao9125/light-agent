@@ -11,7 +11,7 @@ setGlobalDispatcher(new ProxyAgent(process.env.HTTPS_PROXY as string));
 async function main() {
 
 	const client = createClient({
-		// 目前只支持 gemeni, openai, deepseek
+		// 目前只支持 gemini, openai, deepseek
 		provider: 'deepseek',
 		apiKey: process.env.AI_DEEP_SEEK_API_KEY as string,
 		baseURL: process.env.AI_DEEP_SEEK_API_HOST as string,
@@ -19,13 +19,23 @@ async function main() {
 
 	const _ret = await client.chat({
 		model: 'deepseek-v4-flash',
-		messages: [{ role: 'user', content: '帮我读下 package.json' }],
+		messages: [{ role: 'user', content: '帮我读下当前目录下有哪些东西' }],
 		tools: toolRegistry.list(),
 	});
 
 
 	const _t = _ret;
 	
+	if (_ret.toolCalls?.length) {
+		for (const tool of _ret.toolCalls) {
+			const toolName = tool.name;
+			const args = tool.args;
+			const _toolRet= await toolRegistry.get(toolName)?.execute(args, {
+				cwd: process.cwd()
+			})
+			const x = _toolRet;
+		}
+	}
 
 
 	// const _ret = client.stream({
@@ -34,8 +44,8 @@ async function main() {
 	// 	tools: toolRegistry.list(),
 	// });
 
-	// for await (const thunk of _ret) {
-	// 	process.stdout.write(thunk.type + '|');
+	// for await (const chunk of _ret) {
+	// 	process.stdout.write(chunk.type + '|');
 	// }
 
 
@@ -63,10 +73,10 @@ async function main2() {
 	}).withResponse();
 
 	let counter = 0;
-	for await (const thunk of iter) {
-		process.stdout.write(thunk.choices[0].delta.content || '');
+	for await (const chunk of iter) {
+		process.stdout.write(chunk.choices[0].delta.content || '');
 		
-		if (thunk.choices[0].finish_reason) {
+		if (chunk.choices[0].finish_reason) {
 			debugger;
 		}
 	}

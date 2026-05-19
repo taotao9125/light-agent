@@ -1,12 +1,12 @@
-import { readFileTool } from './buildins';
+import { readFileTool, listFilesTool } from './builtins';
 
 import type {ToolDefinition} from './types';
 
 class ToolRegistry {
 	private tools = new Map<string, ToolDefinition<any, any>>();
 
-	register(name: string, tool: ToolDefinition<any, any>): void {
-		this.tools.set(name, tool);
+	register(tool: ToolDefinition<any, any>): void {
+		this.tools.set(tool.name, tool);
 	}
 
 	get(name: string): ToolDefinition<any, any> | undefined {
@@ -24,6 +24,7 @@ class ToolRegistry {
 
 const toolRegistry = new ToolRegistry();
 
-toolRegistry.register(readFileTool.name, readFileTool);
+toolRegistry.register(readFileTool);
+toolRegistry.register(listFilesTool);
 
 export default toolRegistry;

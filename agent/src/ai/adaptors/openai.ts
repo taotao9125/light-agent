@@ -35,8 +35,8 @@ export default class OpenAIAdaptor implements AiProvider {
 
       yield { type: 'start'};
 
-      for await (const thunk of stream) {
-        const deltaText = thunk.choices[0]?.delta?.content;
+      for await (const chunk of stream) {
+        const deltaText = chunk.choices[0]?.delta?.content;
         if (deltaText) {
           yield { type: 'text_delta', content: deltaText};
         }

@@ -7,17 +7,17 @@ export type AgentEvent =
   | ToolResultEvent;
 
 export type TextDelta = {
-  // stream thunk update
+  // stream chunk update
   type: 'text_delta';
   content: string;
 }
 
-// stream thunk finished
+// stream chunk finished
 export type DoneEvent = {
   type: 'end'
 }
 
-// stream thunk start
+// stream chunk start
 export type StartEvent = {
   type: 'start'
 }
