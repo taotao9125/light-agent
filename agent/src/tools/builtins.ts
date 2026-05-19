@@ -5,15 +5,17 @@ import type { ToolDefinition } from './types';
 
 export const readFileTool: ToolDefinition<{ path: string }, Promise<string>> = {
 	name: 'read_file',
-	description: 'Asynchronously reads the entire contents of a file.',
+	description: 'Read the full contents of a specific file when the user asks to inspect, open, or read a file.',
 	schema: {
 		type: 'object',
 		properties: {
 			path: {
 				type: 'string',
-				description: 'file path relative to the user input',
-			},
+				description: 'The user-specified file path to read, resolved relative to the agent working directory.',
+			}
 		},
+		required: ['path'],
+		additionalProperties: false,
 	},
 
 	async execute(p, context) {

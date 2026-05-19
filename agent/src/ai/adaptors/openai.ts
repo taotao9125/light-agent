@@ -3,6 +3,13 @@ import type { clientConfig, AiProvider, AiRequestConfig } from '../index';
 
 
 
+
+const pendingToolCalls = new Map<number, {
+  id: string;
+  name: string;
+  args: string;
+}>()
+
 export default class OpenAIAdaptor implements AiProvider {
   private client: OpenAI;
   constructor(config: clientConfig) {
@@ -29,6 +36,16 @@ export default class OpenAIAdaptor implements AiProvider {
           }
           return { role, content };
         }),
+         // tell ai how many tools I have.
+        tools: requestConfig.tools?.map((tool) => ({
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.schema,
+          },
+          tool_choice: 'auto',
+        })),
         stream: true
       }).withResponse();
 
@@ -36,10 +53,51 @@ export default class OpenAIAdaptor implements AiProvider {
       yield { type: 'start'};
 
       for await (const chunk of stream) {
+ 
         const deltaText = chunk.choices[0]?.delta?.content;
-        if (deltaText) {
+
+         if (deltaText) {
           yield { type: 'text_delta', content: deltaText};
         }
+
+        for(const tool of chunk.choices[0]?.delta?.tool_calls ?? []) {
+          let current = pendingToolCalls.get(tool.index) || {
+            id: '',
+            name: '',
+            args: ''
+          };
+
+          if (tool.id) {
+            current.id = tool.id;
+          }
+
+          if (tool.function?.name) {
+            current.name = tool.function?.name ?? '';
+          }
+
+          if (tool.function?.arguments) {
+            current.args += tool.function?.arguments ?? '';
+          }
+
+
+          pendingToolCalls.set(tool.index, current);
+        }
+
+        if (chunk.choices[0].finish_reason === 'tool_calls') {
+           for (const call of pendingToolCalls.values()) {
+              yield {
+                type: 'tool_call',
+                id: call.id,
+                name: call.name,
+                args: call.args ? JSON.parse(call.args) : {},
+              };
+            }
+            pendingToolCalls.clear();
+        }
+
+       
+
+       
       }
 
       yield { type: 'end' };

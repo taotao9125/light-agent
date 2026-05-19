@@ -11,6 +11,7 @@ export type ToolMeta = {
 			}
 		>;
 		required?: string[];
+		additionalProperties?: boolean;
 	};
 };
 
