@@ -16,27 +16,46 @@ export default class OpenAIAdaptor implements AiProvider {
     this.client = new OpenAI({
       apiKey: config.apiKey,
       baseURL: config.baseURL,
+      //  logLevel: 'debug',
     });
   }
 
   async *stream(requestConfig: AiRequestConfig): ReturnType<AiProvider['stream']> {
 
+    const messages = requestConfig.messages.map(message => {
+      const { role, content } = message;
+      if (role === 'tool') {
+        return {
+          role,
+          // from open ai sdk, tell it which tool I have called.
+          tool_call_id: message.toolCallId,
+          content: message.content
+        }
+      }
+
+      // if (role === 'assistant' && message.toolCalls) {
+      //   return {
+      //     role,
+      //     content: message.content,
+      //     tool_calls: message.toolCalls.map(tool => ({
+      //       id: tool.toolCallId,
+      //       function: {
+      //         arguments: typeof tool.args === 'object' ? JSON.stringify(tool.args) : tool.args,
+      //         name: tool.name
+      //       },
+      //       type: 'function'
+      //     }))
+      //   }
+      // }
+
+      return { role, content };
+    })
+
     try {
       const { data: stream } = await this.client.chat.completions.create({
         model: requestConfig.model,
-        messages: requestConfig.messages.map(message => {
-          const { role, content } = message;
-          if (role === 'tool') {
-            return {
-              role,
-              // from open ai sdk, tell it which tool I have called.
-              tool_call_id: message.toolCallId,
-              content: message.content
-            }
-          }
-          return { role, content };
-        }),
-         // tell ai how many tools I have.
+        messages,
+        // tell ai how many tools I have.
         tools: requestConfig.tools?.map((tool) => ({
           type: 'function',
           function: {
@@ -46,21 +65,32 @@ export default class OpenAIAdaptor implements AiProvider {
           },
           tool_choice: 'auto',
         })),
-        stream: true
+        stream: true,
+        // 暂时
+        //  reasoning: false,
+
       }).withResponse();
 
 
-      yield { type: 'start'};
+      yield { type: 'start' };
 
       for await (const chunk of stream) {
- 
-        const deltaText = chunk.choices[0]?.delta?.content;
 
-         if (deltaText) {
-          yield { type: 'text_delta', content: deltaText};
+        const delta = chunk.choices[0]?.delta;
+        // as any, deepseek 接口有 reasoning_content, 但 openai ts 类型没有
+        const reasoningContent = (delta as any).reasoning_content
+        const deltaText = delta?.content;
+
+        if (reasoningContent) {
+          yield {type: 'reasoning', content: reasoningContent}
         }
 
-        for(const tool of chunk.choices[0]?.delta?.tool_calls ?? []) {
+        if (deltaText) {
+          yield { type: 'text_delta', content: deltaText };
+        }
+
+
+        for (const tool of delta?.tool_calls ?? []) {
           let current = pendingToolCalls.get(tool.index) || {
             id: '',
             name: '',
@@ -84,23 +114,22 @@ export default class OpenAIAdaptor implements AiProvider {
         }
 
         if (chunk.choices[0].finish_reason === 'tool_calls') {
-           for (const call of pendingToolCalls.values()) {
-              yield {
-                type: 'tool_call',
-                id: call.id,
-                name: call.name,
-                args: call.args ? JSON.parse(call.args) : {},
-              };
-            }
-            pendingToolCalls.clear();
+          for (const call of pendingToolCalls.values()) {
+            yield {
+              type: 'tool_call',
+              id: call.id,
+              name: call.name,
+              args: call.args ? JSON.parse(call.args) : {},
+            };
+          }
+          pendingToolCalls.clear();
         }
 
-       
 
-       
+
       }
 
-      yield { type: 'end' };
+      yield { type: 'done' };
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       yield { type: 'error', message }

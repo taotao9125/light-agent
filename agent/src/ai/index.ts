@@ -2,7 +2,7 @@ import OpenAIAdaptor from './adaptors/openai';
 // import GoogleGenAIAdaptor from './providers/google';
 import type { ToolMeta } from '../tools/types';
 import type { Message, AssistantMessage} from '../protocol/message';
-import type {AgentEvent} from '../protocol/agentEvent';
+import type {LLMEvent} from '../protocol/LLMEvent';
 
 type Provider = 'openai' | 'google' | 'deepseek';
 
@@ -17,7 +17,7 @@ export type AiRequestConfig = {
 export interface AiProvider {
 	chat(requestConfig: AiRequestConfig): Promise<AssistantMessage>;
 	// stream method return stream event
-	stream(requestConfig: AiRequestConfig): AsyncIterable<AgentEvent>
+	stream(requestConfig: AiRequestConfig): AsyncIterable<LLMEvent>
 }
 
 export type clientConfig = {
