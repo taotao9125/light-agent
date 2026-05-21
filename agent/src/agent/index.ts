@@ -1,139 +1,119 @@
 import type { AiProvider } from '../ai/index';
+import { type AgentEvent, EventType } from '../protocol/events';
 import toolRegistry from '../tools/index';
-import type { Message } from '../protocol/message';
-import type { LLMToolCallEvent } from '../protocol/LLMEvent';
 
-import { AgentEvent } from '../protocol/agentEvent';
+// import type { Message } from '../protocol/message';
+// import type { LLMToolCallEvent } from '../protocol/LLMEvent';
 
-
-
+// import { AgentEvent } from '../protocol/agentEvent';
 
 type AgentConfig = {
-  provider: AiProvider;
-  model: string;
-  toolRegistry: typeof toolRegistry;
-}
-
+	provider: AiProvider;
+	model: string;
+	toolRegistry: typeof toolRegistry;
+};
 
 type AgentEventListener = (event: AgentEvent) => void;
 
 interface AgentInterface {
-  prompt: (messge: Message[]) => void;
-  on: (listener: AgentEventListener) => void;
+	prompt: (prompt: string) => void;
+	on: (listener: AgentEventListener) => void;
 }
 
 class Agent implements AgentInterface {
-  private provider: AiProvider;
-  private toolRegistry: typeof toolRegistry;
-  private messages: Message[];
-  private model: string;
-  private listeners: AgentEventListener[];
-  constructor(config: AgentConfig) {
-    this.provider = config.provider;
-    this.toolRegistry = config.toolRegistry;
-    this.messages = [];
-    this.listeners = [];
-    this.model = config.model;
-  }
+	private provider: AiProvider;
+	private toolRegistry: typeof toolRegistry;
+	private input: AgentEvent[];
+	private model: string;
+	private listeners: AgentEventListener[];
+	constructor(config: AgentConfig) {
+		this.provider = config.provider;
+		this.toolRegistry = config.toolRegistry;
+		this.input = [];
+		this.listeners = [];
+		this.model = config.model;
+	}
 
-  emit(event: AgentEvent) {
-    this.listeners.forEach(listener => listener(event))
-  }
+	emit(event: AgentEvent): void {
+		this.listeners.forEach((listener) => {
+			listener(event);
+		});
+	}
+	// input -> thought -> action -> ovservation -> output
+	async runAgentLoop() {
+		this.emit({ type: EventType.AGENT_START });
 
-  async runAgentLoop() {
+		let jobDone = false;
 
-    this.emit({ type: 'agent_start' });
+		while (!jobDone) {
+			let thoughtTextBuffer = '';
 
-    while (true) {
+			const stream = this.provider.stream({
+				model: this.model,
+				input: this.input,
+				tools: this.toolRegistry.list(),
+			});
 
-      let thisTurnLLMAssistantMsg = '';
-      let thisTurnLLMToolCalls: LLMToolCallEvent[] = [];
+			this.emit({ type: EventType.THOUGHT_START });
+			for await (const chunk of stream) {
+				if (chunk.type === EventType.THOUGHT) {
+					this.emit({
+						type: EventType.THOUGHT,
+						text: chunk.text,
+					});
+					// 存起来用于下一次
+					thoughtTextBuffer += chunk.text;
+				}
 
-      const llmStream = this.provider.stream({
-        model: this.model,
-        messages: this.messages,
-        tools: this.toolRegistry.list(),
-      });
+				// 本轮 LLM 返回结束
+				if (chunk.type === EventType.ACTION) {
+					// thought done
+					this.emit({ type: EventType.THOUGHT_DONE });
+					this.input.push({
+						type: EventType.THOUGHT,
+						text: thoughtTextBuffer,
+					});
 
+					// action 扔回去
+					this.input.push(chunk);
 
-      for await (const chunk of llmStream) {
-        if (chunk.type === 'text_delta') {
-          this.emit({ type: 'agent_text_delta', content: chunk.content });
-          thisTurnLLMAssistantMsg += chunk.content
-        }
+					// ovservation， 观察外部反应
+					const toolCommand = toolRegistry.get(chunk.name);
 
+					if (toolCommand) {
+						const content = await toolCommand.execute(chunk.args, { cwd: process.cwd() });
+						this.input.push({
+							type: 'observation',
+							id: chunk.id,
+							name: chunk.name,
+							result: content,
+						});
+					}
+				}
 
-        if (chunk.type === 'tool_call') {
-          thisTurnLLMToolCalls.push(chunk)
-        }
+				if (chunk.type === EventType.OUTPUT) {
+					this.emit({
+						type: EventType.OUTPUT,
+						text: chunk.text,
+					});
 
-      }
+					// 下一轮不用了，用户已经有最终答案了
+					jobDone = true;
+				}
+			}
+		}
 
-      // If there are no tool calls, stop loop
-      if (!thisTurnLLMToolCalls.length) {
-        this.emit({ type: 'agent_done' });
-        return;
-      }
+		this.emit({ type: EventType.AGENT_DONE });
+	}
 
-       //   content: string | ChatCompletionContentPartText[];
-    // role: "tool";
-    // tool_call_id: string;
+	prompt(prompt: string) {
+		this.input.push({ type: EventType.INPUT, source: 'user', text: prompt });
+		this.runAgentLoop();
+	}
 
-    
-      this.messages.push({
-        role: 'assistant',
-        content: thisTurnLLMAssistantMsg,
-        toolCalls: thisTurnLLMToolCalls.map(toolCall => ({
-          toolCallId: toolCall.id,
-          name: toolCall.name,
-          args: toolCall.args
-        }))
-      });
-
-
-      for (const toolCallRequest of thisTurnLLMToolCalls) {
-
-        const { id, name, args } = toolCallRequest;
-
-        this.emit({ type: 'agent_tool_call_start', id, name })
-
-        const toolCommand = this.toolRegistry.get(toolCallRequest.name);
-        if (!toolCommand) throw Error('unknown tool');
-
-
-        // todo: cwd 必须来自外部
-        const content = await toolCommand.execute(args, { cwd: process.cwd() })
-
-        this.emit({ type: 'agent_tool_call_done', id, name, content });
-
-        // 准备把 tool call 的结果发给 LLM，告诉它，我当前是tool消息，执行了什么 tool, id 是什么，结果是什么，它下一轮继续分析
-        this.messages.push({
-          role: 'tool',
-          name,
-          toolCallId: id,
-          content
-        })
-
-      }
-
-
-    }
-
-  }
-
-
-  prompt(message: Message[]) {
-    for (const msg of message) {
-      this.messages.push(msg)
-    }
-
-    this.runAgentLoop();
-  }
-
-  on(listener: AgentEventListener) {
-    this.listeners.push(listener);
-  }
-
+	on(listener: AgentEventListener) {
+		this.listeners.push(listener);
+	}
 }
 
 export default Agent;

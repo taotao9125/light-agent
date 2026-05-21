@@ -11,5 +11,6 @@
     "statusBar.debuggingForeground": "#FFF8F4",
     "statusBar.noFolderBackground": "#9B4207",
     "statusBar.noFolderForeground": "#FFF8F4"
-  }
+  },
+  "editor.hover.delay": 1000
 }

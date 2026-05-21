@@ -1,23 +1,20 @@
-import OpenAIAdaptor from './adaptors/openai';
+import type { AgentEvent } from '../protocol/events';
 // import GoogleGenAIAdaptor from './providers/google';
 import type { ToolMeta } from '../tools/types';
-import type { Message, AssistantMessage} from '../protocol/message';
-import type {LLMEvent} from '../protocol/LLMEvent';
+import OpenAIAdaptor from './adaptors/openai';
 
 type Provider = 'openai' | 'google' | 'deepseek';
 
-
-
 export type AiRequestConfig = {
 	model: string;
-	messages: Message[];
+	input: AgentEvent[];
 	tools?: ToolMeta[];
 };
 
 export interface AiProvider {
-	chat(requestConfig: AiRequestConfig): Promise<AssistantMessage>;
+	// chat(requestConfig: AiRequestConfig): Promise<AssistantMessage>;
 	// stream method return stream event
-	stream(requestConfig: AiRequestConfig): AsyncIterable<LLMEvent>
+	stream(requestConfig: AiRequestConfig): AsyncIterable<AgentEvent>;
 }
 
 export type clientConfig = {
@@ -25,7 +22,6 @@ export type clientConfig = {
 	apiKey: string;
 	baseURL?: string;
 };
-
 
 const AiProvidersFactory = new Map<Provider, new (config: clientConfig) => AiProvider>();
 

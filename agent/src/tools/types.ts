@@ -15,12 +15,10 @@ export type ToolMeta = {
 	};
 };
 
-
 export type ToolContext = {
 	cwd: string;
-}
+};
 
 export interface ToolDefinition<T, U> extends ToolMeta {
 	execute(p: T, context: ToolContext): U;
 }
-
