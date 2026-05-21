@@ -14,7 +14,7 @@ export const EventType = {
 	THOUGHT_START: 'thought_start',
 	THOUGHT_DONE: 'thought_done',
 	AGENT_DONE: 'agent_done',
-	AGNET_ERROR: 'agent_error',
+	AGENT_ERROR: 'agent_error',
 } as const;
 
 export type InputEvent = {
@@ -51,7 +51,7 @@ export type AgentStartEvent = { type: typeof EventType.AGENT_START };
 export type AgentThoughtStartEvent = { type: typeof EventType.THOUGHT_START };
 export type AgentThoughtDoneEvent = { type: typeof EventType.THOUGHT_DONE };
 export type AgentDoneEvent = { type: typeof EventType.AGENT_DONE };
-export type AgentError = { type: typeof EventType.AGNET_ERROR; message: string };
+export type AgentError = { type: typeof EventType.AGENT_ERROR; message: string };
 
 export type AgentEvent =
 	| InputEvent
