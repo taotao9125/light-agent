@@ -18,12 +18,12 @@ agent-runtime/
       websocket.ts              # WebSocket 入口
 
     protocol/
-      messages.ts               # ClientMessage / ServerEvent
+      events.ts                 # Input / Thought / Action / Observation / Output
+      transport.ts              # ClientMessage / ServerEvent
 
     agent/
-      AgentSession.ts           # 会话门面：prompt / abort / event
-      AgentLoop.ts              # 核心循环：model -> tool -> model
-      AgentEvent.ts             # 内部事件协议
+      Agent.ts                  # 会话门面 + loop 编排：prompt / on / event log
+      AgentLoop.ts              # 可选拆分：input -> thought -> action -> observation -> output
 
     ai/
       AiProvider.ts             # provider 统一接口
@@ -61,22 +61,23 @@ agent-runtime/
   ..>  注册 / 适配，不是每次 prompt 都发生
 
 CLI
-  --> AgentSession.prompt(input)
+  --> Agent.prompt(input)
 
 WebSocket Client
   ==> WebSocket Server
-  --> AgentSession.prompt(input)
+  --> Agent.prompt(input)
 
-AgentSession
-  --> AgentLoop.run(messages, provider, tools)
+Agent
+  --> AiProvider.stream(eventLog, tools)
+  --> ToolRegistry.get(action.name)
+  --> Tool.execute(action.args, context)
   ~~> CLI Renderer / WebSocket Sender / Logger
 
-AgentLoop
-  ~~> AiProvider.stream(request)
-  --> ToolRegistry.get(toolName)
-  --> Tool.execute(args)
+Agent Event Log
+  --> input -> thought -> action -> observation -> output
 
 AiProvider Adapter
+  --> normalize AgentEvent[] to vendor messages
   ==> OpenAI / DeepSeek API
 
 search_docs Tool
@@ -106,10 +107,11 @@ FakeProvider
 
 ```text
 我实现了一个 TypeScript Agent Runtime。
-CLI 和 WebSocket 都不直接操作 agent loop，而是通过 AgentSession。
-AgentLoop 只消费统一的 AiProvider 事件，不关心具体厂商 SDK。
+CLI 和 WebSocket 都不直接操作 provider/tool，而是通过 Agent.prompt()。
+Agent 内部以 AgentEvent[] 作为事件日志，按 input -> thought -> action -> observation -> output 推进。
+AiProvider adapter 负责把内部事件日志投影成厂商 messages，并把厂商 stream 规范化成内部事件。
 本地工具和 RAG 工具都统一注册到 ToolRegistry；MCP tool adapter 可作为同一接口下的扩展。
-测试里用 FakeProvider 模拟模型事件，稳定验证 tool call 和上下文回填。
+测试里用 FakeProvider 模拟事件流，稳定验证 action、observation 和最终 output。
 ```
 
 ## 1. 总体架构
@@ -119,27 +121,27 @@ AgentLoop 只消费统一的 AiProvider 事件，不关心具体厂商 SDK。
 ```text
 外部入口
   CLI
-    -> 直接函数调用 AgentSession.prompt()
+    -> 直接函数调用 Agent.prompt()
 
   WebSocket Client
     -> WebSocket JSON message
     -> WebSocket Server
-    -> 函数调用 AgentSession.prompt()
+    -> 函数调用 Agent.prompt()
 
 核心运行时
-  AgentSession
-    -> 函数调用 runAgentLoop()
-    -> EventEmitter / callback 向外广播 AgentEvent
-
-  AgentLoop
+  Agent
+    -> 保存 AgentEvent[] 事件日志
     -> AsyncIterable 消费 AiProvider.stream()
     -> 函数调用 ToolRegistry.get()
     -> 函数调用 Tool.execute()
+    -> callback 向外广播 AgentEvent
+    -> 后续可拆出 AgentLoop / AgentManager，但内部状态仍以事件日志为准
 
 AI 层
   AiProvider interface
-    -> OpenAIProvider 调 OpenAI SDK 或 HTTP API
-    -> DeepSeekProvider 调 OpenAI-compatible HTTP API
+    -> 输入 AgentEvent[] + ToolMeta[]
+    -> OpenAIProvider 把事件日志投影成 OpenAI messages
+    -> DeepSeekProvider 把事件日志投影成 DeepSeek/OpenAI-compatible messages
 
 工具层
   ToolRegistry
@@ -155,16 +157,17 @@ AI 层
 
 | 位置 | 通信方式 | 传输内容 | 为什么这样 |
 |---|---|---|---|
-| CLI -> AgentSession | 函数调用 | `prompt(input)` | 同进程，不需要网络协议 |
+| CLI -> Agent | 函数调用 | `prompt(text)` | 同进程，不需要网络协议 |
 | WebSocket Client -> Server | WebSocket JSON | `ClientMessage` | 跨进程/前后端，需要网络双向通信 |
-| WebSocket Server -> AgentSession | 函数调用 | `prompt(text)` / `abort()` | server 和 runtime 同进程 |
-| AgentSession -> CLI/WebSocket | EventEmitter / callback | `AgentEvent` | 一个 session event 可以被 CLI、WebSocket、日志同时消费 |
-| AgentSession -> AgentLoop | 函数调用 + `AsyncIterable` | `runAgentLoop(input)` | session 驱动一次 agent turn |
-| AgentLoop -> AiProvider | `AsyncIterable` | `provider.stream()` 产出 `AgentEvent` | 模型输出是流式过程 |
+| WebSocket Server -> Agent | 函数调用 | `prompt(text)` / `abort()` | server 和 runtime 同进程 |
+| Agent -> CLI/WebSocket | callback / Observer | `AgentEvent` | 一个 agent event 可以被 CLI、WebSocket、日志同时消费 |
+| Agent 内部 | 事件日志 | `AgentEvent[]` | 统一记录 input/thought/action/observation/output |
+| Agent -> AiProvider | `AsyncIterable` | `provider.stream({ input: AgentEvent[], tools })` | 模型输出是流式过程 |
+| AiProvider Adapter -> 厂商协议 | 适配 / 投影 | `AgentEvent[] -> vendor messages` | 内部事件日志不泄漏厂商 messages 细节 |
 | AiProvider -> 厂商 API | SDK / HTTP streaming | OpenAI/DeepSeek chunk | 厂商协议细节留在 adapter |
-| AgentLoop -> ToolRegistry | 函数调用 | `get(toolName)` | 本地运行时能力查找 |
-| AgentLoop -> Tool | 函数调用，返回 Promise | `execute(args)` | tool 是本地命令对象 |
-| MCP Tool -> MCP Server | MCP transport，例如 stdio / HTTP / WebSocket | MCP tool call | 外部工具协议，不泄漏到 AgentLoop |
+| Agent -> ToolRegistry | 函数调用 | `get(action.name)` | 本地运行时能力查找 |
+| Agent -> Tool | 函数调用，返回 Promise | `execute(action.args, context)` | tool 是本地命令对象 |
+| MCP Tool -> MCP Server | MCP transport，例如 stdio / HTTP / WebSocket | MCP tool call | 外部工具协议不泄漏到 Agent |
 | RAG Tool -> Retriever | 函数调用 | `search(query, topK)` | RAG 是本地能力，作为 tool 暴露 |
 
 ### 总览时序图
@@ -177,27 +180,27 @@ User
      Entry = CLI 或 WebSocket Server
 
 Entry
-  -> AgentSession: prompt(input)
+  -> Agent: prompt(input)
 
-AgentSession
-  -> AgentLoop: runAgentLoop(messages, provider, tools)
+Agent
+  -> eventLog: append InputEvent
+  -> AiProvider: stream({ input: eventLog, tools })
 
-AgentLoop
-  -> AiProvider: stream(request)
+AiProvider Adapter
+  -> vendor messages: normalize eventLog
   -> LLM API: SDK / HTTP streaming request
-  <- AiProvider: vendor chunks normalized as AgentEvent
+  <- AiProvider: vendor chunks normalized as Thought / Action / Output
 
-AgentLoop
-  -> AgentSession: AgentEvent
-  -> Output: emit event
+Agent
+  -> Output: emit AgentEvent
   -> User: terminal output or WebSocket ServerEvent
 
-如果出现 tool_call:
-  AgentLoop
-    -> ToolRegistry/Tool: execute(args)
-    <- ToolRegistry/Tool: tool result
-    -> messages: append tool result
-    -> AiProvider: continue with updated messages
+如果出现 action:
+  Agent
+    -> ToolRegistry/Tool: execute(action.args)
+    <- ToolRegistry/Tool: result
+    -> eventLog: append ObservationEvent
+    -> AiProvider: continue with updated eventLog
 ```
 
 ### 两条主链路
@@ -207,11 +210,11 @@ AgentLoop
 ```text
 用户输入
   -> CLI 读取 stdin
-  -> session.prompt(text)
-  -> runAgentLoop()
-  -> provider.stream()
+  -> agent.prompt(text)
+  -> Agent append InputEvent
+  -> provider.stream(eventLog)
   -> AgentEvent
-  -> session.emit(event)
+  -> agent.emit(event)
   -> CLI renderer 输出到终端
 ```
 
@@ -221,44 +224,44 @@ AgentLoop
 浏览器 / ws-client
   -> WebSocket 发送 ClientMessage
   -> WebSocket server 解析 JSON
-  -> sessionManager.getOrCreate(sessionId)
-  -> session.prompt(text)
-  -> runAgentLoop()
-  -> provider.stream()
-  -> session.emit(event)
+  -> agentManager.getOrCreate(sessionId)
+  -> agent.prompt(text)
+  -> Agent append InputEvent
+  -> provider.stream(eventLog)
+  -> agent.emit(event)
   -> WebSocket server 转成 ServerEvent
   -> ws.send(JSON.stringify(event))
 ```
 
-### Tool call 链路
+### Action / Observation 链路
 
 ```text
-AiProvider 产出 tool_call event
-  -> AgentLoop 收到 tool_call
-  -> ToolRegistry.get(event.name)
-  -> tool.execute(event.args)
-  -> AgentLoop 产出 tool_result event
-  -> tool result 追加到 messages
-  -> AgentLoop 继续请求 provider
+AiProvider 产出 ActionEvent
+  -> Agent 收到 action
+  -> ToolRegistry.get(action.name)
+  -> tool.execute(action.args, context)
+  -> Agent 产出 ObservationEvent
+  -> observation 追加到 AgentEvent[] 事件日志
+  -> Agent 继续请求 provider
 ```
 
 ### RAG 链路
 
-RAG 不直接插入 AgentLoop，而是作为工具：
+RAG 不直接插入 Agent，而是作为工具：
 
 ```text
-模型决定调用 search_docs
-  -> AgentLoop 执行 search_docs tool
+模型决定调用 search_docs，provider 产出 ActionEvent
+  -> Agent 执行 search_docs tool
   -> search_docs 调 Retriever.search(query)
   -> Retriever 调 Embedder.embed(query)
   -> VectorStore.search(embedding, topK)
   -> 返回 RetrievedChunk[]
-  -> tool_result 回填 messages
+  -> ObservationEvent 回填事件日志
 ```
 
 ### MCP 链路
 
-MCP 也不直接插入 AgentLoop，而是被 adapter 成内部 `Tool`：
+MCP 也不直接插入 Agent，而是被 adapter 成内部 `Tool`：
 
 ```text
 启动时
@@ -267,35 +270,34 @@ MCP 也不直接插入 AgentLoop，而是被 adapter 成内部 `Tool`：
   -> ToolRegistry.register(tool)
 
 运行时
-  模型产生 MCP tool 对应的 tool_call
-  -> AgentLoop 查 ToolRegistry
+  模型产生 MCP tool 对应的 action
+  -> Agent 查 ToolRegistry
   -> tool.execute(args)
   -> McpClient.callTool(name, args)
   -> MCP server 返回结果
-  -> tool_result 回填 messages
+  -> ObservationEvent 回填事件日志
 ```
 
 ### 数据流
 
 ```text
 prompt
-  -> AgentSession.prompt()
-  -> append user message
-  -> runAgentLoop()
-  -> provider.stream()
-  -> AgentEvent
-  -> if tool_call: ToolRegistry.get(name).execute(args)
-  -> append tool result
+  -> Agent.prompt()
+  -> append InputEvent
+  -> provider.stream(eventLog)
+  -> ThoughtEvent / ActionEvent / OutputEvent
+  -> if action: ToolRegistry.get(name).execute(args)
+  -> append ObservationEvent
   -> continue model loop
   -> emit events to CLI/WebSocket
 ```
 
 ### 核心原则
 
-- CLI/WebSocket 只负责输入输出，不直接跑 agent loop。
-- AgentSession 负责会话、事件、中断、messages。
-- AgentLoop 负责 tool call loop。
-- AiProvider 负责屏蔽厂商 SDK 差异。
+- CLI/WebSocket 只负责输入输出，不直接调用 provider/tool。
+- Agent 负责事件日志、事件广播、中断和 loop 编排。
+- AgentLoop 可以后续从 Agent 拆出，但仍以 AgentEvent[] 为输入输出。
+- AiProvider 负责屏蔽厂商 SDK 差异，并把 AgentEvent[] 投影成厂商 messages。
 - ToolRegistry 负责 name -> tool 的运行时注册和查找。
 - RAG 作为 tool 接入；MCP 也按同样方式接入，但作为加分项，不阻塞主线。
 - 测试优先用 FakeProvider，不依赖真实模型。
@@ -305,7 +307,7 @@ prompt
 <details>
 <summary>展开核心接口契约</summary>
 
-这些接口是 4 周都围绕的主线。先定住它们，后面每周只是增加实现。
+这些接口是 4 周都围绕的主线。新协议以 `AgentEvent[]` 作为内部事实来源，不再把 OpenAI/DeepSeek 的 `messages` 作为核心领域模型。`messages` 只存在于 provider adapter 内部，属于厂商协议投影结果。
 
 统一阅读口径：
 
@@ -323,11 +325,11 @@ prompt
 |---|---|
 | 位置 | WebSocket 入口协议层 |
 | 上游 | WebSocket client |
-| 下游 | WebSocket server，然后转给 AgentSession |
+| 下游 | WebSocket server，然后转给 Agent |
 | 输入 | `ClientMessage` |
 | 输出 | `ServerEvent` |
 | 通信方式 | WebSocket JSON |
-| 责任边界 | 只做网络协议转换，不运行 AgentLoop，不直接调用 provider |
+| 责任边界 | 只做网络协议转换，不直接调用 provider/tool |
 
 ```ts
 export type ClientMessage =
@@ -336,62 +338,62 @@ export type ClientMessage =
 
 export type ServerEvent =
   | { type: "session_started"; sessionId: string }
-  | { type: "text_delta"; sessionId: string; text: string }
-  | { type: "tool_call"; sessionId: string; name: string; args: unknown }
-  | { type: "tool_result"; sessionId: string; name: string; result: unknown }
-  | { type: "done"; sessionId: string }
-  | { type: "error"; sessionId: string; message: string };
+  | ({ sessionId: string } & AgentEvent);
 ```
 
-### 2.2 会话层
+### 2.2 Agent 门面 / 会话层
 
 | 项 | 内容 |
 |---|---|
 | 位置 | CLI/WebSocket 共用的 runtime 门面 |
 | 上游 | CLI 或 WebSocket server |
-| 下游 | AgentLoop；同时把 AgentEvent 发给 CLI/WebSocket/Logger |
+| 下游 | AiProvider、ToolRegistry、Tool；同时把 AgentEvent 发给 CLI/WebSocket/Logger |
 | 输入 | 用户 prompt、abort 请求、初始化配置 |
-| 输出 | AgentEvent、更新后的 messages |
-| 通信方式 | 上游用函数调用；下游用函数调用 AgentLoop；输出用 callback/EventEmitter |
+| 输出 | AgentEvent、更新后的事件日志 |
+| 通信方式 | 上游用函数调用；内部用 AsyncIterable 消费 provider；输出用 callback/EventEmitter |
 | 责任边界 | 不处理厂商 SDK 细节，不实现具体 tool，不写 WebSocket 协议 |
 
 ```ts
-export interface AgentSessionOptions {
+export interface AgentOptions {
   id: string;
   cwd: string;
   provider: AiProvider;
   tools: ToolRegistry;
-  initialMessages?: Message[];
+  model: string;
+  maxTurns?: number;
+  initialEvents?: AgentEvent[];
 }
 
-export class AgentSession {
+export class Agent {
   readonly id: string;
 
   onEvent(handler: (event: AgentEvent) => void): () => void;
   prompt(input: string): Promise<void>;
   abort(): void;
-  getMessages(): Message[];
+  getEvents(): AgentEvent[];
 }
 ```
 
-### 2.3 Agent 循环层
+### 2.3 Agent 事件循环层
 
 | 项 | 内容 |
 |---|---|
 | 位置 | Agent 核心循环层 |
-| 上游 | AgentSession |
+| 上游 | Agent.prompt() |
 | 下游 | AiProvider、ToolRegistry、Tool |
-| 输入 | messages、provider、tools、cwd、signal |
-| 输出 | AgentEvent；必要时修改 messages，追加 assistant/tool result |
-| 通信方式 | 被 AgentSession 函数调用；通过 AsyncIterable 产出事件；函数调用 tool |
+| 输入 | eventLog、provider、tools、cwd、signal |
+| 输出 | AgentEvent；必要时追加 thought/action/observation/output |
+| 通信方式 | Agent 内部 while loop；通过 AsyncIterable 消费 provider；函数调用 tool |
 | 责任边界 | 不关心 CLI/WebSocket，不关心具体 provider SDK，不直接做 RAG/MCP 特判 |
 
 ```ts
 export interface AgentLoopInput {
-  messages: Message[];
+  events: AgentEvent[];
   provider: AiProvider;
   tools: ToolRegistry;
+  model: string;
   cwd: string;
+  maxTurns?: number;
   signal?: AbortSignal;
 }
 
@@ -403,16 +405,17 @@ export async function* runAgentLoop(input: AgentLoopInput): AsyncIterable<AgentE
 | 项 | 内容 |
 |---|---|
 | 位置 | AI provider adapter 层 |
-| 上游 | AgentLoop |
+| 上游 | Agent |
 | 下游 | OpenAI / DeepSeek 等厂商 SDK 或 HTTP API |
-| 输入 | `AiRequest`：messages、tools、signal |
+| 输入 | `AiRequest`：AgentEvent[]、tools、signal |
 | 输出 | `AsyncIterable<AgentEvent>` |
-| 通信方式 | AgentLoop 用 AsyncIterable 消费；provider 内部用 SDK/HTTP streaming |
-| 责任边界 | 不执行工具，不保存 session，不关心 CLI/WebSocket，只做厂商协议到 AgentEvent 的转换 |
+| 通信方式 | Agent 用 AsyncIterable 消费；provider 内部用 SDK/HTTP streaming |
+| 责任边界 | 不执行工具，不保存 session，不关心 CLI/WebSocket，只做 `AgentEvent[] -> vendor messages` 和 vendor chunks -> AgentEvent 的转换 |
 
 ```ts
 export interface AiRequest {
-  messages: Message[];
+  model: string;
+  input: AgentEvent[];
   tools: ToolDefinition[];
   signal?: AbortSignal;
 }
@@ -428,12 +431,12 @@ export interface AiProvider {
 | 项 | 内容 |
 |---|---|
 | 位置 | 工具能力层 |
-| 上游 | AgentLoop 根据 tool_call 查找工具 |
+| 上游 | Agent 根据 ActionEvent 查找工具 |
 | 下游 | 本地函数、RAG Retriever、MCP Client |
 | 输入 | tool name、args、ToolContext |
 | 输出 | tool result |
 | 通信方式 | ToolRegistry 用 Map 查找；Tool.execute 返回 Promise |
-| 责任边界 | Tool 不直接调用模型，不管理 session；RAG/MCP 必须适配成 Tool，而不是侵入 AgentLoop |
+| 责任边界 | Tool 不直接调用模型，不管理事件日志；RAG/MCP 必须适配成 Tool，而不是侵入 Agent |
 
 ```ts
 export interface ToolDefinition {
@@ -463,56 +466,58 @@ export class ToolRegistry {
 }
 ```
 
-### 2.6 共享数据：Message / AgentEvent
-
-这些类型在多个层之间传递，是整个 runtime 的数据契约。这里不再用“谁调用谁”描述，而是说明数据在哪条链路上流动。
-
-#### Message
+### 2.6 共享数据：AgentEvent
 
 | 项 | 内容 |
 |---|---|
-| 位置 | 会话历史数据 |
-| 上游 | AgentSession 添加 user message；AgentLoop 添加 assistant/tool message |
-| 下游 | AiProvider 读取 messages；AgentSession 保存 messages |
-| 输入 | 用户输入、模型输出、tool result |
-| 输出 | 下一次模型请求的上下文 |
-| 通信方式 | 普通对象数组，在 session/loop/provider 之间传递 |
-| 责任边界 | Message 只是数据，不包含执行逻辑 |
+| 位置 | runtime 内部事件日志 + 对外事件协议 |
+| 上游 | Agent.prompt 添加 input；AiProvider 产生 thought/action/output；Agent 产生 observation/error/done |
+| 下游 | AiProvider adapter、CLI renderer、WebSocket sender、Logger、测试 |
+| 输入 | 用户输入、模型推理、工具请求、工具结果、最终输出、错误 |
+| 输出 | 下一轮模型请求的上下文；UI/WebSocket/日志可消费的统一事件 |
+| 通信方式 | 普通对象数组 + AsyncIterable + callback |
+| 责任边界 | AgentEvent 是内部事实来源；厂商 messages 只是 adapter 的投影结果 |
 
 ```ts
-export type Message =
-  | { role: "system"; content: string }
-  | { role: "user"; content: string }
-  | { role: "assistant"; content: string; toolCalls?: ToolCall[] }
-  | { role: "tool"; toolCallId: string; name: string; content: string };
+export const EventType = {
+  INPUT: "input",
+  THOUGHT: "thought",
+  ACTION: "action",
+  OBSERVATION: "observation",
+  OUTPUT: "output",
+  AGENT_START: "agent_start",
+  THOUGHT_START: "thought_start",
+  THOUGHT_DONE: "thought_done",
+  AGENT_DONE: "agent_done",
+  AGENT_ERROR: "agent_error",
+} as const;
 
-export interface ToolCall {
-  id: string;
-  name: string;
-  args: unknown;
-}
-```
-
-#### AgentEvent
-
-| 项 | 内容 |
-|---|---|
-| 位置 | runtime 事件协议 |
-| 上游 | AiProvider 产生模型事件；AgentLoop 产生 tool_result；AgentSession 转发 |
-| 下游 | CLI renderer、WebSocket sender、Logger、测试 |
-| 输入 | 模型 stream chunk、tool execution result、错误 |
-| 输出 | UI/WebSocket/日志可消费的统一事件 |
-| 通信方式 | AsyncIterable + callback/EventEmitter |
-| 责任边界 | AgentEvent 是运行过程事件，不等同于最终 assistant message |
-
-```ts
 export type AgentEvent =
-  | { type: "text_delta"; text: string }
-  | { type: "tool_call"; id: string; name: string; args: unknown }
-  | { type: "tool_result"; id: string; name: string; result: unknown }
-  | { type: "done" }
-  | { type: "error"; message: string };
+  | { type: typeof EventType.INPUT; text: string; source?: "user" | "system" }
+  | { type: typeof EventType.THOUGHT; text: string }
+  | { type: typeof EventType.ACTION; id: string; name: string; args: Record<string, unknown> }
+  | { type: typeof EventType.OBSERVATION; id: string; name: string; result: unknown }
+  | { type: typeof EventType.OUTPUT; text: string }
+  | { type: typeof EventType.AGENT_START }
+  | { type: typeof EventType.THOUGHT_START }
+  | { type: typeof EventType.THOUGHT_DONE }
+  | { type: typeof EventType.AGENT_DONE }
+  | { type: typeof EventType.AGENT_ERROR; message: string };
 ```
+
+### 2.7 厂商 messages 投影
+
+内部不定义 `Message` 作为主协议，但 provider adapter 可以把 `AgentEvent[]` 投影为厂商 messages。
+
+```text
+InputEvent       -> user/system message
+ThoughtEvent     -> assistant reasoning_content / internal thought field
+ActionEvent      -> assistant tool_calls
+ObservationEvent -> tool message
+OutputEvent      -> assistant content
+```
+
+这层是 Anti-Corruption Layer：OpenAI / DeepSeek 的 `role`、`tool_calls`、`tool_call_id`、`reasoning_content` 不应该扩散到 Agent/Tool/CLI。
 
 </details>
 
@@ -521,8 +526,8 @@ export type AgentEvent =
 如果时间不够，按这个顺序保交付：
 
 ```text
-P0：AgentSession + AgentLoop + AiProvider + ToolRegistry
-P0：CLI demo 跑通 tool call loop
+P0：Agent + AgentEvent + AiProvider + ToolRegistry
+P0：CLI demo 跑通 action -> observation -> output loop
 P0：WebSocket 事件协议
 P0：RAG search_docs tool
 P0：FakeProvider 测试
@@ -586,14 +591,14 @@ MCP 卡住超过半天，就暂停，回到 RAG / 测试 / 文档。
 
 ### 目标
 
-把已有的 “SDK + messages + loop” 改造成分层 Agent Runtime。
+把已有的 “SDK + tool call 实验代码” 改造成基于事件日志的分层 Agent Runtime。
 
 ### 交付模块
 
 ```text
-src/agent/AgentEvent.ts
-src/agent/AgentLoop.ts
-src/agent/AgentSession.ts
+src/protocol/events.ts
+src/agent/Agent.ts
+src/agent/AgentLoop.ts          # 后续可选拆分
 src/ai/AiProvider.ts
 src/ai/OpenAIProvider.ts
 src/ai/DeepSeekProvider.ts
@@ -605,19 +610,19 @@ src/cli/cli.ts
 
 ### 本周完成标准
 
-- `AgentEvent` 定义完成。
+- `AgentEvent` 定义完成，覆盖 input / thought / action / observation / output。
 - `AiProvider` 定义完成。
 - `Tool` / `ToolRegistry` 定义完成。
-- `AgentLoop` 能处理一次 tool call。
-- `AgentSession.prompt()` 能驱动 loop。
+- `Agent` 能处理一次 action -> observation -> 下一轮 output。
+- `Agent.prompt()` 能驱动事件 loop。
 - CLI 能跑通 `read_file`。
 
 验收：
 
 ```text
 CLI 输入：帮我读取 package.json
-模型触发 read_file
-tool result 回填 messages
+模型产出 ActionEvent(read_file)
+tool result 回填 ObservationEvent
 模型继续输出最终答案
 ```
 
@@ -625,17 +630,19 @@ tool result 回填 messages
 
 | 模式 / 概念 | 解决的问题 | 你怎么用 |
 |---|---|---|
-| Facade | 入口层不应该知道内部复杂流程 | `AgentSession.prompt(input)` 包住 loop/messages/events |
-| Event Stream | 模型输出是过程，不是最终字符串 | 用 `AgentEvent` 表达 text/tool/done/error |
+| Facade | 入口层不应该知道内部复杂流程 | `Agent.prompt(input)` 包住事件日志、provider、tool loop |
+| Event Log | runtime 需要统一历史和过程 | 用 `AgentEvent[]` 表达 input/thought/action/observation/output |
+| Event Stream | 模型输出是过程，不是最终字符串 | provider stream 产出 Thought/Action/Output |
 | Registry | 不要写 tool if/else | `ToolRegistry` 用 `Map<string, Tool>` |
 | Command | tool call 是 name + args -> execute | 每个 tool 是 `{ name, execute }` |
-| Pipeline | 输入到输出要分层流动 | prompt -> session -> loop -> provider/tool -> event |
+| Pipeline | 输入到输出要分层流动 | input -> thought -> action -> observation -> output |
+| Anti-Corruption Layer | 内部协议不要被 SDK 污染 | provider adapter 负责 AgentEvent[] -> vendor messages |
 
 本周重点理解：
 
 ```text
 CLI 不直接调用 provider。
-AgentLoop 不直接依赖具体 SDK。
+Agent 内部不直接依赖具体 SDK message 结构。
 Tool 不写中央 switch，注册到 ToolRegistry。
 ```
 
@@ -644,7 +651,8 @@ Tool 不写中央 switch，注册到 ToolRegistry。
 第 1 天：
 
 - 整理项目目录。
-- 定义 `Message`、`AgentEvent`、`AiProvider`、`Tool`。
+- 定义 `AgentEvent`、`EventType`、`AiProvider`、`Tool`。
+- 明确内部事实来源是 `AgentEvent[]`，不再把 vendor `messages` 作为核心模型。
 - 写 README 架构草图。
 
 第 2 天：
@@ -654,19 +662,21 @@ Tool 不写中央 switch，注册到 ToolRegistry。
 
 第 3 天：
 
-- 上午实现 `AgentLoop` 基础 while loop。
+- 上午实现 `Agent` 基础 while loop。
+- 支持 `input -> thought -> action -> observation -> output`。
 - 下午锻炼。
-- 晚上写 AgentLoop 设计笔记。
+- 晚上写事件 loop 设计笔记。
 
 第 4 天：
 
 - 实现 OpenAI 或 DeepSeek provider adapter。
 - provider 输出统一 `AgentEvent`。
+- adapter 负责 `AgentEvent[] -> vendor messages` 和 vendor chunks -> AgentEvent。
 
 第 5 天：
 
-- 实现 `AgentSession.prompt()`。
-- CLI 只调用 session。
+- 实现 `Agent.prompt()` / `Agent.on()`。
+- CLI 只创建 Agent、订阅事件、调用 `agent.prompt()`。
 
 第 6 天：
 
@@ -693,9 +703,9 @@ Tool 不写中央 switch，注册到 ToolRegistry。
 ### 交付模块
 
 ```text
-src/protocol/messages.ts
+src/protocol/transport.ts
 src/server/websocket.ts
-src/session/SessionManager.ts
+src/agent/AgentManager.ts
 src/trace/trace.ts
 scripts/ws-client.ts
 ```
@@ -709,14 +719,10 @@ export type ClientMessage =
 
 export type ServerEvent =
   | { type: "session_started"; sessionId: string }
-  | { type: "text_delta"; sessionId: string; text: string }
-  | { type: "tool_call"; sessionId: string; name: string; args: unknown }
-  | { type: "tool_result"; sessionId: string; name: string; result: unknown }
-  | { type: "done"; sessionId: string }
-  | { type: "error"; sessionId: string; message: string };
+  | ({ sessionId: string } & AgentEvent);
 
-export class SessionManager {
-  getOrCreate(sessionId: string): AgentSession;
+export class AgentManager {
+  getOrCreate(sessionId: string): Agent;
   abort(sessionId: string): void;
   remove(sessionId: string): void;
 }
@@ -732,26 +738,26 @@ export interface TraceContext {
 
 - WebSocket server 能启动。
 - client 能发送 prompt。
-- server 能推送 `text_delta/tool_call/tool_result/done`。
+- server 能推送 `input/thought/action/observation/output/agent_done/agent_error`。
 - 支持 abort。
 - 支持 timeout。
 - 日志包含 `traceId` 和 `sessionId`。
-- CLI 和 WebSocket 共用 `AgentSession`。
+- CLI 和 WebSocket 共用 `Agent`。
 
 ### 借鉴 pi 的模式
 
 | 模式 / 概念 | 解决的问题 | 你怎么用 |
 |---|---|---|
-| Observer / Pub-Sub | 多个消费者要响应同一事件 | WebSocket 订阅 session event |
+| Observer / Pub-Sub | 多个消费者要响应同一事件 | WebSocket 订阅 AgentEvent |
 | Protocol Adapter | 内部事件和外部协议不同 | `AgentEvent` -> `ServerEvent` |
-| Session Manager | 多个会话需要管理 | `sessionId -> AgentSession` |
-| Cancellation Boundary | 用户需要中断长任务 | `AbortController` 贯穿 session/loop/provider |
+| Agent Manager | 多个会话需要管理 | `sessionId -> Agent` |
+| Cancellation Boundary | 用户需要中断长任务 | `AbortController` 贯穿 Agent/provider/tool |
 | Trace Context | 调试需要串起一次请求 | 每次 prompt 带 `traceId/sessionId` |
 
 本周重点理解：
 
 ```text
-WebSocket 不是新的 AgentLoop。
+WebSocket 不是新的 Agent。
 WebSocket 只是协议层。
 ```
 
@@ -764,12 +770,12 @@ WebSocket 只是协议层。
 
 第 9 天：
 
-- WebSocket 接入 `AgentSession`。
-- 推送 session events。
+- WebSocket 接入 `Agent`。
+- 推送 AgentEvent。
 
 第 10 天：
 
-- 上午实现 `SessionManager`。
+- 上午实现 `AgentManager`。
 - 下午锻炼。
 - 晚上写协议文档草稿。
 
@@ -805,7 +811,7 @@ WebSocket 只是协议层。
 
 本周主线是 RAG。MCP 做最小 adapter，目标是证明“外部工具协议也能统一成内部 Tool”，不追求完整 MCP 平台能力。
 
-核心目标：把 RAG 作为 tool 接入 Agent Runtime；MCP 最小 adapter 也遵循同一思路，但不侵入 AgentLoop。
+核心目标：把 RAG 作为 tool 接入 Agent Runtime；MCP 最小 adapter 也遵循同一思路，但不侵入 Agent。
 
 ### 交付模块
 
@@ -887,13 +893,13 @@ export function adaptMcpTool(client: McpClient, tool: McpToolInfo): Tool;
 | Repository / Store | 存储实现可能变化 | `VectorStore` 先内存，未来可换 DB |
 | Tool as Capability | 外部能力统一成 tool | RAG 进 ToolRegistry，MCP 也按同样方式作为加分项接入 |
 | Retrieval Pipeline | 检索流程要拆层 | load -> chunk -> embed -> search -> result |
-| Boundary Isolation | AgentLoop 不应知道 RAG/MCP 细节 | AgentLoop 只执行 tool |
+| Boundary Isolation | Agent 不应知道 RAG/MCP 细节 | Agent 只执行 `ToolRegistry` 返回的 tool |
 
 本周重点理解：
 
 ```text
 RAG 最后应该变成 tool；MCP 如果做，也应该变成 tool。
-AgentLoop 不知道 tool 来自哪里。
+Agent 不知道 tool 来自哪里。
 ```
 
 ### 每日安排
@@ -973,16 +979,16 @@ export function createFakeProvider(events: AgentEvent[]): AiProvider {
 }
 
 export interface AgentTestHarness {
-  session: AgentSession;
+  agent: Agent;
   prompt(input: string): Promise<AgentEvent[]>;
-  messages(): Message[];
+  events(): AgentEvent[];
 }
 ```
 
 ### 本周完成标准
 
 - FakeProvider。
-- AgentLoop 测试。
+- Agent loop 测试。
 - Tool call 测试。
 - RAG 测试。
 - WebSocket demo。
@@ -1015,7 +1021,7 @@ export interface AgentTestHarness {
 第 22 天：
 
 - 实现 FakeProvider。
-- 写 AgentLoop 测试。
+- 写 Agent loop 测试。
 
 第 23 天：
 
