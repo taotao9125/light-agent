@@ -30,7 +30,7 @@ async function main() {
 				break;
 
 			case 'thought_start':
-				process.stdout.write(`\x1b[33m🧠 推理中: \x1b[0m`);
+				process.stdout.write(`\x1b[90m🧠 推理中: \x1b[0m`);
 				break;
 
 			case 'thought':

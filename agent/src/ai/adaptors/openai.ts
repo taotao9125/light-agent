@@ -36,7 +36,7 @@ import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
 ];
  */
 
-
+// 注意这是 deepseek 要求的结构, 回传时, 都塞进一个 assistant message 里
 const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMessageParam[] => {
 	const messages = [] as ChatCompletionMessageParam[];
 		const assistantMessage = {
@@ -52,12 +52,12 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 				messages.push({ role: event.source ?? 'user', content: event.text });
 			}
 
-			if (type === EventType.THOUGHT) {
-				messages.push(assistantMessage);
+			// output/THOUGHT/ACTION 都需要回传到 assistantMessage 里
+			if (type === EventType.OUTPUT) {
+				assistantMessage.content = event.text;
 			}
 
 			if (type === EventType.THOUGHT) {
-				// deepseek api 接口不兼容 openai ts 类型
 				(assistantMessage as any).reasoning_content = event.text;
 			}
 
@@ -73,6 +73,8 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 			}
 
 			if (type === EventType.OBSERVATION) {
+				// 证明有 tool call, 把assistantMessage回传回去
+				messages.push(assistantMessage)
 				messages.push({ role: 'tool', tool_call_id: event.id, content: event.result });
 			}
 		}
@@ -101,8 +103,8 @@ export default class OpenAIAdaptor implements AiProvider {
 					description: tool.description,
 					parameters: tool.schema,
 				},
-				tool_choice: 'auto',
 			})),
+			tool_choice: 'auto',
 			stream: true,
 		};
 	}
