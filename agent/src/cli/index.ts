@@ -1,11 +1,21 @@
 #!/usr/bin/env node
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
+
+import readline from 'node:readline/promises';
+ import { stdin, stdout} from 'node:process';
+
 import Agent from '../agent/index';
 import { createClient } from '../ai/index';
 import toolRegistry from '../tools';
 import 'dotenv/config';
 
 setGlobalDispatcher(new ProxyAgent(process.env.HTTPS_PROXY as string));
+
+
+const rl = readline.createInterface({
+	input: stdin,
+	output: stdout
+})
 
 async function main() {
 	const deepSeekProvider = createClient({
@@ -21,7 +31,8 @@ async function main() {
 		toolRegistry: toolRegistry,
 	});
 
-	let isFirstOutput = true;
+
+	let isFirstOutput = false;
 
 	agent.on((event) => {
 		switch (event.type) {
@@ -55,12 +66,36 @@ async function main() {
 				process.stdout.write(event.text);
 				break;
 
+			case 'agent_error':
+				process.stderr.write(`\n\x1b[31mAgent error: ${event.message}\x1b[0m\n`);
+				break;
+
+			case 'agent_done':
+				process.stdout.write('\n');
+				break;
+
 			default:
 				break;
 		}
 	});
 
-	agent.prompt('读一下 package.json 文件内容');
+	while (true) {
+		const text = (await rl.question('\n> ')).trim();
+    if (!text) {
+			continue;
+		};
+
+    if (text === 'exit' || text === 'quit') {
+      rl.close();
+      break;
+    }
+
+		await agent.prompt(text);
+	}
+
+	
+
+	
 }
 
 main();

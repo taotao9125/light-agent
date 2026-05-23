@@ -11,75 +11,112 @@ import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
 
 /** deepseek 的每一轮思考模式 message 结构
  * const messages: Messages = [
-  {
-    role: 'user',
-    content: '帮我读下 package.json'
-  },
-  {
-    role: 'assistant',
-    content: null,
-    reasoning_content: '用户想读 package.json，我来调用 read_file 工具',
-    tool_calls: [{
-      id: 'call_00_xxx',
-      type: 'function',
-      function: {
-        name: 'read_file',
-        arguments: '{"path": "package.json"}'
-      }
-    }]
-  },
-  {
-    role: 'tool',
-    tool_call_id: 'call_00_xxx',
-    content: '{"name": "agent", "version": "1.0.0"}'
-  }
+	{
+		role: 'user',
+		content: '帮我读下 package.json'
+	},
+	{
+		role: 'assistant',
+		content: null,
+		reasoning_content: '用户想读 package.json，我来调用 read_file 工具',
+		tool_calls: [{
+			id: 'call_00_xxx',
+			type: 'function',
+			function: {
+				name: 'read_file',
+				arguments: '{"path": "package.json"}'
+			}
+		}]
+	},
+	{
+		role: 'tool',
+		tool_call_id: 'call_00_xxx',
+		content: '{"name": "agent", "version": "1.0.0"}'
+	}
 ];
  */
 
 // 注意这是 deepseek 要求的结构, 回传时, 都塞进一个 assistant message 里
 const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMessageParam[] => {
-	const messages = [] as ChatCompletionMessageParam[];
-		const assistantMessage = {
-			role: 'assistant',
-			content: '',
-			reasoning_content: '',
-			tool_calls: [],
-		} as ChatCompletionAssistantMessageParam;
+	const stringifyContent = (content: unknown): string => {
+		if (typeof content === 'string') return content;
+		return JSON.stringify(content);
+	};
 
-		for (const event of events) {
+	const splitEventsByInput = (events: AgentEvent[]): AgentEvent[][] => {
+		const inputIndexes = events.reduce<number[]>((indexes, event, index) => {
+			if (event.type === EventType.INPUT) {
+				indexes.push(index);
+			}
+			return indexes;
+		}, []);
+
+		return inputIndexes.map((startIndex, index) => {
+			const endIndex = inputIndexes[index + 1] ?? events.length;
+			return events.slice(startIndex, endIndex);
+		});
+	};
+
+	const eventGroupToMessages = (eventGroup: AgentEvent[]): ChatCompletionMessageParam[] => {
+		const messages = [] as ChatCompletionMessageParam[];
+		let thought = '';
+		const pendingActions: Extract<AgentEvent, { type: typeof EventType.ACTION }>[] = [];
+
+		const commitAssistantToolCall = (): void => {
+			if (!pendingActions.length) return;
+
+			messages.push({
+				role: 'assistant',
+				content: null,
+				reasoning_content: thought,
+				tool_calls: pendingActions.map((action) => ({
+					id: action.id,
+					type: 'function',
+					function: {
+						arguments: JSON.stringify(action.args),
+						name: action.name,
+					},
+				})),
+			} as ChatCompletionAssistantMessageParam);
+
+
+			
+			thought = '';
+			pendingActions.length = 0;
+		};
+
+		for (const event of eventGroup) {
 			const type = event.type;
 			if (type === EventType.INPUT) {
 				messages.push({ role: event.source ?? 'user', content: event.text });
 			}
 
-			// output/THOUGHT/ACTION 都需要回传到 assistantMessage 里
-			if (type === EventType.OUTPUT) {
-				assistantMessage.content = event.text;
-			}
-
 			if (type === EventType.THOUGHT) {
-				(assistantMessage as any).reasoning_content = event.text;
+				thought = event.text;
 			}
 
 			if (type === EventType.ACTION) {
-				(assistantMessage as any).tool_calls.push({
-					id: event.id,
-					type: 'function',
-					function: {
-						arguments: JSON.stringify(event.args),
-						name: event.name,
-					},
-				});
+				pendingActions.push(event);
 			}
 
 			if (type === EventType.OBSERVATION) {
-				// 证明有 tool call, 把assistantMessage回传回去
-				messages.push(assistantMessage)
-				messages.push({ role: 'tool', tool_call_id: event.id, content: event.result });
+				commitAssistantToolCall();
+				messages.push({ role: 'tool', tool_call_id: event.id, content: stringifyContent(event.result) });
+			}
+
+			if (type === EventType.OUTPUT) {
+				commitAssistantToolCall();
+				messages.push({ role: 'assistant', content: event.text });
+				thought = '';
 			}
 		}
 
+		commitAssistantToolCall();
 		return messages;
+	};
+
+	const eventGroups = splitEventsByInput(events);
+	return eventGroups.flatMap(eventGroupToMessages);
 }
 
 export default class OpenAIAdaptor implements AiProvider {

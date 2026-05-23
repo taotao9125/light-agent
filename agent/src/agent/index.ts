@@ -1,6 +1,6 @@
 import type { AiProvider } from '../ai/index';
 import { EventType } from '../protocol/events';
-import type { AgentEvent, AgentError, ActionEvent } from '../protocol/events';
+import type { AgentEvent, AgentError, ActionEvent, ObservationEvent } from '../protocol/events';
 import toolRegistry from '../tools/index';
 
 
@@ -15,21 +15,21 @@ type AgentConfig = {
 type AgentEventListener = (event: AgentEvent) => void;
 
 interface AgentInterface {
-	prompt: (prompt: string) => void;
+	prompt: (prompt: string) => Promise<void>;
 	on: (listener: AgentEventListener) => void;
 }
 
 class Agent implements AgentInterface {
 	private provider: AiProvider;
 	private toolRegistry: typeof toolRegistry;
-	private input: AgentEvent[];
+	private eventLog: AgentEvent[];
 	private model: string;
 	private listeners: AgentEventListener[];
 	private maxTurns: number;
 	constructor(config: AgentConfig) {
 		this.provider = config.provider;
 		this.toolRegistry = config.toolRegistry;
-		this.input = [];
+		this.eventLog = [];
 		this.listeners = [];
 		this.model = config.model;
 		this.maxTurns = config.maxTurns ?? 5;
@@ -53,9 +53,11 @@ class Agent implements AgentInterface {
 
 		while (true) {
 			turn++;
-			let nextTurnThoughtTextBuffer = '';
-			let nextTurnOutputTextBuffer = '';
-			let actionEvents: ActionEvent[] = [];
+			let turnThoughtTextBuffer = '';
+			let turnOutputTextBuffer = '';
+			let turnActionEvents: ActionEvent[] = [];
+			let turnObservationEvents: ObservationEvent[] = [];
+
 			let errorEvents: AgentError[] = [];
 
 			let hasEmitThoughtStart = false;
@@ -67,7 +69,7 @@ class Agent implements AgentInterface {
 
 			const stream = this.provider.stream({
 				model: this.model,
-				input: this.input,
+				input: this.eventLog,
 				tools: this.toolRegistry.list(),
 			});
 
@@ -82,10 +84,10 @@ class Agent implements AgentInterface {
 				// 一旦有 action, LLM 需要 observe 外部调用, 进入下一步调用
 				if (chunk.type === EventType.ACTION) {
 					if (!this.toolRegistry.get(chunk.name)) {
-						errorEvents.push({type: EventType.AGENT_ERROR, message: `unknown tool \`${chunk.name}\``});
+						errorEvents.push({ type: EventType.AGENT_ERROR, message: `unknown tool \`${chunk.name}\`` });
 						break;
 					}
-					actionEvents.push(chunk)
+					turnActionEvents.push(chunk)
 				}
 
 				if (chunk.type === EventType.THOUGHT) {
@@ -97,12 +99,12 @@ class Agent implements AgentInterface {
 
 					// 存起来用于下一次
 					this.emit({ type: EventType.THOUGHT, text: chunk.text, });
-					nextTurnThoughtTextBuffer += chunk.text;
+					turnThoughtTextBuffer += chunk.text;
 				}
 
 				if (chunk.type === EventType.OUTPUT) {
 					this.emit({ type: EventType.OUTPUT, text: chunk.text });
-					nextTurnOutputTextBuffer += chunk.text;
+					turnOutputTextBuffer += chunk.text;
 				}
 
 
@@ -112,57 +114,59 @@ class Agent implements AgentInterface {
 			if (hasEmitThoughtStart) {
 				this.emit({ type: EventType.THOUGHT_DONE });
 			}
-		
+
 
 
 			if (errorEvents.length) {
 				errorEvents.forEach(event => {
-					this.emit({ type: EventType.AGENT_ERROR, message: event.message});
+					this.emit({ type: EventType.AGENT_ERROR, message: event.message });
 				})
 				break;
 			}
 
-			if (!actionEvents.length) {
-				const hasOutput = nextTurnOutputTextBuffer;
-				if (hasOutput) break;
 
-				this.emit({ type: EventType.AGENT_ERROR, message: 'Model returned no action and no output.'});
-				break;
-			}
+			let shouldBreakLoop = false;
 
-			// 准备下一轮
-			this.input.push({ type: EventType.THOUGHT, text: nextTurnThoughtTextBuffer });
-			this.input.push({ type: EventType.OUTPUT, text: nextTurnOutputTextBuffer });
-
-
-			// 观察外部环境输入
-			for await (const action of actionEvents) {
-				// 也告诉给 LLM，它之前返了哪些指令
-				this.input.push(action);
-				const { name, id, args } = action;
-				const toolCommand = this.toolRegistry.get(name);
-				if (toolCommand) {
-					const content = await toolCommand.execute(args, { cwd: process.cwd() });
-					this.input.push({
-						type: 'observation',
-						id,
-						name,
-						result: content
-					});
+			if (!turnActionEvents.length) {
+				shouldBreakLoop = true;
+			} else {
+				// 观察外部环境输入
+				for await (const action of turnActionEvents) {
+					const { name, id, args } = action;
+					const toolCommand = this.toolRegistry.get(name);
+					if (toolCommand) {
+						const content = await toolCommand.execute(args, { cwd: process.cwd() });
+						turnObservationEvents.push({
+							type: 'observation',
+							id,
+							name,
+							result: content
+						});
+					}
 				}
 			}
 
+			// 确保 [input, thought, action, observation, output] 这种顺序
+			if (turnThoughtTextBuffer) this.eventLog.push({ type: EventType.THOUGHT, text: turnThoughtTextBuffer });
+			turnActionEvents.forEach(event => { this.eventLog.push(event) });
+			turnObservationEvents.forEach(event => { this.eventLog.push(event) });
+			if (turnOutputTextBuffer) this.eventLog.push({ type: EventType.OUTPUT, text: turnOutputTextBuffer });
+			
+			if (shouldBreakLoop) break;
 
 		}
+
+
+
 
 
 		this.emit({ type: EventType.AGENT_DONE })
 
 	}
 
-	prompt(prompt: string) {
-		this.input.push({ type: EventType.INPUT, source: 'user', text: prompt });
-		this.runAgentLoop();
+	async prompt(prompt: string) {
+		this.eventLog.push({ type: EventType.INPUT, source: 'user', text: prompt });
+		await this.runAgentLoop();
 	}
 
 	on(listener: AgentEventListener) {

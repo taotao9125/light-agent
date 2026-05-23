@@ -7,6 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "node --import tsx src/cli/index.ts",
     "ts:check": "tsc --noEmit",
+    "ts:tsc": "tsc",
     "check": "biome check --write"
   },
   "keywords": [],
