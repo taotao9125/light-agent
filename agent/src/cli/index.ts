@@ -1,10 +1,9 @@
 #!/usr/bin/env node
-import { ProxyAgent, setGlobalDispatcher } from 'undici';
-
-import readline from 'node:readline/promises';
 import fs from 'node:fs';
 import path from 'node:path';
- import { stdin, stdout} from 'node:process';
+import { stdin, stdout } from 'node:process';
+import readline from 'node:readline/promises';
+import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
 import Agent from '../agent/index';
 import { createClient } from '../ai/index';
@@ -13,11 +12,10 @@ import 'dotenv/config';
 
 setGlobalDispatcher(new ProxyAgent(process.env.HTTPS_PROXY as string));
 
-
 const rl = readline.createInterface({
 	input: stdin,
-	output: stdout
-})
+	output: stdout,
+});
 
 async function main() {
 	const deepSeekProvider = createClient({
@@ -32,7 +30,6 @@ async function main() {
 		model: 'deepseek-v4-flash',
 		toolRegistry: toolRegistry,
 	});
-
 
 	let isFirstOutput = false;
 
@@ -83,24 +80,20 @@ async function main() {
 
 	while (true) {
 		const text = (await rl.question('\n> ')).trim();
-    if (!text) {
+		if (!text) {
 			continue;
-		};
+		}
 
-    if (text === 'exit' || text === 'quit') {
-      rl.close();
-      break;
-    }
+		if (text === 'exit' || text === 'quit') {
+			rl.close();
+			break;
+		}
 
 		await agent.prompt(text);
 		// 下面是 debug
 		const logs = agent.logs();
-		fs.writeFileSync(path.join(process.cwd(), 'log.json'), JSON.stringify(logs, null, 2))
+		fs.writeFileSync(path.join(process.cwd(), 'log.json'), JSON.stringify(logs, null, 2));
 	}
-
-	
-
-	
 }
 
 main();

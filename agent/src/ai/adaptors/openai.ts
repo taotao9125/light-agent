@@ -5,9 +5,8 @@ import type {
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions';
 import { type AgentEvent, EventType } from '../../protocol/events';
+import { parseEventGroup, splitEventsByOutputEvent, stringifyContent } from '../helpers';
 import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
-
-
 
 /** deepseek 的每一轮思考模式 message 结构
  * const messages: Messages = [
@@ -36,45 +35,13 @@ import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
 ];
  */
 
-
-
-const stringifyContent = (content: unknown): string => {
-	if (typeof content === 'string') return content;
-	return JSON.stringify(content);
-};
-
-
-function splitEventsByOutputEvent(events: AgentEvent[]): AgentEvent[][] {
-	const eventGroups: AgentEvent[][] = [];
-	let currentGroup: AgentEvent[] = [];
-
-	for (const event of events) {
-		currentGroup.push(event)
-		if (event.type === EventType.OUTPUT) {
-			eventGroups.push(currentGroup)
-			currentGroup = [];
-		}
-	}
-
-	if (currentGroup.length) {
-      eventGroups.push(currentGroup);
-  }
-
-	return eventGroups;
-}
-
 // 注意这是 deepseek 要求的结构, 回传时, 都塞进一个 assistant message 里
 const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMessageParam[] => {
-
-
 	const eventGroups = splitEventsByOutputEvent(events);
 
 	const messages = eventGroups.flatMap((group): ChatCompletionMessageParam[] => {
-		const input = group.find((event) => event.type === EventType.INPUT);
-		const thought = group.find((event) => event.type === EventType.THOUGHT);
-		const output = group.find((event) => event.type === EventType.OUTPUT);
-		const actions = group.filter((event) => event.type === EventType.ACTION);
-		const observations = group.filter((event) => event.type === EventType.OBSERVATION);
+		const { input, thought, actions, observations, output } = parseEventGroup(group);
+
 		const groupMessages: ChatCompletionMessageParam[] = [];
 
 		if (input?.type === EventType.INPUT) {
@@ -84,12 +51,8 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 			});
 		}
 
-		const thoughtText = thought?.type === EventType.THOUGHT && thought.text
-					? thought.text
-					: null;
-		const outputText = output?.type === EventType.OUTPUT && output.text
-					? output.text
-					: null;
+		const thoughtText = thought?.type === EventType.THOUGHT && thought.text ? thought.text : null;
+		const outputText = output?.type === EventType.OUTPUT && output.text ? output.text : null;
 
 		if (actions.length) {
 			groupMessages.push({
@@ -118,18 +81,17 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 		}
 
 		if (outputText) {
-      groupMessages.push({
-        role: 'assistant',
-        content: outputText
-      } as ChatCompletionAssistantMessageParam);
-    }
+			groupMessages.push({
+				role: 'assistant',
+				content: outputText,
+			} as ChatCompletionAssistantMessageParam);
+		}
 
 		return groupMessages;
-	})
+	});
 
 	return messages;
-
-}
+};
 
 export default class OpenAIAdaptor implements AiProvider {
 	private client: OpenAI;

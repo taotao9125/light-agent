@@ -1,9 +1,7 @@
 import type { AiProvider } from '../ai/index';
+import type { ActionEvent, AgentError, AgentEvent, ObservationEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
-import type { AgentEvent, AgentError, ActionEvent, ObservationEvent } from '../protocol/events';
-import toolRegistry from '../tools/index';
-
-
+import type toolRegistry from '../tools/index';
 
 type AgentConfig = {
 	provider: AiProvider;
@@ -60,15 +58,18 @@ class Agent implements AgentInterface {
 			turn++;
 			let turnThoughtTextBuffer = '';
 			let turnOutputTextBuffer = '';
-			let turnActionEvents: ActionEvent[] = [];
-			let turnObservationEvents: ObservationEvent[] = [];
+			const turnActionEvents: ActionEvent[] = [];
+			const turnObservationEvents: ObservationEvent[] = [];
 
-			let errorEvents: AgentError[] = [];
+			const errorEvents: AgentError[] = [];
 
 			let hasEmitThoughtStart = false;
 
 			if (turn > this.maxTurns) {
-				this.emit({ type: EventType.AGENT_ERROR, message: `Agent stopped after reaching max turns: ${this.maxTurns}` })
+				this.emit({
+					type: EventType.AGENT_ERROR,
+					message: `Agent stopped after reaching max turns: ${this.maxTurns}`,
+				});
 				break;
 			}
 
@@ -80,8 +81,6 @@ class Agent implements AgentInterface {
 
 			// 需要等把流迭代完了, 才能知道有没有指令来决定是否进行下一轮
 			for await (const chunk of stream) {
-			
-
 				if (chunk.type === EventType.AGENT_ERROR) {
 					errorEvents.push(chunk);
 					break;
@@ -93,18 +92,17 @@ class Agent implements AgentInterface {
 						errorEvents.push({ type: EventType.AGENT_ERROR, message: `unknown tool \`${chunk.name}\`` });
 						break;
 					}
-					turnActionEvents.push(chunk)
+					turnActionEvents.push(chunk);
 				}
 
 				if (chunk.type === EventType.THOUGHT) {
-
 					if (!hasEmitThoughtStart) {
 						hasEmitThoughtStart = true;
 						this.emit({ type: EventType.THOUGHT_START });
 					}
 
 					// 存起来用于下一次
-					this.emit({ type: EventType.THOUGHT, text: chunk.text, });
+					this.emit({ type: EventType.THOUGHT, text: chunk.text });
 					turnThoughtTextBuffer += chunk.text;
 				}
 
@@ -112,8 +110,6 @@ class Agent implements AgentInterface {
 					this.emit({ type: EventType.OUTPUT, text: chunk.text });
 					turnOutputTextBuffer += chunk.text;
 				}
-
-
 			}
 
 			// 有 start 就有 end
@@ -122,17 +118,15 @@ class Agent implements AgentInterface {
 			}
 
 			if (!turnActionEvents.length && !turnOutputTextBuffer) {
-				errorEvents.push({ type: EventType.AGENT_ERROR, message: 'LLM did not return an action or output.' })
+				errorEvents.push({ type: EventType.AGENT_ERROR, message: 'LLM did not return an action or output.' });
 			}
-
 
 			if (errorEvents.length) {
-				errorEvents.forEach(event => {
+				errorEvents.forEach((event) => {
 					this.emit({ type: EventType.AGENT_ERROR, message: event.message });
-				})
+				});
 				break;
 			}
-
 
 			let shouldBreakLoop = false;
 
@@ -149,7 +143,7 @@ class Agent implements AgentInterface {
 							type: 'observation',
 							id,
 							name,
-							result: content
+							result: content,
 						});
 					}
 				}
@@ -157,20 +151,18 @@ class Agent implements AgentInterface {
 
 			// 没有 buffer 也要推进去, 这样 log 更线性
 			this.eventLog.push({ type: EventType.THOUGHT, text: turnThoughtTextBuffer });
-			turnActionEvents.forEach(event => { this.eventLog.push(event) });
-			turnObservationEvents.forEach(event => { this.eventLog.push(event) });
+			turnActionEvents.forEach((event) => {
+				this.eventLog.push(event);
+			});
+			turnObservationEvents.forEach((event) => {
+				this.eventLog.push(event);
+			});
 			this.eventLog.push({ type: EventType.OUTPUT, text: turnOutputTextBuffer });
-			
-			if (shouldBreakLoop) break;
 
+			if (shouldBreakLoop) break;
 		}
 
-
-
-
-
-		this.emit({ type: EventType.AGENT_DONE })
-
+		this.emit({ type: EventType.AGENT_DONE });
 	}
 
 	async prompt(prompt: string) {
