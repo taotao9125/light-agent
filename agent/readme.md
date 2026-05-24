@@ -1,21 +1,29 @@
-# 已实现的架构草图
+# Agent Runtime Architecture
 
+## Event Log
 
-![图片说明](./image.png)
+`AgentEvent[]` is the source of truth.
 
+The runtime records events in order:
 
-## event （严格按照 input-thought-action-observation-output）
-  turn 1:
-  - input: InputEvent
-  - output: ThoughtEvent | ActionEvent | ErrorEvent
+```text
+InputEvent
+ThoughtEvent
+ActionEvent*
+ObservationEvent*
+OutputEvent
+```
 
-  turn 2:
-  - input: InputEvent | ThoughtEvent | ActionEvent | ObservationEvent
-  - output: OutPutEvent
+`OutputEvent` marks the end of one LLM turn and may be empty. `ActionEvent` decides whether the agent loop continues: if actions exist, tools run and observations are appended; if no action exists, the current user turn is done.
 
-## provider
-  - 内部适配器模式抹平各厂商差异，工厂模式注册，外部通过 createClient 的 provider 去查找。
+## Agent
 
-## tool
-  - 我有哪些 tool，长什么样子（作用，参数，名字）。
-  - Ai 告诉我该调用哪些 tool, 参数是什么。
+`Agent.prompt()` appends user input to the event log, streams model events, executes requested tools, appends observations, and emits events for the CLI or future UI layers.
+
+## Provider
+
+Provider adapters translate the clean event log into vendor-specific messages. DeepSeek/OpenAI message details stay inside the adapter.
+
+## Tools
+
+Tools are registered in `ToolRegistry`. The model returns an action name and arguments; the agent looks up the tool, executes it, and records the result as an observation.

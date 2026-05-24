@@ -57,7 +57,7 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 		if (actions.length) {
 			groupMessages.push({
 				role: 'assistant',
-				content: thoughtText,
+				content: outputText,
 				reasoning_content: thoughtText,
 				tool_calls: actions.map((action) => ({
 					id: action.id,
