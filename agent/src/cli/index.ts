@@ -2,6 +2,8 @@
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
 import readline from 'node:readline/promises';
+import fs from 'node:fs';
+import path from 'node:path';
  import { stdin, stdout} from 'node:process';
 
 import Agent from '../agent/index';
@@ -91,6 +93,9 @@ async function main() {
     }
 
 		await agent.prompt(text);
+		// 下面是 debug
+		const logs = agent.logs();
+		fs.writeFileSync(path.join(process.cwd(), 'log.json'), JSON.stringify(logs, null, 2))
 	}
 
 	

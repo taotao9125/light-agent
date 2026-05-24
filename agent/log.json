@@ -1,0 +1,540 @@
+[
+  {
+    "type": "input",
+    "source": "user",
+    "text": "分析项目架构"
+  },
+  {
+    "type": "thought",
+    "text": "The user wants me to analyze the project architecture. Let me first explore the directory structure to understand what we're working with."
+  },
+  {
+    "type": "action",
+    "id": "call_00_JLOnxUQie4BY6B1Fo1Ad2070",
+    "name": "list_files",
+    "args": {
+      "path": "."
+    }
+  },
+  {
+    "type": "observation",
+    "id": "call_00_JLOnxUQie4BY6B1Fo1Ad2070",
+    "name": "list_files",
+    "result": {
+      "path": ".",
+      "entries": [
+        {
+          "name": ".env",
+          "type": "file"
+        },
+        {
+          "name": "biome.json",
+          "type": "file"
+        },
+        {
+          "name": "done.md",
+          "type": "file"
+        },
+        {
+          "name": "image.png",
+          "type": "file"
+        },
+        {
+          "name": "log.json",
+          "type": "file"
+        },
+        {
+          "name": "node_modules",
+          "type": "directory"
+        },
+        {
+          "name": "package.json",
+          "type": "file"
+        },
+        {
+          "name": "pnpm-lock.yaml",
+          "type": "file"
+        },
+        {
+          "name": "readme.md",
+          "type": "file"
+        },
+        {
+          "name": "src",
+          "type": "directory"
+        },
+        {
+          "name": "tsconfig.json",
+          "type": "file"
+        }
+      ]
+    }
+  },
+  {
+    "type": "output",
+    "text": "好的，我来分析项目架构。首先浏览一下项目目录结构。"
+  },
+  {
+    "type": "thought",
+    "text": "Let me explore the src directory and look at key files to understand the project architecture."
+  },
+  {
+    "type": "action",
+    "id": "call_00_bXZdHaKiZ0jDZt310yRk2659",
+    "name": "list_files",
+    "args": {
+      "path": "./src"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_01_61q9eAb95HmiBSbgpTAb9392",
+    "name": "read_file",
+    "args": {
+      "path": "./package.json"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_02_7eRSzNlfGrDU74eUYpAX2591",
+    "name": "read_file",
+    "args": {
+      "path": "./readme.md"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_03_ehNaTgbH2xlHzpHEGoxu2265",
+    "name": "read_file",
+    "args": {
+      "path": "./tsconfig.json"
+    }
+  },
+  {
+    "type": "observation",
+    "id": "call_00_bXZdHaKiZ0jDZt310yRk2659",
+    "name": "list_files",
+    "result": {
+      "path": "./src",
+      "entries": [
+        {
+          "name": "agent",
+          "type": "directory"
+        },
+        {
+          "name": "ai",
+          "type": "directory"
+        },
+        {
+          "name": "cli",
+          "type": "directory"
+        },
+        {
+          "name": "protocol",
+          "type": "directory"
+        },
+        {
+          "name": "tools",
+          "type": "directory"
+        }
+      ]
+    }
+  },
+  {
+    "type": "observation",
+    "id": "call_01_61q9eAb95HmiBSbgpTAb9392",
+    "name": "read_file",
+    "result": "{\n  \"name\": \"agent\",\n  \"version\": \"1.0.0\",\n  \"description\": \"\",\n  \"main\": \"index.js\",\n  \"scripts\": {\n    \"test\": \"echo \\\"Error: no test specified\\\" && exit 1\",\n    \"dev\": \"node --import tsx src/cli/index.ts\",\n    \"ts:check\": \"tsc --noEmit\",\n    \"ts:tsc\": \"tsc\",\n    \"check\": \"biome check --write\"\n  },\n  \"keywords\": [],\n  \"author\": \"\",\n  \"license\": \"ISC\",\n  \"packageManager\": \"pnpm@10.33.0\",\n  \"devDependencies\": {\n    \"@biomejs/biome\": \"^2.4.15\",\n    \"@types/node\": \"^25.8.0\",\n    \"tsx\": \"^4.22.0\",\n    \"typescript\": \"^6.0.3\"\n  },\n  \"dependencies\": {\n    \"@google/genai\": \"^2.3.0\",\n    \"dotenv\": \"^17.4.2\",\n    \"openai\": \"^6.38.0\",\n    \"undici\": \"^8.3.0\"\n  }\n}\n"
+  },
+  {
+    "type": "observation",
+    "id": "call_02_7eRSzNlfGrDU74eUYpAX2591",
+    "name": "read_file",
+    "result": "# 已实现的架构草图\n\n\n![图片说明](./image.png)\n\n\n## event （严格按照 input-thought-action-observation-output）\n  turn 1:\n  - input: InputEvent\n  - output: ThoughtEvent | ActionEvent | ErrorEvent\n\n  turn 2:\n  - input: InputEvent | ThoughtEvent | ActionEvent | ObservationEvent\n  - output: OutPutEvent\n\n## provider\n  - 内部适配器模式抹平各厂商差异，工厂模式注册，外部通过 createClient 的 provider 去查找。\n\n## tool\n  - 我有哪些 tool，长什么样子（作用，参数，名字）。\n  - Ai 告诉我该调用哪些 tool, 参数是什么。\n"
+  },
+  {
+    "type": "observation",
+    "id": "call_03_ehNaTgbH2xlHzpHEGoxu2265",
+    "name": "read_file",
+    "result": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2024\",\n    \"lib\": [\"ES2024\"],\n    \"module\": \"NodeNext\",\n    \"moduleResolution\": \"NodeNext\",\n    \"rootDir\": \"src\",\n    \"outDir\": \"dist\",\n    \"strict\": true,\n    \"esModuleInterop\": true,\n    \"forceConsistentCasingInFileNames\": true,\n    \"skipLibCheck\": true,\n    \"sourceMap\": true,\n    \"declaration\": true\n  },\n  \"include\": [\"src/**/*.ts\"]\n}\n"
+  },
+  {
+    "type": "output",
+    "text": ""
+  },
+  {
+    "type": "thought",
+    "text": "Now let me explore each subdirectory in src to understand the full architecture."
+  },
+  {
+    "type": "action",
+    "id": "call_00_l5MzMtdflR7Bu2DZcpEc6972",
+    "name": "list_files",
+    "args": {
+      "path": "./src/agent"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_01_1CnBpPVf3erCYQRl4tIn3868",
+    "name": "list_files",
+    "args": {
+      "path": "./src/ai"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_02_qUBlWYOoHrIsQOJW6IOq9267",
+    "name": "list_files",
+    "args": {
+      "path": "./src/cli"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_03_2cE9hYYwT6EBW7M6HXrr6933",
+    "name": "list_files",
+    "args": {
+      "path": "./src/protocol"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_04_iBHiF7rNIgjzYOdan5fS0203",
+    "name": "list_files",
+    "args": {
+      "path": "./src/tools"
+    }
+  },
+  {
+    "type": "observation",
+    "id": "call_00_l5MzMtdflR7Bu2DZcpEc6972",
+    "name": "list_files",
+    "result": {
+      "path": "./src/agent",
+      "entries": [
+        {
+          "name": "index.ts",
+          "type": "file"
+        }
+      ]
+    }
+  },
+  {
+    "type": "observation",
+    "id": "call_01_1CnBpPVf3erCYQRl4tIn3868",
+    "name": "list_files",
+    "result": {
+      "path": "./src/ai",
+      "entries": [
+        {
+          "name": "adaptors",
+          "type": "directory"
+        },
+        {
+          "name": "index.ts",
+          "type": "file"
+        }
+      ]
+    }
+  },
+  {
+    "type": "observation",
+    "id": "call_02_qUBlWYOoHrIsQOJW6IOq9267",
+    "name": "list_files",
+    "result": {
+      "path": "./src/cli",
+      "entries": [
+        {
+          "name": "index.ts",
+          "type": "file"
+        }
+      ]
+    }
+  },
+  {
+    "type": "observation",
+    "id": "call_03_2cE9hYYwT6EBW7M6HXrr6933",
+    "name": "list_files",
+    "result": {
+      "path": "./src/protocol",
+      "entries": [
+        {
+          "name": "events.ts",
+          "type": "file"
+        }
+      ]
+    }
+  },
+  {
+    "type": "observation",
+    "id": "call_04_iBHiF7rNIgjzYOdan5fS0203",
+    "name": "list_files",
+    "result": {
+      "path": "./src/tools",
+      "entries": [
+        {
+          "name": "builtins.ts",
+          "type": "file"
+        },
+        {
+          "name": "index.ts",
+          "type": "file"
+        },
+        {
+          "name": "readme.md",
+          "type": "file"
+        },
+        {
+          "name": "types.ts",
+          "type": "file"
+        }
+      ]
+    }
+  },
+  {
+    "type": "output",
+    "text": "Let me explore each module in detail."
+  },
+  {
+    "type": "thought",
+    "text": "Let me read all the key source files to understand the full architecture."
+  },
+  {
+    "type": "action",
+    "id": "call_00_0WpO0VuWtV2hi7AuwsHR4128",
+    "name": "read_file",
+    "args": {
+      "path": "./src/agent/index.ts"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_01_BvxEXKlmcHvyAoXgoOcf4596",
+    "name": "read_file",
+    "args": {
+      "path": "./src/ai/index.ts"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_02_5wwWpHz0QCoHUXE3aGwZ7562",
+    "name": "read_file",
+    "args": {
+      "path": "./src/cli/index.ts"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_03_T9yr67o8yD9vDjIeiMeO0660",
+    "name": "read_file",
+    "args": {
+      "path": "./src/protocol/events.ts"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_04_QlYSedz0qfEcUAx6NTPU7569",
+    "name": "read_file",
+    "args": {
+      "path": "./src/tools/index.ts"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_05_VSg0GvwgLyguCX4QsJCR8406",
+    "name": "read_file",
+    "args": {
+      "path": "./src/tools/types.ts"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_06_EDmXyHEzr133Otq8uK3Y0634",
+    "name": "read_file",
+    "args": {
+      "path": "./src/tools/builtins.ts"
+    }
+  },
+  {
+    "type": "action",
+    "id": "call_07_ZNWbxICNfHfzE7vLLJn38899",
+    "name": "read_file",
+    "args": {
+      "path": "./src/tools/readme.md"
+    }
+  },
+  {
+    "type": "observation",
+    "id": "call_00_0WpO0VuWtV2hi7AuwsHR4128",
+    "name": "read_file",
+    "result": "import type { AiProvider } from '../ai/index';\nimport { EventType } from '../protocol/events';\nimport type { AgentEvent, AgentError, ActionEvent, ObservationEvent } from '../protocol/events';\nimport toolRegistry from '../tools/index';\n\n\n\ntype AgentConfig = {\n\tprovider: AiProvider;\n\tmodel: string;\n\ttoolRegistry: typeof toolRegistry;\n\tmaxTurns?: number;\n};\n\ntype AgentEventListener = (event: AgentEvent) => void;\n\ninterface AgentInterface {\n\tprompt: (prompt: string) => Promise<void>;\n\ton: (listener: AgentEventListener) => void;\n}\n\nclass Agent implements AgentInterface {\n\tprivate provider: AiProvider;\n\tprivate toolRegistry: typeof toolRegistry;\n\tprivate eventLog: AgentEvent[];\n\tprivate model: string;\n\tprivate listeners: AgentEventListener[];\n\tprivate maxTurns: number;\n\tconstructor(config: AgentConfig) {\n\t\tthis.provider = config.provider;\n\t\tthis.toolRegistry = config.toolRegistry;\n\t\tthis.eventLog = [];\n\t\tthis.listeners = [];\n\t\tthis.model = config.model;\n\t\tthis.maxTurns = config.maxTurns ?? 20;\n\t}\n\n\temit(event: AgentEvent): void {\n\t\tthis.listeners.forEach((listener) => {\n\t\t\tlistener(event);\n\t\t});\n\t}\n\t// input -> thought -> action -> observation -> output\n\t// loop 出口\n\t// 1. > turns\n\t// 2. error\n\t// 3. no action + has output = done;\n\t// 4. no action\t+ no output = error;\n\n\tlogs() {\n\t\treturn this.eventLog;\n\t}\n\n\tasync runAgentLoop() {\n\t\tthis.emit({ type: EventType.AGENT_START });\n\n\t\tlet turn = 0;\n\n\t\twhile (true) {\n\t\t\tturn++;\n\t\t\tlet turnThoughtTextBuffer = '';\n\t\t\tlet turnOutputTextBuffer = '';\n\t\t\tlet turnActionEvents: ActionEvent[] = [];\n\t\t\tlet turnObservationEvents: ObservationEvent[] = [];\n\n\t\t\tlet errorEvents: AgentError[] = [];\n\n\t\t\tlet hasEmitThoughtStart = false;\n\n\t\t\tif (turn > this.maxTurns) {\n\t\t\t\tthis.emit({ type: EventType.AGENT_ERROR, message: `Agent stopped after reaching max turns: ${this.maxTurns}` })\n\t\t\t\tbreak;\n\t\t\t}\n\n\t\t\tconst stream = this.provider.stream({\n\t\t\t\tmodel: this.model,\n\t\t\t\tinput: this.eventLog,\n\t\t\t\ttools: this.toolRegistry.list(),\n\t\t\t});\n\n\t\t\t// 需要等把流迭代完了, 才能知道有没有指令来决定是否进行下一轮\n\t\t\tfor await (const chunk of stream) {\n\t\t\t\n\n\t\t\t\tif (chunk.type === EventType.AGENT_ERROR) {\n\t\t\t\t\terrorEvents.push(chunk);\n\t\t\t\t\tbreak;\n\t\t\t\t}\n\n\t\t\t\t// 一旦有 action, LLM 需要 observe 外部调用, 进入下一步调用\n\t\t\t\tif (chunk.type === EventType.ACTION) {\n\t\t\t\t\tif (!this.toolRegistry.get(chunk.name)) {\n\t\t\t\t\t\terrorEvents.push({ type: EventType.AGENT_ERROR, message: `unknown tool \\`${chunk.name}\\`` });\n\t\t\t\t\t\tbreak;\n\t\t\t\t\t}\n\t\t\t\t\tturnActionEvents.push(chunk)\n\t\t\t\t}\n\n\t\t\t\tif (chunk.type === EventType.THOUGHT) {\n\n\t\t\t\t\tif (!hasEmitThoughtStart) {\n\t\t\t\t\t\thasEmitThoughtStart = true;\n\t\t\t\t\t\tthis.emit({ type: EventType.THOUGHT_START });\n\t\t\t\t\t}\n\n\t\t\t\t\t// 存起来用于下一次\n\t\t\t\t\tthis.emit({ type: EventType.THOUGHT, text: chunk.text, });\n\t\t\t\t\tturnThoughtTextBuffer += chunk.text;\n\t\t\t\t}\n\n\t\t\t\tif (chunk.type === EventType.OUTPUT) {\n\t\t\t\t\tthis.emit({ type: EventType.OUTPUT, text: chunk.text });\n\t\t\t\t\tturnOutputTextBuffer += chunk.text;\n\t\t\t\t}\n\n\n\t\t\t}\n\n\t\t\t// 有 start 就有 end\n\t\t\tif (hasEmitThoughtStart) {\n\t\t\t\tthis.emit({ type: EventType.THOUGHT_DONE });\n\t\t\t}\n\n\t\t\tif (!turnActionEvents.length && !turnOutputTextBuffer) {\n\t\t\t\terrorEvents.push({ type: EventType.AGENT_ERROR, message: 'LLM did not return an action or output.' })\n\t\t\t}\n\n\n\t\t\tif (errorEvents.length) {\n\t\t\t\terrorEvents.forEach(event => {\n\t\t\t\t\tthis.emit({ type: EventType.AGENT_ERROR, message: event.message });\n\t\t\t\t})\n\t\t\t\tbreak;\n\t\t\t}\n\n\n\t\t\tlet shouldBreakLoop = false;\n\n\t\t\tif (!turnActionEvents.length) {\n\t\t\t\tshouldBreakLoop = true;\n\t\t\t} else {\n\t\t\t\t// 观察外部环境输入\n\t\t\t\tfor await (const action of turnActionEvents) {\n\t\t\t\t\tconst { name, id, args } = action;\n\t\t\t\t\tconst toolCommand = this.toolRegistry.get(name);\n\t\t\t\t\tif (toolCommand) {\n\t\t\t\t\t\tconst content = await toolCommand.execute(args, { cwd: process.cwd() });\n\t\t\t\t\t\tturnObservationEvents.push({\n\t\t\t\t\t\t\ttype: 'observation',\n\t\t\t\t\t\t\tid,\n\t\t\t\t\t\t\tname,\n\t\t\t\t\t\t\tresult: content\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\n\t\t\t// 没有 buffer 也要推进去, 这样 log 更线性\n\t\t\tthis.eventLog.push({ type: EventType.THOUGHT, text: turnThoughtTextBuffer });\n\t\t\tturnActionEvents.forEach(event => { this.eventLog.push(event) });\n\t\t\tturnObservationEvents.forEach(event => { this.eventLog.push(event) });\n\t\t\tthis.eventLog.push({ type: EventType.OUTPUT, text: turnOutputTextBuffer });\n\t\t\t\n\t\t\tdebugger;\n\t\t\t\n\t\t\tif (shouldBreakLoop) break;\n\n\t\t}\n\n\n\n\n\n\t\tthis.emit({ type: EventType.AGENT_DONE })\n\n\t}\n\n\tasync prompt(prompt: string) {\n\t\tthis.eventLog.push({ type: EventType.INPUT, source: 'user', text: prompt });\n\t\tawait this.runAgentLoop();\n\t}\n\n\ton(listener: AgentEventListener) {\n\t\tthis.listeners.push(listener);\n\t}\n}\n\nexport default Agent;\n"
+  },
+  {
+    "type": "observation",
+    "id": "call_01_BvxEXKlmcHvyAoXgoOcf4596",
+    "name": "read_file",
+    "result": "import type { AgentEvent } from '../protocol/events';\nimport type { ToolMeta } from '../tools/types';\nimport OpenAIAdaptor from './adaptors/openai';\n\ntype Provider = 'openai' | 'google' | 'deepseek';\n\nexport type AiRequestConfig = {\n\tmodel: string;\n\tinput: AgentEvent[];\n\ttools?: ToolMeta[];\n};\n\nexport interface AiProvider {\n\tstream(requestConfig: AiRequestConfig): AsyncIterable<AgentEvent>;\n}\n\nexport type clientConfig = {\n\tprovider: Provider;\n\tapiKey: string;\n\tbaseURL?: string;\n};\n\nconst AiProvidersFactory = new Map<Provider, new (config: clientConfig) => AiProvider>();\n\n// openai\nAiProvidersFactory.set('openai', OpenAIAdaptor);\n// deepseek 兼容 open sdk\nAiProvidersFactory.set('deepseek', OpenAIAdaptor);\n\n// 其他 type 不用 export, input 和 output 类型都可以从 ts 内置工具函数拿到\nexport type CreateClient = (p: clientConfig) => AiProvider;\nexport const createClient: CreateClient = (config) => {\n\tconst { provider } = config;\n\tconst adaptor = AiProvidersFactory.get(provider);\n\tif (!adaptor) throw new Error('unknown provider');\n\treturn new adaptor(config);\n};\n"
+  },
+  {
+    "type": "observation",
+    "id": "call_02_5wwWpHz0QCoHUXE3aGwZ7562",
+    "name": "read_file",
+    "result": "#!/usr/bin/env node\nimport { ProxyAgent, setGlobalDispatcher } from 'undici';\n\nimport readline from 'node:readline/promises';\nimport fs from 'node:fs';\nimport path from 'node:path';\n import { stdin, stdout} from 'node:process';\n\nimport Agent from '../agent/index';\nimport { createClient } from '../ai/index';\nimport toolRegistry from '../tools';\nimport 'dotenv/config';\n\nsetGlobalDispatcher(new ProxyAgent(process.env.HTTPS_PROXY as string));\n\n\nconst rl = readline.createInterface({\n\tinput: stdin,\n\toutput: stdout\n})\n\nasync function main() {\n\tconst deepSeekProvider = createClient({\n\t\t// 目前只支持 gemini, openai, deepseek\n\t\tprovider: 'deepseek',\n\t\tapiKey: process.env.AI_DEEP_SEEK_API_KEY as string,\n\t\tbaseURL: process.env.AI_DEEP_SEEK_API_HOST as string,\n\t});\n\n\tconst agent = new Agent({\n\t\tprovider: deepSeekProvider,\n\t\tmodel: 'deepseek-v4-flash',\n\t\ttoolRegistry: toolRegistry,\n\t});\n\n\n\tlet isFirstOutput = false;\n\n\tagent.on((event) => {\n\t\tswitch (event.type) {\n\t\t\tcase 'agent_start':\n\t\t\t\tprocess.stdout.write(`\\x1b[32m开始执行 agent \\x1b[0m\\n`);\n\t\t\t\tbreak;\n\n\t\t\tcase 'thought_start':\n\t\t\t\tprocess.stdout.write(`\\x1b[90m🧠 推理中: \\x1b[0m`);\n\t\t\t\tbreak;\n\n\t\t\tcase 'thought':\n\t\t\t\t// 实时打印思维流，注意不要乱换行\n\t\t\t\t// 如果文字太长，终端会自动折行，单行 \\r 会失效。复杂的折行可以用 process.stdout.cursorTo\n\t\t\t\tprocess.stdout.write(`\\x1b[90m${event.text}\\x1b[0m`);\n\t\t\t\tbreak;\n\n\t\t\tcase 'thought_done':\n\t\t\t\t// 推理结束，打个勾，换行！把这块区域锁死，后面再也别碰它了\n\t\t\t\tprocess.stdout.write(` \\x1b[32m✓\\x1b[0m\\n`);\n\t\t\t\tisFirstOutput = true; // 重置输出标记\n\t\t\t\tbreak;\n\n\t\t\tcase 'output':\n\t\t\t\tif (isFirstOutput) {\n\t\t\t\t\tconsole.log();\n\t\t\t\t\tprocess.stdout.write(`\\x1b[32m🤖 Agent 输出: \\x1b[0m\\n`);\n\t\t\t\t\tisFirstOutput = false;\n\t\t\t\t}\n\t\t\t\t// 流式打印最终输出\n\t\t\t\tprocess.stdout.write(event.text);\n\t\t\t\tbreak;\n\n\t\t\tcase 'agent_error':\n\t\t\t\tprocess.stderr.write(`\\n\\x1b[31mAgent error: ${event.message}\\x1b[0m\\n`);\n\t\t\t\tbreak;\n\n\t\t\tcase 'agent_done':\n\t\t\t\tprocess.stdout.write('\\n');\n\t\t\t\tbreak;\n\n\t\t\tdefault:\n\t\t\t\tbreak;\n\t\t}\n\t});\n\n\twhile (true) {\n\t\tconst text = (await rl.question('\\n> ')).trim();\n    if (!text) {\n\t\t\tcontinue;\n\t\t};\n\n    if (text === 'exit' || text === 'quit') {\n      rl.close();\n      break;\n    }\n\n\t\tawait agent.prompt(text);\n\t\t// 下面是 debug\n\t\tconst logs = agent.logs();\n\t\tfs.writeFileSync(path.join(process.cwd(), 'log.json'), JSON.stringify(logs, null, 2))\n\t}\n\n\t\n\n\t\n}\n\nmain();\n"
+  },
+  {
+    "type": "observation",
+    "id": "call_03_T9yr67o8yD9vDjIeiMeO0660",
+    "name": "read_file",
+    "result": "// 推理重复循环 {InputEvent → ThoughtEvent → ActionEvent → ObservationEvent }\n//                   ↓\n//              OutputEvent（最终输出）\n\nexport const EventType = {\n\tINPUT: 'input',\n\tTHOUGHT: 'thought',\n\tACTION: 'action',\n\tOBSERVATION: 'observation',\n\tOUTPUT: 'output',\n\n\t// 方便 UI 订阅\n\tAGENT_START: 'agent_start',\n\tTHOUGHT_START: 'thought_start',\n\tTHOUGHT_DONE: 'thought_done',\n\tAGENT_DONE: 'agent_done',\n\tAGENT_ERROR: 'agent_error',\n} as const;\n\nexport type InputEvent = {\n\ttype: typeof EventType.INPUT;\n\ttext: string;\n\tsource?: 'user' | 'system';\n};\n\nexport type ThoughtEvent = {\n\ttype: typeof EventType.THOUGHT;\n\ttext: string;\n};\n\nexport type ActionEvent = {\n\ttype: typeof EventType.ACTION;\n\tid: string;\n\tname: string;\n\targs: Record<string, any>;\n};\n\nexport type ObservationEvent = {\n\ttype: typeof EventType.OBSERVATION;\n\tid: string;\n\tname: string;\n\tresult: any;\n};\n\nexport type OutputEvent = {\n\ttype: typeof EventType.OUTPUT;\n\ttext: string;\n};\n\nexport type AgentStartEvent = { type: typeof EventType.AGENT_START };\nexport type AgentThoughtStartEvent = { type: typeof EventType.THOUGHT_START };\nexport type AgentThoughtDoneEvent = { type: typeof EventType.THOUGHT_DONE };\nexport type AgentDoneEvent = { type: typeof EventType.AGENT_DONE };\nexport type AgentError = { type: typeof EventType.AGENT_ERROR; message: string };\n\nexport type AgentEvent =\n\t| InputEvent\n\t| ThoughtEvent\n\t| ActionEvent\n\t| ObservationEvent\n\t| OutputEvent\n\t// 下面是方便 UI 订阅的\n\t| AgentStartEvent\n\t| AgentThoughtStartEvent\n\t| AgentThoughtDoneEvent\n\t| AgentDoneEvent\n\t| AgentError;\n"
+  },
+  {
+    "type": "observation",
+    "id": "call_04_QlYSedz0qfEcUAx6NTPU7569",
+    "name": "read_file",
+    "result": "import { listFilesTool, readFileTool } from './builtins';\n\nimport type { ToolDefinition } from './types';\n\nclass ToolRegistry {\n\tprivate tools = new Map<string, ToolDefinition<any, any>>();\n\n\tregister(tool: ToolDefinition<any, any>): void {\n\t\tthis.tools.set(tool.name, tool);\n\t}\n\n\tget(name: string): ToolDefinition<any, any> | undefined {\n\t\treturn this.tools.get(name);\n\t}\n\n\tlist(): Omit<ToolDefinition<any, any>, 'execute'>[] {\n\t\treturn Array.from(this.tools.values()).map((tool) => ({\n\t\t\tname: tool.name,\n\t\t\tdescription: tool.description,\n\t\t\tschema: tool.schema,\n\t\t}));\n\t}\n}\n\nconst toolRegistry = new ToolRegistry();\n\ntoolRegistry.register(readFileTool);\ntoolRegistry.register(listFilesTool);\n\nexport default toolRegistry;\n"
+  },
+  {
+    "type": "observation",
+    "id": "call_05_VSg0GvwgLyguCX4QsJCR8406",
+    "name": "read_file",
+    "result": "export type ToolMeta = {\n\tname: string;\n\tdescription: string;\n\tschema: {\n\t\ttype: 'object';\n\t\tproperties: Record<\n\t\t\tstring,\n\t\t\t{\n\t\t\t\ttype: unknown;\n\t\t\t\tdescription: string;\n\t\t\t}\n\t\t>;\n\t\trequired?: string[];\n\t\tadditionalProperties?: boolean;\n\t};\n};\n\nexport type ToolContext = {\n\tcwd: string;\n};\n\nexport interface ToolDefinition<T, U> extends ToolMeta {\n\texecute(p: T, context: ToolContext): U;\n}\n"
+  },
+  {
+    "type": "observation",
+    "id": "call_06_EDmXyHEzr133Otq8uK3Y0634",
+    "name": "read_file",
+    "result": "import fs from 'fs/promises';\nimport path from 'path';\nimport type { ToolDefinition } from './types';\n\nexport const readFileTool: ToolDefinition<{ path: string }, Promise<string>> = {\n\tname: 'read_file',\n\tdescription: 'Read the full contents of a specific file when the user asks to inspect, open, or read a file.',\n\tschema: {\n\t\ttype: 'object',\n\t\tproperties: {\n\t\t\tpath: {\n\t\t\t\ttype: 'string',\n\t\t\t\tdescription: 'The user-specified file path to read, resolved relative to the agent working directory.',\n\t\t\t},\n\t\t},\n\t\trequired: ['path'],\n\t\tadditionalProperties: false,\n\t},\n\n\tasync execute(p, context) {\n\t\tconst realPath = path.resolve(context.cwd, p.path);\n\t\ttry {\n\t\t\treturn await fs.readFile(realPath, { encoding: 'utf8' });\n\t\t} catch (e) {\n\t\t\treturn e instanceof Error ? e.message : String(e);\n\t\t}\n\t},\n};\n\nexport const listFilesTool: ToolDefinition<\n\t{ path?: string },\n\tPromise<{\n\t\tpath: string;\n\t\tentries: {\n\t\t\tname: string;\n\t\t\ttype: 'file' | 'directory';\n\t\t}[];\n\t\terrorMessage?: string;\n\t}>\n> = {\n\tname: 'list_files',\n\tdescription: 'List files and directories directly under a directory.',\n\tschema: {\n\t\ttype: 'object',\n\t\tproperties: {\n\t\t\tpath: {\n\t\t\t\ttype: 'string',\n\t\t\t\tdescription: 'Directory path relative to the agent working directory. Defaults to current directory.',\n\t\t\t},\n\t\t},\n\t},\n\tasync execute(p, context) {\n\t\tconst targetPath = p.path ?? '.';\n\t\tconst realPath = path.resolve(context.cwd, targetPath);\n\n\t\ttry {\n\t\t\tconst entries = await fs.readdir(realPath, { withFileTypes: true });\n\t\t\treturn {\n\t\t\t\tpath: targetPath,\n\t\t\t\tentries: entries.map((entry) => ({\n\t\t\t\t\tname: entry.name,\n\t\t\t\t\ttype: entry.isFile() ? 'file' : 'directory',\n\t\t\t\t})),\n\t\t\t};\n\t\t} catch (e) {\n\t\t\treturn {\n\t\t\t\tpath: targetPath,\n\t\t\t\tentries: [],\n\t\t\t\terrorMessage: e instanceof Error ? e.message : String(e),\n\t\t\t};\n\t\t}\n\t},\n};\n"
+  },
+  {
+    "type": "observation",
+    "id": "call_07_ZNWbxICNfHfzE7vLLJn38899",
+    "name": "read_file",
+    "result": "## 我想要的\n\n\n```typescript\nfor await (const toolCall of tools) {\n  const result = await toolRegistry.get(toolCall.name).execute(toolCall.arguments);\n}\n```\n\n## 模型 tool 输入\n```typescript\ntype tools = {\n  name: string;\n  description: string;\n  parameters: Record<string, any>\n}[];\n```\n## 模型 tool 输出\n```typescript\n\n\n\ntype toolCalls = {\n  toolCallId: string;\n  name: string;\n  args: unknown;\n}[]\n\n```\n\n# 命令行模式（统一收口执行） + 工厂模式（统一注册查找）\n## 自定义 tool 接口命令\n```typescript\n// T: tool input. U: tool output\nexport interface ToolDefinition<T, U> extends ToolMeta {\n\texecute(p: T): U;\n}\n```\n\n## 注册 tool \n```typescript\n\nconst read_file: ToolDefinition<{path: string}, Promise<string>> = {\n  name: 'xxx',\n  execute(p) {\n    return fs.readFile(p.path)\n  }\n}\n\ntoolRegistry.register(name, Tool);\n\n// agent 查找 tool\nconst toolCalls = {\n  name: 'readFile',\n  arguments: {\n    path: 'package.json'\n  }\n}[];\n\ntoolRegistry.get(toolCalls[0].name).execute(modelToolCall[0].arguments);\n```"
+  },
+  {
+    "type": "output",
+    "text": "Let me read all the key source files to understand the full architecture."
+  },
+  {
+    "type": "thought",
+    "text": "Now let me also look at the AI adaptors directory to understand the provider abstraction."
+  },
+  {
+    "type": "action",
+    "id": "call_00_PZC4NTEm4pQyA3Q3Hv7X5643",
+    "name": "list_files",
+    "args": {
+      "path": "./src/ai/adaptors"
+    }
+  },
+  {
+    "type": "observation",
+    "id": "call_00_PZC4NTEm4pQyA3Q3Hv7X5643",
+    "name": "list_files",
+    "result": {
+      "path": "./src/ai/adaptors",
+      "entries": [
+        {
+          "name": "openai.ts",
+          "type": "file"
+        }
+      ]
+    }
+  },
+  {
+    "type": "output",
+    "text": ""
+  },
+  {
+    "type": "thought",
+    "text": "Let me read the OpenAI adaptor."
+  },
+  {
+    "type": "action",
+    "id": "call_00_aWpiB46sLGLoGVwmcPNr7637",
+    "name": "read_file",
+    "args": {
+      "path": "./src/ai/adaptors/openai.ts"
+    }
+  },
+  {
+    "type": "observation",
+    "id": "call_00_aWpiB46sLGLoGVwmcPNr7637",
+    "name": "read_file",
+    "result": "import OpenAI from 'openai';\nimport type {\n\tChatCompletionAssistantMessageParam,\n\tChatCompletionCreateParamsStreaming,\n\tChatCompletionMessageParam,\n} from 'openai/resources/chat/completions';\nimport { type AgentEvent, EventType } from '../../protocol/events';\nimport type { AiProvider, AiRequestConfig, clientConfig } from '../index';\n\n\n\n/** deepseek 的每一轮思考模式 message 结构\n * const messages: Messages = [\n\t{\n\t\trole: 'user',\n\t\tcontent: '帮我读下 package.json'\n\t},\n\t{\n\t\trole: 'assistant',\n\t\tcontent: null,\n\t\treasoning_content: '用户想读 package.json，我来调用 read_file 工具',\n\t\ttool_calls: [{\n\t\t\tid: 'call_00_xxx',\n\t\t\ttype: 'function',\n\t\t\tfunction: {\n\t\t\t\tname: 'read_file',\n\t\t\t\targuments: '{\"path\": \"package.json\"}'\n\t\t\t}\n\t\t}]\n\t},\n\t{\n\t\trole: 'tool',\n\t\ttool_call_id: 'call_00_xxx',\n\t\tcontent: '{\"name\": \"agent\", \"version\": \"1.0.0\"}'\n\t}\n];\n */\n\n\n\nconst stringifyContent = (content: unknown): string => {\n\tif (typeof content === 'string') return content;\n\treturn JSON.stringify(content);\n};\n\n\nfunction splitEventsByOutputEvent(events: AgentEvent[]): AgentEvent[][] {\n\tconst eventGroups: AgentEvent[][] = [];\n\tlet currentGroup: AgentEvent[] = [];\n\n\tfor (const event of events) {\n\t\tcurrentGroup.push(event)\n\t\tif (event.type === EventType.OUTPUT) {\n\t\t\teventGroups.push(currentGroup)\n\t\t\tcurrentGroup = [];\n\t\t}\n\t}\n\n\tif (currentGroup.length) {\n      eventGroups.push(currentGroup);\n  }\n\n\treturn eventGroups;\n}\n\n// 注意这是 deepseek 要求的结构, 回传时, 都塞进一个 assistant message 里\nconst normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMessageParam[] => {\n\n\n\tconst eventGroups = splitEventsByOutputEvent(events);\n\n\tconst messages = eventGroups.flatMap((group): ChatCompletionMessageParam[] => {\n\t\tconst input = group.find((event) => event.type === EventType.INPUT);\n\t\tconst thought = group.find((event) => event.type === EventType.THOUGHT);\n\t\tconst output = group.find((event) => event.type === EventType.OUTPUT);\n\t\tconst actions = group.filter((event) => event.type === EventType.ACTION);\n\t\tconst observations = group.filter((event) => event.type === EventType.OBSERVATION);\n\t\tconst groupMessages: ChatCompletionMessageParam[] = [];\n\n\t\tif (input?.type === EventType.INPUT) {\n\t\t\tgroupMessages.push({\n\t\t\t\trole: input.source ?? 'user',\n\t\t\t\tcontent: input.text,\n\t\t\t});\n\t\t}\n\n\t\tconst thoughtText = thought?.type === EventType.THOUGHT && thought.text\n\t\t\t\t\t? thought.text\n\t\t\t\t\t: null;\n\t\tconst outputText = output?.type === EventType.OUTPUT && output.text\n\t\t\t\t\t? output.text\n\t\t\t\t\t: null;\n\n\t\tif (actions.length) {\n\t\t\tgroupMessages.push({\n\t\t\t\trole: 'assistant',\n\t\t\t\tcontent: thoughtText,\n\t\t\t\treasoning_content: thoughtText,\n\t\t\t\ttool_calls: actions.map((action) => ({\n\t\t\t\t\tid: action.id,\n\t\t\t\t\ttype: 'function',\n\t\t\t\t\tfunction: {\n\t\t\t\t\t\tname: action.name,\n\t\t\t\t\t\targuments: JSON.stringify(action.args),\n\t\t\t\t\t},\n\t\t\t\t})),\n\t\t\t} as ChatCompletionAssistantMessageParam);\n\n\t\t\tfor (const observation of observations) {\n\t\t\t\tgroupMessages.push({\n\t\t\t\t\trole: 'tool',\n\t\t\t\t\ttool_call_id: observation.id,\n\t\t\t\t\tcontent: stringifyContent(observation.result),\n\t\t\t\t});\n\t\t\t}\n\n\t\t\treturn groupMessages;\n\t\t}\n\n\t\tif (outputText) {\n      groupMessages.push({\n        role: 'assistant',\n        content: outputText\n      } as ChatCompletionAssistantMessageParam);\n    }\n\n\t\treturn groupMessages;\n\t})\n\n\treturn messages;\n\n}\n\nexport default class OpenAIAdaptor implements AiProvider {\n\tprivate client: OpenAI;\n\tconstructor(config: clientConfig) {\n\t\tthis.client = new OpenAI({\n\t\t\tapiKey: config.apiKey,\n\t\t\tbaseURL: config.baseURL,\n\t\t\t// logLevel: 'debug',\n\t\t});\n\t}\n\n\tprotected normalizeRequestConfig(requestConfig: AiRequestConfig): ChatCompletionCreateParamsStreaming {\n\t\treturn {\n\t\t\tmodel: requestConfig.model,\n\t\t\tmessages: normalizeDeepSeekInputMessage(requestConfig.input),\n\t\t\ttools: requestConfig.tools?.map((tool) => ({\n\t\t\t\ttype: 'function',\n\t\t\t\tfunction: {\n\t\t\t\t\tname: tool.name,\n\t\t\t\t\tdescription: tool.description,\n\t\t\t\t\tparameters: tool.schema,\n\t\t\t\t},\n\t\t\t})),\n\t\t\ttool_choice: 'auto',\n\t\t\tstream: true,\n\t\t};\n\t}\n\n\tasync *stream(requestConfig: AiRequestConfig): ReturnType<AiProvider['stream']> {\n\t\tconst config = this.normalizeRequestConfig(requestConfig);\n\t\tconst pendingToolCalls = new Map<\n\t\t\tnumber,\n\t\t\t{\n\t\t\t\tid: string;\n\t\t\t\tname: string;\n\t\t\t\targs: string;\n\t\t\t}\n\t\t>();\n\t\ttry {\n\t\t\tconst { data: stream } = await this.client.chat.completions.create(config).withResponse();\n\n\t\t\tfor await (const chunk of stream) {\n\t\t\t\tconst delta = chunk.choices[0]?.delta;\n\t\t\t\tconst tools = delta?.tool_calls ?? [];\n\n\t\t\t\t// as any, deepseek 接口有 reasoning_content, 但 openai ts 类型没有\n\t\t\t\tconst reasoningText = (delta as any).reasoning_content;\n\t\t\t\tconst deltaText = delta?.content;\n\n\t\t\t\tif (reasoningText) {\n\t\t\t\t\tyield { type: EventType.THOUGHT, text: reasoningText };\n\t\t\t\t}\n\n\t\t\t\tif (deltaText) {\n\t\t\t\t\tyield { type: EventType.OUTPUT, text: deltaText };\n\t\t\t\t}\n\n\t\t\t\tfor (const tool of tools) {\n\t\t\t\t\tconst current = pendingToolCalls.get(tool.index) || {\n\t\t\t\t\t\tid: '',\n\t\t\t\t\t\tname: '',\n\t\t\t\t\t\targs: '',\n\t\t\t\t\t};\n\n\t\t\t\t\tif (tool.id) {\n\t\t\t\t\t\tcurrent.id = tool.id;\n\t\t\t\t\t}\n\n\t\t\t\t\tif (tool.function?.name) {\n\t\t\t\t\t\tcurrent.name = tool.function?.name ?? '';\n\t\t\t\t\t}\n\n\t\t\t\t\tif (tool.function?.arguments) {\n\t\t\t\t\t\tcurrent.args += tool.function?.arguments ?? '';\n\t\t\t\t\t}\n\n\t\t\t\t\tpendingToolCalls.set(tool.index, current);\n\t\t\t\t}\n\t\t\t}\n\n\t\t\t// 注意，工具调用要在当前这次 LLM 的输出迭代完毕后再 yield 出去，统一判断工具输出的完整性，最终确定有没有工具调用，没有那就是最终结束了\n\t\t\tfor (const call of pendingToolCalls.values()) {\n\t\t\t\tyield {\n\t\t\t\t\ttype: EventType.ACTION,\n\t\t\t\t\tid: call.id,\n\t\t\t\t\tname: call.name,\n\t\t\t\t\targs: call.args ? JSON.parse(call.args) : {},\n\t\t\t\t};\n\t\t\t}\n\t\t\tpendingToolCalls.clear();\n\t\t} catch (e) {\n\t\t\tconst message = e instanceof Error ? e.message : String(e);\n\t\t\tyield { type: EventType.AGENT_ERROR, message };\n\t\t}\n\t}\n}\n"
+  },
+  {
+    "type": "output",
+    "text": ""
+  },
+  {
+    "type": "thought",
+    "text": "Now I have a comprehensive understanding of the project architecture. Let me provide a detailed analysis."
+  },
+  {
+    "type": "output",
+    "text": "现在我已经完整阅读了所有源文件，以下是详细的项目架构分析。\n\n---\n\n# 项目架构分析\n\n## 1. 项目概览\n\n这是一个 **AI Agent（智能体）** 命令行项目，实现了 **LLM 驱动的 Agent 循环** —— 用户输入提示词 → Agent 自动思考、调用工具、观察结果、输出答案。\n\n### 技术栈\n| 类别 | 技术 |\n|------|------|\n| 语言 | TypeScript (ES2024) |\n| 运行时 | Node.js (通过 `tsx` 执行 TS) |\n| 包管理 | pnpm |\n| AI SDK | OpenAI SDK（兼容 DeepSeek、OpenAI 等） |\n| Linter | Biome |\n\n---\n\n## 2. 整体目录结构\n\n```\n.\n├── src/\n│   ├── agent/        # Agent 核心循环（大脑）\n│   ├── ai/           # AI 模型适配层（适配器模式）\n│   │   └── adaptors/ # 各厂商适配器（目前仅 OpenAI）\n│   ├── cli/          # 命令行入口（UI/交互层）\n│   ├── protocol/     # 事件协议定义（核心数据模型）\n│   └── tools/        # 工具系统（工具注册与执行）\n├── .env              # 环境变量（API Key 等）\n├── package.json      # 项目配置\n├── tsconfig.json     # TS 编译配置\n└── readme.md         # 项目文档\n```\n\n---\n\n## 3. 核心架构分层\n\n### 3.1 协议层 → `src/protocol/events.ts`\n\n定义 Agent 运行时的 **核心事件类型**，是整个系统的数据模型基础。\n\n```\nAgent 循环:  InputEvent → ThoughtEvent → ActionEvent → ObservationEvent → OutputEvent\n                                                                  ↑_____________|\n```\n\n| 事件 | 说明 |\n|------|------|\n| `INPUT` | 用户/系统输入 |\n| `THOUGHT` | LLM 的思考过程（流式） |\n| `ACTION` | LLM 决定调用哪个工具及其参数 |\n| `OBSERVATION` | 工具执行后的返回结果 |\n| `OUTPUT` | 最终输出给用户的文本 |\n\n此外还有 5 个 **UI 辅助事件**：`AGENT_START`, `THOUGHT_START`, `THOUGHT_DONE`, `AGENT_DONE`, `AGENT_ERROR`，用于 CLI 或其他 UI 层进行渲染控制。\n\n### 3.2 Agent 核心层 → `src/agent/index.ts`\n\n**Agent 类** 是整个系统的核心编排器，负责驱动整个循环。\n\n```\nprompt(userText)\n  ↓\npush INPUT event → eventLog\n  ↓\nrunAgentLoop()\n  ├── 调用 provider.stream(model, input, tools) → 获得流\n  ├── 遍历流中的每个 chunk\n  │   ├── THOUGHT → 累积文本 + 实时 emit\n  │   ├── OUTPUT → 累积文本 + 实时 emit\n  │   └── ACTION → 推入 turnActionEvents[]\n  ├── 遍历结束 → 执行所有工具调用（OBSERVATION）\n  ├── 将本轮事件推入 eventLog（线性保存）\n  └── 判断是否继续循环：\n      ├── 有 ACTION → 继续下一轮（LLM 拿到观察结果后再思考）\n      ├── 无 ACTION + 有 OUTPUT → 结束\n      ├── 无 ACTION + 无 OUTPUT → 报错\n      └── 超过 maxTurns (20) → 报错结束\n```\n\n**关键设计**：\n- **事件驱动**：所有内部状态通过事件流表达\n- **发布-订阅模式**：CLI 层通过 `agent.on(listener)` 订阅事件流，实时渲染\n- **线性日志**：每轮循环累积的 thought/action/observation/output 事件按顺序推入 `eventLog`，作为下一轮 LLM 调用的上下文\n\n### 3.3 AI 模型适配层 → `src/ai/`\n\n使用 **适配器模式 + 工厂模式** 实现多厂商支持。\n\n```\ncreateClient({ provider: 'openai' })\n  ↓\nAiProvidersFactory.get('openai') → OpenAIAdaptor\n  ↓\nnew OpenAIAdaptor(config) → AiProvider\n```\n\n**核心接口**：\n```typescript\ninterface AiProvider {\n  stream(requestConfig: AiRequestConfig): AsyncIterable<AgentEvent>;\n}\n```\n\n**当前支持的 Provider**：\n| Provider | 适配器 | 说明 |\n|----------|--------|------|\n| `openai` | OpenAIAdaptor | OpenAI 原生 |\n| `deepseek` | OpenAIAdaptor | 兼容 OpenAI SDK，额外处理 `reasoning_content` |\n\n**OpenAIAdaptor 的关键职责**：\n1. **事件 → ChatMessage**：将 Agent 内部事件日志 `AgentEvent[]` 转换为 LLM 能接受的 `ChatCompletionMessageParam[]`\n2. **处理对话分组**：通过 `splitEventsByOutputEvent` 将事件按 OUTPUT 分组，构造 DeepSeek 要求的消息结构（assistant + tool 交替）\n3. **流式解析**：解析 LLM 返回的流，分离出：\n   - `reasoning_content` → THOUGHT 事件（DeepSeek 的思考过程）\n   - `content` → OUTPUT 事件\n   - `tool_calls` → 累积完整参数后 yield ACTION 事件\n4. **错误处理**：捕获异常后 yield `AGENT_ERROR` 事件\n\n### 3.4 工具系统 → `src/tools/`\n\n使用 **注册表模式** 实现工具的声明与执行分离。\n\n```\nToolRegistry (单例)\n  ├── register(tool)   → 注册工具\n  ├── get(name)        → 按名查找工具\n  └── list()           → 列出所有工具元信息（给 LLM 的 function calling schema）\n```\n\n**工具定义** `ToolDefinition<T, U>`：\n```typescript\ninterface ToolDefinition<T, U> extends ToolMeta {\n  name: string;        // 工具名\n  description: string; // 描述（LLM 理解）\n  schema: {...};       // 参数 JSON Schema（LLM 的 function calling）\n  execute(p: T, context: ToolContext): U;  // 实际执行\n}\n```\n\n**内置工具**（`src/tools/builtins.ts`）：\n| 工具名 | 功能 |\n|--------|------|\n| `read_file` | 读取文件内容 |\n| `list_files` | 列出目录下的文件和子目录 |\n\n**设计思路**：工具注册与执行分离，LLM 只看到 `{name, description, schema}`，实际执行走工具注册表，方便扩展新的自定义工具。\n\n### 3.5 CLI 交互层 → `src/cli/index.ts`\n\n命令行入口，负责：\n1. 初始化环境（代理、环境变量）\n2. 创建 Provider（当前用 DeepSeek）\n3. 实例化 Agent 并注册工具\n4. 启动 REPL 循环（`readline`）\n5. 订阅 Agent 事件并实现 **终端渲染**\n   - 绿色 `agent_start` / `agent_done` 标记\n   - 灰色 `thought` + 思考过程流式打印 + 绿色的 ✓\n   - 绿色 `output` 流式输出\n   - 红色 `agent_error` 错误输出\n6. 每轮对话后将日志写入 `log.json`（调试用）\n\n---\n\n## 4. 数据流全景图\n\n```\n┌─────────────────────────────────────────────────────────────────────────┐\n│  CLI (src/cli/index.ts)                                                 │\n│                                                                         │\n│  readline 用户输入                                                       │\n│       │                                                                 │\n│       ▼                                                                 │\n│  agent.prompt(\"帮我读下 package.json\")                                    │\n│       │                                                                 │\n│       ▼                                                                 │\n│  ┌─────────────────────────────────────────────────────────────────┐   │\n│  │  Agent (src/agent/index.ts)                                     │   │\n│  │                                                                 │   │\n│  │  eventLog.push(INPUT)                                           │   │\n│  │       │                                                         │   │\n│  │       ▼                                                         │   │\n│  │  runAgentLoop()                                                 │   │\n│  │       │                                                         │   │\n│  │       ▼                                                         │   │\n│  │  provider.stream({                                              │   │\n│  │    model,                                                        │   │\n│  │    input: eventLog,     ◄── 历史上下文                           │   │\n│  │    tools: [read_file, list_files]  ◄── 工具定义                  │   │\n│  │  })                                                              │   │\n│  │       │                                                         │   │\n│  │       ▼                                                         │   │\n│  │  ┌─────────────────────────────────────────────────────────┐   │   │\n│  │  │  OpenAIAdaptor (src/ai/adaptors/openai.ts)               │   │   │\n│  │  │                                                          │   │   │\n│  │  │  ① normalizeDeepSeekInputMessage(eventLog)                │   │   │\n│  │  │     → [{role:\"user\",content:\"...\"},                       │   │   │\n│  │  │        {role:\"assistant\",tool_calls:[...]},               │   │   │\n│  │  │        {role:\"tool\",content:\"...\"}]                       │   │   │\n│  │  │                                                          │   │   │\n│  │  │  ② client.chat.completions.create({stream:true})         │   │   │\n│  │  │     → 流式返回                                            │   │   │\n│  │  │                                                          │   │   │\n│  │  │  ③ yield THOUGHT / OUTPUT / ACTION events               │   │   │\n│  │  └─────────────────────────────────────────────────────────┘   │   │\n│  │       │                                                         │   │\n│  │       ▼                                                         │   │\n│  │  Agent 消费流:                                                  │   │\n│  │  ┌────────────────────────────────┐                             │   │\n│  │  │ for await (const chunk of stream)                          │   │   │\n│  │  │   THOUGHT → emit 给 UI + 累积文本                          │   │   │\n│  │  │   OUTPUT → emit 给 UI + 累积文本                           │   │   │\n│  │  │   ACTION → 收集到 turnActionEvents[]                       │   │   │\n│  │  └────────────────────────────────┘                             │   │\n│  │       │                                                         │   │\n│  │       ▼                                                         │   │\n│  │  ② 执行工具调用:                                               │   │\n│  │  ┌────────────────────────────────┐                             │   │\n│  │  │ for (action of turnActionEvents)                            │   │   │\n│  │  │   tool = toolRegistry.get(action.name)                      │   │   │\n│  │  │   content = await tool.execute(action.args)                 │   │   │\n│  │  │   → OBSERVATION { id, name, result }                       │   │   │\n│  │  └────────────────────────────────┘                             │   │\n│  │       │                                                         │   │\n│  │       ▼                                                         │   │\n│  │  ③ 推入 eventLog（更新上下文）                                  │   │\n│  │     thought + actions + observations + output                  │   │   │\n│  │       │                                                         │   │\n│  │       ▼                                                         │   │\n│  │  if (有 ACTION) → 继续循环（LLM 拿到观察结果后继续思考）        │   │   │\n│  │  if (无 ACTION) → 结束循环，emit AGENT_DONE                   │   │   │\n│  └─────────────────────────────────────────────────────────────────┘   │\n│       │                                                                 │\n│       ▼                                                                 │\n│  CLI 实时渲染:                                                          │\n│  🧠 推理中: ... ✓                                                      │\n│  🤖 Agent 输出: ...                                                    │\n│                                                                         │\n└─────────────────────────────────────────────────────────────────────────┘\n```\n\n---\n\n## 5. 设计模式总结\n\n| 模式 | 使用位置 | 作用 |\n|------|----------|------|\n| **适配器模式** | `src/ai/adaptors/` | 抹平不同 AI 厂商接口差异，统一为 `AiProvider` 接口 |\n| **工厂模式** | `src/ai/index.ts` | 通过 `AiProvidersFactory` Map 根据 provider 名创建对应适配器 |\n| **注册表模式** | `src/tools/index.ts` | `ToolRegistry` 集中管理工具的定义、注册、查找 |\n| **发布-订阅模式** | `src/agent/index.ts` | Agent 通过 `emit/on` 机制将事件推送给 CLI 等监听者 |\n| **责任链+循环** | `src/agent/index.ts` | Agent 循环不断将工具执行结果喂回 LLM，形成思考-行动-观察循环 |\n\n---\n\n## 6. 当前局限与可扩展点\n\n1. **Provider 支持有限**：目前只有 OpenAI 适配器（兼容 DeepSeek），Google Gemini 适配器尚未实现\n2. **工具数量少**：只有 `read_file` 和 `list_files`，可注册更多工具\n3. **ToolContext 简单**：目前只传递 `cwd`，可扩展更多上下文信息\n4. **无持久化存储**：对话日志仅写 `log.json`，缺乏长期记忆能力\n5. **单轮对话单一模型**：不支持多模型协作或切换"
+  },
+  {
+    "type": "input",
+    "source": "user",
+    "text": "读一下 package.json 文件"
+  },
+  {
+    "type": "thought",
+    "text": "The user is asking me to read the package.json file. I already have its contents from the previous read, but let me use the tool as requested - I'll use the `read_file` tool to read it.\n\nActually, I already read it earlier. But to demonstrate the tool usage, let me just present the content I already have. Wait, the user might be testing the agent's tool system. Let me use the tool to read it."
+  },
+  {
+    "type": "action",
+    "id": "call_00_BWW7g8rnDYOPlehWNtzz8521",
+    "name": "read_file",
+    "args": {
+      "path": "./package.json"
+    }
+  },
+  {
+    "type": "observation",
+    "id": "call_00_BWW7g8rnDYOPlehWNtzz8521",
+    "name": "read_file",
+    "result": "{\n  \"name\": \"agent\",\n  \"version\": \"1.0.0\",\n  \"description\": \"\",\n  \"main\": \"index.js\",\n  \"scripts\": {\n    \"test\": \"echo \\\"Error: no test specified\\\" && exit 1\",\n    \"dev\": \"node --import tsx src/cli/index.ts\",\n    \"ts:check\": \"tsc --noEmit\",\n    \"ts:tsc\": \"tsc\",\n    \"check\": \"biome check --write\"\n  },\n  \"keywords\": [],\n  \"author\": \"\",\n  \"license\": \"ISC\",\n  \"packageManager\": \"pnpm@10.33.0\",\n  \"devDependencies\": {\n    \"@biomejs/biome\": \"^2.4.15\",\n    \"@types/node\": \"^25.8.0\",\n    \"tsx\": \"^4.22.0\",\n    \"typescript\": \"^6.0.3\"\n  },\n  \"dependencies\": {\n    \"@google/genai\": \"^2.3.0\",\n    \"dotenv\": \"^17.4.2\",\n    \"openai\": \"^6.38.0\",\n    \"undici\": \"^8.3.0\"\n  }\n}\n"
+  },
+  {
+    "type": "output",
+    "text": ""
+  },
+  {
+    "type": "thought",
+    "text": "The user asked me to read the package.json file. I've done that successfully. Let me present the contents clearly."
+  },
+  {
+    "type": "output",
+    "text": "好的，`package.json` 的内容如下：\n\n## package.json\n\n| 字段 | 值 |\n|------|-----|\n| **名称** | `agent` |\n| **版本** | `1.0.0` |\n| **包管理器** | `pnpm@10.33.0` |\n| **许可证** | ISC |\n\n### 脚本 (Scripts)\n\n| 命令 | 作用 |\n|------|------|\n| `pnpm dev` | **启动开发模式** — 通过 `tsx` 直接运行 TypeScript 入口 `src/cli/index.ts` |\n| `pnpm ts:check` | 类型检查（`tsc --noEmit`，不输出编译文件） |\n| `pnpm ts:tsc` | 编译 TypeScript 到 `dist/` |\n| `pnpm check` | 使用 Biome 进行代码检查和格式化 |\n\n### 依赖 (Dependencies)\n\n| 包 | 版本 | 用途 |\n|----|------|------|\n| `openai` | ^6.38.0 | OpenAI SDK，同时也用于兼容 DeepSeek API |\n| `@google/genai` | ^2.3.0 | Google Gemini SDK（已安装但**尚未实现适配器**） |\n| `dotenv` | ^17.4.2 | 加载 `.env` 环境变量 |\n| `undici` | ^8.3.0 | 底层 HTTP 客户端（用于设置代理） |\n\n### 开发依赖 (DevDependencies)\n\n| 包 | 版本 | 用途 |\n|----|------|------|\n| `typescript` | ^6.0.3 | TypeScript 编译器 |\n| `tsx` | ^4.22.0 | 直接执行 TypeScript（无需预编译） |\n| `@types/node` | ^25.8.0 | Node.js 类型定义 |\n| `@biomejs/biome` | ^2.4.15 | Linter 和 Formatter |\n\n### 关键观察\n\n1. **运行时启动** 走 `pnpm dev`，用 `tsx` 直接跑 TypeScript 源文件，无需预编译步骤\n2. `@google/genai` 已安装但 Gemini 适配器尚未实现（`src/ai/adaptors/` 里只有 `openai.ts`）\n3. **DeepSeek** 走的是 OpenAI 兼容接口，复用了 `openai` SDK\n4. 项目使用 **ES2024** 目标（见 `tsconfig.json`），现代 JS 语法全支持"
+  },
+  {
+    "type": "input",
+    "source": "user",
+    "text": "dev 干嘛的"
+  },
+  {
+    "type": "thought",
+    "text": "The user is asking what the `dev` script does. Let me look at the package.json I just read and explain it.\n\nThe `dev` script is:\n```\n\"dev\": \"node --import tsx src/cli/index.ts\"\n```\n\nThis is the development script that starts the agent CLI application. Let me explain what each part does."
+  },
+  {
+    "type": "output",
+    "text": "`dev` 是项目的**开发启动命令**，执行：\n\n```bash\npnpm dev\n```\n\n它实际运行的是：\n\n```bash\nnode --import tsx src/cli/index.ts\n```\n\n拆解一下各部分的作用：\n\n| 部分 | 说明 |\n|------|------|\n| `node` | Node.js 运行时 |\n| `--import tsx` | 通过 `--import` 钩子加载 `tsx` 模块，使 Node.js **原生支持直接执行 TypeScript** 文件，无需先 `tsc` 编译 |\n| `src/cli/index.ts` | **CLI 入口文件**，启动 REPL 命令行交互循环 |\n\n### 简单来说\n\n`pnpm dev` 就是**一键启动整个 Agent 程序**，进入命令行交互模式：\n\n```\n> pnpm dev\n\n开始执行 agent \n\n> 帮我读一下 package.json\n🧠 推理中: 用户想读 package.json... ✓\n🤖 Agent 输出: {...}\n```\n\n### 对比 `ts:tsc`\n\n| 命令 | 作用 |\n|------|------|\n| `pnpm dev` | **直接运行**，开发时用（即时执行，不生成文件） |\n| `pnpm ts:tsc` | **编译** TypeScript 到 `dist/` 目录生成 `.js` 文件，生产部署时用 |"
+  },
+  {
+    "type": "input",
+    "source": "user",
+    "text": "我问了你几个问题？"
+  },
+  {
+    "type": "thought",
+    "text": "The user is asking me how many questions I've answered so far from them. Let me look back at the conversation history.\n\n1. \"分析项目架构\" - Analyze the project architecture\n2. \"读一下 package.json 文件\" - Read the package.json file\n3. \"dev 干嘛的\" - What does dev do?\n\nSo they've asked me 3 questions total so far."
+  },
+  {
+    "type": "output",
+    "text": "你到目前为止一共问了我 **3 个问题**：\n\n1. **分析项目架构** — 我详细分析了整个项目的目录结构、分层设计、数据流、设计模式等\n2. **读一下 package.json 文件** — 读取并展示了 `package.json` 的全部内容和依赖说明\n3. **dev 干嘛的** — 解释了 `pnpm dev` 命令的作用，即通过 `tsx` 直接启动 TypeScript 入口文件进入 Agent 交互模式\n\n还有什么想了解的？😄"
+  }
+]

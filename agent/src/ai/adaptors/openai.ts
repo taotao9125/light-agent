@@ -36,87 +36,99 @@ import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
 ];
  */
 
+
+
+const stringifyContent = (content: unknown): string => {
+	if (typeof content === 'string') return content;
+	return JSON.stringify(content);
+};
+
+
+function splitEventsByOutputEvent(events: AgentEvent[]): AgentEvent[][] {
+	const eventGroups: AgentEvent[][] = [];
+	let currentGroup: AgentEvent[] = [];
+
+	for (const event of events) {
+		currentGroup.push(event)
+		if (event.type === EventType.OUTPUT) {
+			eventGroups.push(currentGroup)
+			currentGroup = [];
+		}
+	}
+
+	if (currentGroup.length) {
+      eventGroups.push(currentGroup);
+  }
+
+	return eventGroups;
+}
+
 // 注意这是 deepseek 要求的结构, 回传时, 都塞进一个 assistant message 里
 const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMessageParam[] => {
-	const stringifyContent = (content: unknown): string => {
-		if (typeof content === 'string') return content;
-		return JSON.stringify(content);
-	};
 
-	const splitEventsByInput = (events: AgentEvent[]): AgentEvent[][] => {
-		const inputIndexes = events.reduce<number[]>((indexes, event, index) => {
-			if (event.type === EventType.INPUT) {
-				indexes.push(index);
-			}
-			return indexes;
-		}, []);
 
-		return inputIndexes.map((startIndex, index) => {
-			const endIndex = inputIndexes[index + 1] ?? events.length;
-			return events.slice(startIndex, endIndex);
-		});
-	};
+	const eventGroups = splitEventsByOutputEvent(events);
 
-	const eventGroupToMessages = (eventGroup: AgentEvent[]): ChatCompletionMessageParam[] => {
-		const messages = [] as ChatCompletionMessageParam[];
-		let thought = '';
-		const pendingActions: Extract<AgentEvent, { type: typeof EventType.ACTION }>[] = [];
+	const messages = eventGroups.flatMap((group): ChatCompletionMessageParam[] => {
+		const input = group.find((event) => event.type === EventType.INPUT);
+		const thought = group.find((event) => event.type === EventType.THOUGHT);
+		const output = group.find((event) => event.type === EventType.OUTPUT);
+		const actions = group.filter((event) => event.type === EventType.ACTION);
+		const observations = group.filter((event) => event.type === EventType.OBSERVATION);
+		const groupMessages: ChatCompletionMessageParam[] = [];
 
-		const commitAssistantToolCall = (): void => {
-			if (!pendingActions.length) return;
+		if (input?.type === EventType.INPUT) {
+			groupMessages.push({
+				role: input.source ?? 'user',
+				content: input.text,
+			});
+		}
 
-			messages.push({
+		const thoughtText = thought?.type === EventType.THOUGHT && thought.text
+					? thought.text
+					: null;
+		const outputText = output?.type === EventType.OUTPUT && output.text
+					? output.text
+					: null;
+
+		if (actions.length) {
+			groupMessages.push({
 				role: 'assistant',
-				content: null,
-				reasoning_content: thought,
-				tool_calls: pendingActions.map((action) => ({
+				content: thoughtText,
+				reasoning_content: thoughtText,
+				tool_calls: actions.map((action) => ({
 					id: action.id,
 					type: 'function',
 					function: {
-						arguments: JSON.stringify(action.args),
 						name: action.name,
+						arguments: JSON.stringify(action.args),
 					},
 				})),
 			} as ChatCompletionAssistantMessageParam);
 
-
-			
-			thought = '';
-			pendingActions.length = 0;
-		};
-
-		for (const event of eventGroup) {
-			const type = event.type;
-			if (type === EventType.INPUT) {
-				messages.push({ role: event.source ?? 'user', content: event.text });
+			for (const observation of observations) {
+				groupMessages.push({
+					role: 'tool',
+					tool_call_id: observation.id,
+					content: stringifyContent(observation.result),
+				});
 			}
 
-			if (type === EventType.THOUGHT) {
-				thought = event.text;
-			}
-
-			if (type === EventType.ACTION) {
-				pendingActions.push(event);
-			}
-
-			if (type === EventType.OBSERVATION) {
-				commitAssistantToolCall();
-				messages.push({ role: 'tool', tool_call_id: event.id, content: stringifyContent(event.result) });
-			}
-
-			if (type === EventType.OUTPUT) {
-				commitAssistantToolCall();
-				messages.push({ role: 'assistant', content: event.text });
-				thought = '';
-			}
+			return groupMessages;
 		}
 
-		commitAssistantToolCall();
-		return messages;
-	};
+		if (outputText) {
+      groupMessages.push({
+        role: 'assistant',
+        content: outputText
+      } as ChatCompletionAssistantMessageParam);
+    }
 
-	const eventGroups = splitEventsByInput(events);
-	return eventGroups.flatMap(eventGroupToMessages);
+		return groupMessages;
+	})
+
+	return messages;
+
 }
 
 export default class OpenAIAdaptor implements AiProvider {

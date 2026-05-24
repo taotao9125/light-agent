@@ -32,7 +32,7 @@ class Agent implements AgentInterface {
 		this.eventLog = [];
 		this.listeners = [];
 		this.model = config.model;
-		this.maxTurns = config.maxTurns ?? 5;
+		this.maxTurns = config.maxTurns ?? 20;
 	}
 
 	emit(event: AgentEvent): void {
@@ -46,6 +46,11 @@ class Agent implements AgentInterface {
 	// 2. error
 	// 3. no action + has output = done;
 	// 4. no action	+ no output = error;
+
+	logs() {
+		return this.eventLog;
+	}
+
 	async runAgentLoop() {
 		this.emit({ type: EventType.AGENT_START });
 
@@ -75,6 +80,7 @@ class Agent implements AgentInterface {
 
 			// 需要等把流迭代完了, 才能知道有没有指令来决定是否进行下一轮
 			for await (const chunk of stream) {
+			
 
 				if (chunk.type === EventType.AGENT_ERROR) {
 					errorEvents.push(chunk);
@@ -115,6 +121,9 @@ class Agent implements AgentInterface {
 				this.emit({ type: EventType.THOUGHT_DONE });
 			}
 
+			if (!turnActionEvents.length && !turnOutputTextBuffer) {
+				errorEvents.push({ type: EventType.AGENT_ERROR, message: 'LLM did not return an action or output.' })
+			}
 
 
 			if (errorEvents.length) {
@@ -146,11 +155,11 @@ class Agent implements AgentInterface {
 				}
 			}
 
-			// 确保 [input, thought, action, observation, output] 这种顺序
-			if (turnThoughtTextBuffer) this.eventLog.push({ type: EventType.THOUGHT, text: turnThoughtTextBuffer });
+			// 没有 buffer 也要推进去, 这样 log 更线性
+			this.eventLog.push({ type: EventType.THOUGHT, text: turnThoughtTextBuffer });
 			turnActionEvents.forEach(event => { this.eventLog.push(event) });
 			turnObservationEvents.forEach(event => { this.eventLog.push(event) });
-			if (turnOutputTextBuffer) this.eventLog.push({ type: EventType.OUTPUT, text: turnOutputTextBuffer });
+			this.eventLog.push({ type: EventType.OUTPUT, text: turnOutputTextBuffer });
 			
 			if (shouldBreakLoop) break;
 
