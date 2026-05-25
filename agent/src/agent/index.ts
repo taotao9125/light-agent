@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { AiProvider } from '../ai/index';
 import type { ActionEvent, AgentError, AgentEvent, ObservationEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
@@ -10,11 +11,13 @@ type AgentConfig = {
 	maxTurns?: number;
 };
 
+
 type AgentEventListener = (event: AgentEvent) => void;
 
-interface AgentInterface {
+export interface AgentInterface {
 	prompt: (prompt: string) => Promise<void>;
 	on: (listener: AgentEventListener) => void;
+	getCurrentPromptLog: () => AgentEvent[];
 }
 
 class Agent implements AgentInterface {
@@ -49,8 +52,13 @@ class Agent implements AgentInterface {
 		return this.eventLog;
 	}
 
-	async runAgentLoop() {
-		this.emit({ type: EventType.AGENT_START });
+	getCurrentPromptLog() {
+		const lastInputEventIndex = this.eventLog.findLastIndex(event => event.type === EventType.INPUT);
+		return this.eventLog.slice(lastInputEventIndex);
+	}
+
+	async runAgentLoop(roundId: string) {
+		this.emit({ type: EventType.AGENT_START, meta: { roundId } });
 
 		let turn = 0;
 
@@ -69,6 +77,7 @@ class Agent implements AgentInterface {
 				this.emit({
 					type: EventType.AGENT_ERROR,
 					message: `Agent stopped after reaching max turns: ${this.maxTurns}`,
+					meta: { roundId }
 				});
 				break;
 			}
@@ -89,41 +98,46 @@ class Agent implements AgentInterface {
 				// 一旦有 action, LLM 需要 observe 外部调用, 进入下一步调用
 				if (chunk.type === EventType.ACTION) {
 					if (!this.toolRegistry.get(chunk.name)) {
-						errorEvents.push({ type: EventType.AGENT_ERROR, message: `unknown tool \`${chunk.name}\`` });
+						errorEvents.push({ type: EventType.AGENT_ERROR, message: `unknown tool \`${chunk.name}\``, meta: { roundId } });
 						break;
 					}
-					turnActionEvents.push(chunk);
+					turnActionEvents.push({
+						...chunk,
+						meta: {
+							roundId
+						}
+					});
 				}
 
 				if (chunk.type === EventType.THOUGHT) {
 					if (!hasEmitThoughtStart) {
 						hasEmitThoughtStart = true;
-						this.emit({ type: EventType.THOUGHT_START });
+						this.emit({ type: EventType.THOUGHT_START, meta: { roundId } });
 					}
 
 					// 存起来用于下一次
-					this.emit({ type: EventType.THOUGHT, text: chunk.text });
+					this.emit({ type: EventType.THOUGHT, text: chunk.text, meta: { roundId } });
 					turnThoughtTextBuffer += chunk.text;
 				}
 
 				if (chunk.type === EventType.OUTPUT) {
-					this.emit({ type: EventType.OUTPUT, text: chunk.text });
+					this.emit({ type: EventType.OUTPUT, text: chunk.text, meta: { roundId } });
 					turnOutputTextBuffer += chunk.text;
 				}
 			}
 
 			// 有 start 就有 end
 			if (hasEmitThoughtStart) {
-				this.emit({ type: EventType.THOUGHT_DONE });
+				this.emit({ type: EventType.THOUGHT_DONE, meta: { roundId } });
 			}
 
 			if (!turnActionEvents.length && !turnOutputTextBuffer) {
-				errorEvents.push({ type: EventType.AGENT_ERROR, message: 'LLM did not return an action or output.' });
+				errorEvents.push({ type: EventType.AGENT_ERROR, message: 'LLM did not return an action or output.', meta: { roundId } });
 			}
 
 			if (errorEvents.length) {
 				errorEvents.forEach((event) => {
-					this.emit({ type: EventType.AGENT_ERROR, message: event.message });
+					this.emit({ type: EventType.AGENT_ERROR, message: event.message, meta: { roundId } });
 				});
 				break;
 			}
@@ -144,30 +158,35 @@ class Agent implements AgentInterface {
 							id,
 							name,
 							result: content,
+							meta: { roundId }
 						});
 					}
 				}
 			}
 
 			// 没有 buffer 也要推进去, 这样 log 更线性
-			this.eventLog.push({ type: EventType.THOUGHT, text: turnThoughtTextBuffer });
-			turnActionEvents.forEach((event) => {
-				this.eventLog.push(event);
-			});
-			turnObservationEvents.forEach((event) => {
-				this.eventLog.push(event);
-			});
-			this.eventLog.push({ type: EventType.OUTPUT, text: turnOutputTextBuffer });
+			if (turnThoughtTextBuffer) {
+				this.eventLog.push({ type: EventType.THOUGHT, text: turnThoughtTextBuffer, meta: { roundId } });
+			}
+
+			this.eventLog.push(...turnActionEvents);
+			this.eventLog.push(...turnObservationEvents);
+			if (turnOutputTextBuffer) {
+				this.eventLog.push({ type: EventType.OUTPUT, text: turnOutputTextBuffer, meta: { roundId } });
+			}
+
 
 			if (shouldBreakLoop) break;
 		}
 
-		this.emit({ type: EventType.AGENT_DONE });
+		this.emit({ type: EventType.AGENT_DONE, meta: { roundId } });
 	}
 
 	async prompt(prompt: string) {
-		this.eventLog.push({ type: EventType.INPUT, source: 'user', text: prompt });
-		await this.runAgentLoop();
+		// 一个 input 到 output 为一个 roundId
+		const roundId = `round_id_${randomUUID()}`;
+		this.eventLog.push({ type: EventType.INPUT, source: 'user', text: prompt, meta: { roundId} });
+		await this.runAgentLoop(roundId);
 	}
 
 	on(listener: AgentEventListener) {

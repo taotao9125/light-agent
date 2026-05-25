@@ -17,15 +17,21 @@ export const EventType = {
 	AGENT_ERROR: 'agent_error',
 } as const;
 
+type Meta = {
+	roundId: string;
+}
+
 export type InputEvent = {
 	type: typeof EventType.INPUT;
 	text: string;
 	source?: 'user' | 'system';
+	meta?: Meta;
 };
 
 export type ThoughtEvent = {
 	type: typeof EventType.THOUGHT;
 	text: string;
+	meta?: Meta;
 };
 
 export type ActionEvent = {
@@ -33,6 +39,7 @@ export type ActionEvent = {
 	id: string;
 	name: string;
 	args: Record<string, any>;
+	meta?: Meta;
 };
 
 export type ObservationEvent = {
@@ -40,18 +47,22 @@ export type ObservationEvent = {
 	id: string;
 	name: string;
 	result: any;
+	meta?: Meta;
 };
 
 export type OutputEvent = {
 	type: typeof EventType.OUTPUT;
 	text: string;
+	meta?: Meta;
 };
 
-export type AgentStartEvent = { type: typeof EventType.AGENT_START };
-export type AgentThoughtStartEvent = { type: typeof EventType.THOUGHT_START };
-export type AgentThoughtDoneEvent = { type: typeof EventType.THOUGHT_DONE };
-export type AgentDoneEvent = { type: typeof EventType.AGENT_DONE };
-export type AgentError = { type: typeof EventType.AGENT_ERROR; message: string };
+export type AgentError = { type: typeof EventType.AGENT_ERROR; message: string ; meta?: Meta};
+
+export type AgentStartEvent = { type: typeof EventType.AGENT_START; meta?: Meta};
+export type AgentThoughtStartEvent = { type: typeof EventType.THOUGHT_START; meta?: Meta };
+export type AgentThoughtDoneEvent = { type: typeof EventType.THOUGHT_DONE; meta?: Meta };
+export type AgentDoneEvent = { type: typeof EventType.AGENT_DONE; meta?: Meta };
+
 
 export type AgentEvent =
 	| InputEvent
@@ -59,9 +70,10 @@ export type AgentEvent =
 	| ActionEvent
 	| ObservationEvent
 	| OutputEvent
+	| AgentError
 	// 下面是方便 UI 订阅的
 	| AgentStartEvent
 	| AgentThoughtStartEvent
 	| AgentThoughtDoneEvent
 	| AgentDoneEvent
-	| AgentError;
+	

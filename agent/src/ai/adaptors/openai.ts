@@ -5,7 +5,7 @@ import type {
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions';
 import { type AgentEvent, EventType } from '../../protocol/events';
-import { parseEventGroup, splitEventsByOutputEvent, stringifyContent } from '../helpers';
+import { parseEventGroup, splitEventsToGroups, stringifyContent } from '../helpers';
 import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
 
 /** deepseek 的每一轮思考模式 message 结构
@@ -37,7 +37,7 @@ import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
 
 // 注意这是 deepseek 要求的结构, 回传时, 都塞进一个 assistant message 里
 const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMessageParam[] => {
-	const eventGroups = splitEventsByOutputEvent(events);
+	const eventGroups = splitEventsToGroups(events);
 
 	const messages = eventGroups.flatMap((group): ChatCompletionMessageParam[] => {
 		const { input, thought, actions, observations, output } = parseEventGroup(group);

@@ -5,23 +5,17 @@ export const stringifyContent = (content: unknown): string => {
 	return JSON.stringify(content);
 };
 
-export function splitEventsByOutputEvent(events: AgentEvent[]): AgentEvent[][] {
-	const eventGroups: AgentEvent[][] = [];
-	let currentGroup: AgentEvent[] = [];
-
-	for (const event of events) {
-		currentGroup.push(event);
-		if (event.type === EventType.OUTPUT) {
-			eventGroups.push(currentGroup);
-			currentGroup = [];
+export function splitEventsToGroups(events: AgentEvent[]): AgentEvent[][] {
+	const groups = new Map<string, AgentEvent[]>();
+	for(const event of events) {
+		const roundId = event.meta!.roundId;
+		if (!groups.has(roundId)) {
+			groups.set(roundId, []);
 		}
+		groups.get(roundId)!.push(event);
 	}
 
-	if (currentGroup.length) {
-		eventGroups.push(currentGroup);
-	}
-
-	return eventGroups;
+	return [...groups.values()]; 
 }
 
 export function parseEventGroup(group: AgentEvent[]) {

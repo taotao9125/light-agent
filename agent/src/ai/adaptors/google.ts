@@ -1,14 +1,14 @@
 import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
 import type { Content, FunctionCall, FunctionDeclaration, GenerateContentParameters } from '@google/genai';
 import { type AgentEvent, EventType } from '../../protocol/events';
-import { parseEventGroup, splitEventsByOutputEvent } from '../helpers';
+import { parseEventGroup, splitEventsToGroups } from '../helpers';
 import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
 
 const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 	// Your eventLog is committed by LLM turn. Google expects a history of
 	// Content objects, so each OutputEvent-ended group becomes one or more
 	// user/model contents.
-	const eventGroups = splitEventsByOutputEvent(events);
+	const eventGroups = splitEventsToGroups(events);
 
 	return eventGroups.flatMap((group): Content[] => {
 		const { input, thought, actions, observations, output } = parseEventGroup(group);
