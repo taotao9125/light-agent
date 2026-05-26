@@ -63,22 +63,18 @@ class Agent implements AgentInterface {
 		const roundId = `round_id_${randomUUID()}`;
 		let turn = 0;
 
-		this.eventLog.push({ type: EventType.INPUT, source: 'user', text: prompt, meta: { roundId, turn} });
-		this.emit({ type: EventType.AGENT_START, meta: { roundId, turn } });
-
-		
+		const inputEvent: AgentEvent = { type: EventType.INPUT, source: 'user', text: prompt, meta: { roundId, turn } };
+		this.eventLog.push(inputEvent);
+		this.emit(inputEvent);
 
 		while (true) {
 			turn++;
-		
+
 			let turnThoughtTextBuffer = '';
 			let turnOutputTextBuffer = '';
 			const turnActionEvents: ActionEvent[] = [];
 			const turnObservationEvents: ObservationEvent[] = [];
-
 			const errorEvents: AgentError[] = [];
-
-			let hasEmitThoughtStart = false;
 
 			if (turn > this.maxTurns) {
 				this.emit({
@@ -118,26 +114,17 @@ class Agent implements AgentInterface {
 				}
 
 				if (chunk.type === EventType.THOUGHT) {
-					if (!hasEmitThoughtStart) {
-						hasEmitThoughtStart = true;
-						this.emit({ type: EventType.THOUGHT_START, meta: { roundId, turn } });
-					}
-
 					// 存起来用于下一次
-					this.emit({ type: EventType.THOUGHT, text: chunk.text, meta: { roundId, turn } });
+					this.emit({ type: EventType.THOUGHT_DELTA, text: chunk.text, meta: { roundId, turn } });
 					turnThoughtTextBuffer += chunk.text;
 				}
 
 				if (chunk.type === EventType.OUTPUT) {
-					this.emit({ type: EventType.OUTPUT, text: chunk.text, meta: { roundId, turn} });
+					this.emit({ type: EventType.OUTPUT_DELTA, text: chunk.text, meta: { roundId, turn } });
 					turnOutputTextBuffer += chunk.text;
 				}
 			}
 
-			// 有 start 就有 end
-			if (hasEmitThoughtStart) {
-				this.emit({ type: EventType.THOUGHT_DONE, meta: { roundId, turn } });
-			}
 
 			if (!turnActionEvents.length && !turnOutputTextBuffer) {
 				errorEvents.push({ type: EventType.AGENT_ERROR, message: 'LLM did not return an action or output.', meta: { roundId, turn } });
@@ -172,14 +159,19 @@ class Agent implements AgentInterface {
 				}
 			}
 
-			// 没有 buffer 也要推进去, 这样 log 更线性
 			if (turnThoughtTextBuffer) {
+				this.emit({ type: EventType.THOUGHT, text: turnThoughtTextBuffer, meta: { roundId, turn } })
 				this.eventLog.push({ type: EventType.THOUGHT, text: turnThoughtTextBuffer, meta: { roundId, turn } });
 			}
 
 			this.eventLog.push(...turnActionEvents);
+			turnActionEvents.forEach(event => this.emit(event));
+
 			this.eventLog.push(...turnObservationEvents);
+			turnObservationEvents.forEach(event => this.emit(event));
+
 			if (turnOutputTextBuffer) {
+				this.emit({ type: EventType.OUTPUT, text: turnOutputTextBuffer, meta: { roundId, turn } })
 				this.eventLog.push({ type: EventType.OUTPUT, text: turnOutputTextBuffer, meta: { roundId, turn } });
 			}
 
@@ -187,7 +179,6 @@ class Agent implements AgentInterface {
 			if (shouldBreakLoop) break;
 		}
 
-		this.emit({ type: EventType.AGENT_DONE, meta: { roundId, turn } });
 	}
 
 	async prompt(prompt: string) {
