@@ -1,6 +1,6 @@
 import { listFilesTool, readFileTool } from './builtins';
 
-import type { ToolDefinition } from './types';
+import type { ToolMeta, ToolDefinition } from './types';
 
 class ToolRegistry {
 	private tools = new Map<string, ToolDefinition<any, any>>();
@@ -13,7 +13,7 @@ class ToolRegistry {
 		return this.tools.get(name);
 	}
 
-	list(): Omit<ToolDefinition<any, any>, 'execute'>[] {
+	getToolShapes(): ToolMeta[] {
 		return Array.from(this.tools.values()).map((tool) => ({
 			name: tool.name,
 			description: tool.description,

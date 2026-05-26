@@ -88,7 +88,7 @@ class Agent implements AgentInterface {
 			const stream = this.provider.stream({
 				model: this.model,
 				input: this.eventLog,
-				tools: this.toolRegistry.list(),
+				tools: this.toolRegistry.getToolShapes(),
 			});
 
 			// 需要等把流迭代完了, 才能知道有没有指令来决定是否进行下一轮
