@@ -19,6 +19,7 @@ export const EventType = {
 
 type Meta = {
 	roundId: string;
+	turn: number;
 }
 
 export type InputEvent = {

@@ -1,17 +1,16 @@
 import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
 import type { Content, FunctionCall, FunctionDeclaration, GenerateContentParameters } from '@google/genai';
 import { type AgentEvent, EventType } from '../../protocol/events';
-import { parseEventGroup, splitEventsToGroups } from '../helpers';
+import { parseTurnEventGroup, splitEventsToRoundGroups } from '../helpers';
 import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
 
 const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
-	// Your eventLog is committed by LLM turn. Google expects a history of
-	// Content objects, so each OutputEvent-ended group becomes one or more
-	// user/model contents.
-	const eventGroups = splitEventsToGroups(events);
+	// Google expects a history of Content objects. A round is one user prompt,
+	// and each turn inside that round becomes one model/function-response pair.
+	const roundGroups = splitEventsToRoundGroups(events);
 
-	return eventGroups.flatMap((group): Content[] => {
-		const { input, thought, actions, observations, output } = parseEventGroup(group);
+	return roundGroups.flatMap((roundGroup): Content[] => {
+		const { input, turns } = roundGroup;
 		const contents: Content[] = [];
 
 		if (input?.type === EventType.INPUT) {
@@ -23,56 +22,60 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 			});
 		}
 
-		const thoughtText = thought?.type === EventType.THOUGHT && thought.text ? thought.text : null;
-		const outputText = output?.type === EventType.OUTPUT && output.text ? output.text : null;
+		for (const turnEvents of turns) {
+			const { thought, actions, observations, output } = parseTurnEventGroup(turnEvents);
 
-		if (actions.length) {
-			contents.push({
-				role: 'model',
-				parts: [
-					// Thought parts are Gemini's reasoning representation.
-					// `thought: true` keeps them separate from visible text.
-					...(thoughtText ? [{ text: thoughtText, thought: true }] : []),
-					// Output text is visible assistant content. It may be a
-					// progress message before a tool call.
-					...(outputText ? [{ text: outputText }] : []),
-					// ActionEvent maps to Gemini functionCall parts.
-					...actions.map((action) => ({
-						functionCall: {
-							id: action.id,
-							name: action.name,
-							args: action.args,
-						},
-					})),
-				],
-			});
+			const thoughtText = thought?.type === EventType.THOUGHT && thought.text ? thought.text : null;
+			const outputText = output?.type === EventType.OUTPUT && output.text ? output.text : null;
 
-			if (observations.length) {
+			if (actions.length) {
 				contents.push({
-					// Function responses are sent as user-role content because
-					// they are external results returned back to the model.
-					role: 'user',
-					parts: observations.map((observation) => ({
-						functionResponse: {
-							id: observation.id,
-							name: observation.name,
-							response: {
-								output: observation.result,
+					role: 'model',
+					parts: [
+						// Thought parts are Gemini's reasoning representation.
+						// `thought: true` keeps them separate from visible text.
+						...(thoughtText ? [{ text: thoughtText, thought: true }] : []),
+						// Output text is visible assistant content. It may be a
+						// progress message before a tool call.
+						...(outputText ? [{ text: outputText }] : []),
+						// ActionEvent maps to Gemini functionCall parts.
+						...actions.map((action) => ({
+							functionCall: {
+								id: action.id,
+								name: action.name,
+								args: action.args,
 							},
-						},
-					})),
+						})),
+					],
 				});
+
+				if (observations.length) {
+					contents.push({
+						// Function responses are sent as user-role content because
+						// they are external results returned back to the model.
+						role: 'user',
+						parts: observations.map((observation) => ({
+							functionResponse: {
+								id: observation.id,
+								name: observation.name,
+								response: {
+									output: observation.result,
+								},
+							},
+						})),
+					});
+				}
+
+				continue;
 			}
 
-			return contents;
-		}
-
-		if (thoughtText || outputText) {
-			contents.push({
-				role: 'model',
-				// No actions in this group means this is a model-only turn.
-				parts: [...(thoughtText ? [{ text: thoughtText, thought: true }] : []), ...(outputText ? [{ text: outputText }] : [])],
-			});
+			if (thoughtText || outputText) {
+				contents.push({
+					role: 'model',
+					// No actions in this turn means this is a model-only turn.
+					parts: [...(thoughtText ? [{ text: thoughtText, thought: true }] : []), ...(outputText ? [{ text: outputText }] : [])],
+				});
+			}
 		}
 
 		return contents;

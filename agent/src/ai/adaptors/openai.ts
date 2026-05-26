@@ -5,7 +5,7 @@ import type {
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions';
 import { type AgentEvent, EventType } from '../../protocol/events';
-import { parseEventGroup, splitEventsToGroups, stringifyContent } from '../helpers';
+import { parseTurnEventGroup, splitEventsToRoundGroups, stringifyContent } from '../helpers';
 import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
 
 /** deepseek 的每一轮思考模式 message 结构
@@ -37,12 +37,11 @@ import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
 
 // 注意这是 deepseek 要求的结构, 回传时, 都塞进一个 assistant message 里
 const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMessageParam[] => {
-	const eventGroups = splitEventsToGroups(events);
+	const roundGroups = splitEventsToRoundGroups(events);
 
-	const messages = eventGroups.flatMap((group): ChatCompletionMessageParam[] => {
-		const { input, thought, actions, observations, output } = parseEventGroup(group);
-
+	const messages = roundGroups.flatMap((roundGroup): ChatCompletionMessageParam[] => {
 		const groupMessages: ChatCompletionMessageParam[] = [];
+		const { input, turns } = roundGroup;
 
 		if (input?.type === EventType.INPUT) {
 			groupMessages.push({
@@ -51,40 +50,45 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 			});
 		}
 
-		const thoughtText = thought?.type === EventType.THOUGHT && thought.text ? thought.text : null;
-		const outputText = output?.type === EventType.OUTPUT && output.text ? output.text : null;
+		for (const turnEvents of turns) {
+			const { thought, actions, observations, output } = parseTurnEventGroup(turnEvents);
 
-		if (actions.length) {
-			groupMessages.push({
-				role: 'assistant',
-				content: outputText,
-				reasoning_content: thoughtText,
-				tool_calls: actions.map((action) => ({
-					id: action.id,
-					type: 'function',
-					function: {
-						name: action.name,
-						arguments: JSON.stringify(action.args),
-					},
-				})),
-			} as ChatCompletionAssistantMessageParam);
+			const thoughtText = thought?.type === EventType.THOUGHT && thought.text ? thought.text : null;
+			const outputText = output?.type === EventType.OUTPUT && output.text ? output.text : null;
 
-			for (const observation of observations) {
+			if (actions.length) {
 				groupMessages.push({
-					role: 'tool',
-					tool_call_id: observation.id,
-					content: stringifyContent(observation.result),
-				});
+					role: 'assistant',
+					content: outputText,
+					reasoning_content: thoughtText,
+					tool_calls: actions.map((action) => ({
+						id: action.id,
+						type: 'function',
+						function: {
+							name: action.name,
+							arguments: JSON.stringify(action.args),
+						},
+					})),
+				} as ChatCompletionAssistantMessageParam);
+
+				for (const observation of observations) {
+					groupMessages.push({
+						role: 'tool',
+						tool_call_id: observation.id,
+						content: stringifyContent(observation.result),
+					});
+				}
+
+				continue;
 			}
 
-			return groupMessages;
-		}
-
-		if (outputText) {
-			groupMessages.push({
-				role: 'assistant',
-				content: outputText,
-			} as ChatCompletionAssistantMessageParam);
+			if (thoughtText || outputText) {
+				groupMessages.push({
+					role: 'assistant',
+					content: outputText,
+					reasoning_content: thoughtText,
+				} as ChatCompletionAssistantMessageParam);
+			}
 		}
 
 		return groupMessages;
