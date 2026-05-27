@@ -27,7 +27,7 @@ const color = {
 async function main() {
 	const deepSeekProvider = createClient({
 		// 目前只支持 gemini, openai, deepseek
-		provider: 'deepseek',
+		vendorName: 'deepseek',
 		apiKey: process.env.AI_DEEP_SEEK_API_KEY as string,
 		baseURL: process.env.AI_DEEP_SEEK_API_HOST as string,
 	});
@@ -35,7 +35,7 @@ async function main() {
 	const agent = new Agent({
 		provider: deepSeekProvider,
 		model: 'deepseek-v4-flash',
-		toolRegistry: toolRegistry,
+		tools: toolRegistry.getToolShapes(),
 	});
 
 	const session = new AgentSession({

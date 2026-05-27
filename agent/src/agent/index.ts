@@ -2,12 +2,13 @@ import { randomUUID } from 'node:crypto';
 import type { AiProvider } from '../ai/index';
 import type { ActionEvent, AgentError, AgentEvent, ObservationEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
-import type toolRegistry from '../tools/index';
+import {type ToolMeta} from '../tools/types';
+import toolRegistry from '../tools/index';
 
 type AgentConfig = {
 	provider: AiProvider;
 	model: string;
-	toolRegistry: typeof toolRegistry;
+	tools: ToolMeta[];
 	maxTurns?: number;
 };
 
@@ -22,14 +23,14 @@ export interface AgentInterface {
 
 class Agent implements AgentInterface {
 	private provider: AiProvider;
-	private toolRegistry: typeof toolRegistry;
+	private tools: ToolMeta[];;
 	private eventLog: AgentEvent[];
 	private model: string;
 	private listeners: AgentEventListener[];
 	private maxTurns: number;
 	constructor(config: AgentConfig) {
 		this.provider = config.provider;
-		this.toolRegistry = config.toolRegistry;
+		this.tools = config.tools;
 		this.eventLog = [];
 		this.listeners = [];
 		this.model = config.model;
@@ -88,7 +89,7 @@ class Agent implements AgentInterface {
 			const stream = this.provider.stream({
 				model: this.model,
 				input: this.eventLog,
-				tools: this.toolRegistry.getToolShapes(),
+				tools: this.tools,
 			});
 
 			// 需要等把流迭代完了, 才能知道有没有指令来决定是否进行下一轮
@@ -100,7 +101,7 @@ class Agent implements AgentInterface {
 
 				// 一旦有 action, LLM 需要 observe 外部调用, 进入下一步调用
 				if (chunk.type === EventType.ACTION) {
-					if (!this.toolRegistry.get(chunk.name)) {
+					if (!toolRegistry.get(chunk.name)) {
 						errorEvents.push({ type: EventType.AGENT_ERROR, message: `unknown tool \`${chunk.name}\``, meta: { roundId, turn } });
 						break;
 					}
@@ -145,7 +146,7 @@ class Agent implements AgentInterface {
 				// 观察外部环境输入
 				for await (const action of turnActionEvents) {
 					const { name, id, args } = action;
-					const toolCommand = this.toolRegistry.get(name);
+					const toolCommand = toolRegistry.get(name);
 					if (toolCommand) {
 						const content = await toolCommand.execute(args, { cwd: process.cwd() });
 						turnObservationEvents.push({
