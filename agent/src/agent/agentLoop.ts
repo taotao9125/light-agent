@@ -5,7 +5,7 @@ import { EventType } from '../protocol/events';
 import {type ToolMeta} from '../tools/types';
 import toolRegistry from '../tools/index';
 
-type AgentConfig = {
+type AgentLoopConfig = {
 	provider: AiProvider;
 	model: string;
 	tools: ToolMeta[];
@@ -15,20 +15,20 @@ type AgentConfig = {
 
 type AgentEventListener = (event: AgentEvent) => void;
 
-export interface AgentInterface {
+export interface AgentLoopInterface {
 	prompt: (prompt: string) => Promise<void>;
 	on: (listener: AgentEventListener) => void;
 	getCurrentPromptLog: () => AgentEvent[];
 }
 
-class Agent implements AgentInterface {
+class AgentLoop implements AgentLoopInterface {
 	private provider: AiProvider;
 	private tools: ToolMeta[];;
 	private eventLog: AgentEvent[];
 	private model: string;
 	private listeners: AgentEventListener[];
 	private maxTurns: number;
-	constructor(config: AgentConfig) {
+	constructor(config: AgentLoopConfig) {
 		this.provider = config.provider;
 		this.tools = config.tools;
 		this.eventLog = [];
@@ -191,4 +191,4 @@ class Agent implements AgentInterface {
 	}
 }
 
-export default Agent;
+export default AgentLoop;

@@ -1,8 +1,8 @@
-import type { AgentInterface } from './index';
+import type { AgentLoopInterface } from './agentLoop';
 import { type AgentEvent, EventType, type Meta } from '../protocol/events';
 
 type Config = {
-	agent: AgentInterface;
+	agentLoop: AgentLoopInterface;
 	sessionId: string;
 };
 
@@ -58,7 +58,7 @@ function getTurnKey(event: AgentEvent) {
 
 export default class AgentSession implements AgentSessionInterface {
 	private sessionId: string;
-	private agent: AgentInterface;
+	private agentLoop: AgentLoopInterface;
 	private isRunning: boolean;
 	private queue: Job[];
 	private events: AgentEvent[];
@@ -75,8 +75,8 @@ export default class AgentSession implements AgentSessionInterface {
 		this.activeThoughtTurns = new Set();
 		this.activeOutputTurns = new Set();
 
-		this.agent = config.agent;
-		this.agent.on((event) => {
+		this.agentLoop = config.agentLoop;
+		this.agentLoop.on((event) => {
 			this.handleAgentEvent(event);
 		});
 	}
@@ -212,7 +212,7 @@ export default class AgentSession implements AgentSessionInterface {
 
 		try {
 			this.isRunning = true;
-			await this.agent.prompt(nextJob.prompt);
+			await this.agentLoop.prompt(nextJob.prompt);
 			this.emit({ type: 'agent_done' });
 			nextJob.resolve();
 		} catch (e) {

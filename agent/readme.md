@@ -21,6 +21,13 @@ user
   assistant(turn3_thought + output)
 
 
+
+  -> AgentManager
+    -> AgentSession
+      -> AgentLoop
+        -> AiProvider
+        -> ToolRegistry
+
 ## Event Log
 
 `AgentEvent[]` is the source of truth.

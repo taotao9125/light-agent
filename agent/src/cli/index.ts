@@ -3,7 +3,7 @@ import { stdin, stdout } from 'node:process';
 import readline from 'node:readline/promises';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
-import Agent from '../agent/index';
+import AgentLoop from '../agent/agentLoop';
 import AgentSession from '../agent/session';
 import { createClient } from '../ai/index';
 import toolRegistry from '../tools';
@@ -32,14 +32,14 @@ async function main() {
 		baseURL: process.env.AI_DEEP_SEEK_API_HOST as string,
 	});
 
-	const agent = new Agent({
+	const agentLoop = new AgentLoop({
 		provider: deepSeekProvider,
 		model: 'deepseek-v4-flash',
 		tools: toolRegistry.getToolShapes(),
 	});
 
 	const session = new AgentSession({
-		agent,
+		agentLoop,
 		sessionId: 'cli_session',
 	});
 
