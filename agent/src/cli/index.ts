@@ -4,6 +4,7 @@ import readline from 'node:readline/promises';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
 import Agent from '../agent/index';
+import AgentSession from '../agent/session';
 import { createClient } from '../ai/index';
 import toolRegistry from '../tools';
 import 'dotenv/config';
@@ -14,6 +15,14 @@ const rl = readline.createInterface({
 	input: stdin,
 	output: stdout,
 });
+
+const color = {
+	reset: '\x1b[0m',
+	dim: '\x1b[90m',
+	green: '\x1b[32m',
+	yellow: '\x1b[33m',
+	red: '\x1b[31m',
+};
 
 async function main() {
 	const deepSeekProvider = createClient({
@@ -29,45 +38,70 @@ async function main() {
 		toolRegistry: toolRegistry,
 	});
 
-	let isFirstOutput = false;
+	const session = new AgentSession({
+		agent,
+		sessionId: 'cli_session',
+	});
 
-	agent.on((event) => {
+	let isThinking = false;
+	let isOutputting = false;
+
+	session.on((event) => {
 		switch (event.type) {
 			case 'agent_start':
-				process.stdout.write(`\x1b[32m开始执行 agent \x1b[0m\n`);
+				process.stdout.write(`${color.green}开始执行 agent${color.reset}\n`);
 				break;
 
 			case 'thought_start':
-				process.stdout.write(`\x1b[90m🧠 推理中: \x1b[0m`);
+				if (isOutputting) {
+					process.stdout.write('\n');
+					isOutputting = false;
+				}
+				process.stdout.write(`${color.dim}thinking: `);
+				isThinking = true;
 				break;
 
-			case 'thought':
-				// 实时打印思维流，注意不要乱换行
-				// 如果文字太长，终端会自动折行，单行 \r 会失效。复杂的折行可以用 process.stdout.cursorTo
-				process.stdout.write(`\x1b[90m${event.text}\x1b[0m`);
+			case 'thought_delta':
+				process.stdout.write(event.text);
 				break;
 
 			case 'thought_done':
-				// 推理结束，打个勾，换行！把这块区域锁死，后面再也别碰它了
-				process.stdout.write(` \x1b[32m✓\x1b[0m\n`);
-				isFirstOutput = true; // 重置输出标记
+				if (isThinking) {
+					process.stdout.write(`${color.reset}\n`);
+					isThinking = false;
+				}
 				break;
 
-			case 'output':
-				if (isFirstOutput) {
-					console.log();
-					process.stdout.write(`\x1b[32m🤖 Agent 输出: \x1b[0m\n`);
-					isFirstOutput = false;
+			case 'action_start':
+				if (isThinking) {
+					process.stdout.write(`${color.reset}\n`);
+					isThinking = false;
 				}
-				// 流式打印最终输出
+				process.stdout.write(`${color.yellow}tool: ${event.name} ${JSON.stringify(event.args)}${color.reset}\n`);
+				break;
+
+			case 'action_done':
+				process.stdout.write(`${color.dim}tool done: ${event.name}${color.reset}\n`);
+				break;
+
+			case 'output_start':
+				if (!isOutputting) {
+					process.stdout.write(`${color.green}output:${color.reset}\n`);
+					isOutputting = true;
+				}
+				break;
+
+			case 'output_delta':
 				process.stdout.write(event.text);
 				break;
 
 			case 'agent_error':
-				process.stderr.write(`\n\x1b[31mAgent error: ${event.message}\x1b[0m\n`);
+				process.stderr.write(`\n${color.red}Agent error: ${event.message}${color.reset}\n`);
 				break;
 
 			case 'agent_done':
+				isThinking = false;
+				isOutputting = false;
 				process.stdout.write('\n');
 				break;
 
@@ -87,8 +121,10 @@ async function main() {
 			break;
 		}
 
-		await agent.prompt(text);
-	
+		await session.prompt(text);
+
+		const _y = session.getEventLog();
+		const _x = _y;
 	}
 }
 
