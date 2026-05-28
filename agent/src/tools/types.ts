@@ -17,6 +17,7 @@ export type ToolMeta = {
 
 export type ToolContext = {
 	cwd: string;
+	signal?: AbortSignal
 };
 
 export interface ToolDefinition<T, U> extends ToolMeta {

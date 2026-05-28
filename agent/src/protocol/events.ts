@@ -10,6 +10,7 @@ export const EventType = {
 	OBSERVATION: 'observation',
 	OUTPUT: 'output',
 	OUTPUT_DELTA: 'output_delta',
+	INTERRUPT: 'interrupt',
 	AGENT_ERROR: 'agent_error',
 
 } as const;
@@ -69,6 +70,8 @@ export type OutputEvent = {
 
 export type AgentError = { type: typeof EventType.AGENT_ERROR; message: string; meta?: Meta };
 
+export type INTERRUPT = { type: typeof EventType.INTERRUPT; reason: string; meta?: Meta };
+
 
 export type AgentEvent =
 	| InputEvent
@@ -79,3 +82,4 @@ export type AgentEvent =
 	| OutputEvent
 	| OutputDeltaEvent
 	| AgentError
+	| INTERRUPT

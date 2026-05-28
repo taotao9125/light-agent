@@ -5,19 +5,21 @@ import {type SessionStoreInterface} from './store';
 type Config = {
 	agentLoop: AgentLoopInterface;
 	sessionId: string;
-	store: SessionStoreInterface
+	store?: SessionStoreInterface
 };
 
 type Job = {
 	prompt: string;
 	resolve: () => void;
 	reject: (reason?: unknown) => void;
+	abortController: AbortController;
 };
 
 
 export type SessionEvent = 
 	| { type: 'agent_start'; meta?: Meta }
 	| { type: 'agent_done'; meta?: Meta }
+	| { type: 'agent_aborted'; reason?: unknown; meta?: Meta }
 	| { type: 'agent_error'; message: string;  meta?: Meta }
 	| { type: 'input'; text: string; source?: 'user' | 'system'; meta?: Meta }
 	| { type: 'thought_start'; meta?: Meta }
@@ -28,6 +30,7 @@ export type SessionEvent =
 	| { type: 'output_start'; meta?: Meta }
 	| { type: 'output_delta'; text: string;  meta?: Meta }
 	| { type: 'output_done'; text: string;  meta?: Meta }
+	| { type: 'interrupt'; reason: string;  meta?: Meta }
 
 
 type SessionEventListener = (event: SessionEvent) => void;
@@ -35,6 +38,8 @@ type SessionEventListener = (event: SessionEvent) => void;
 export interface AgentSessionInterface {
 	prompt: (prompt: string) => Promise<void>;
 	on: (listener: SessionEventListener) => () => void;
+	interrupt: () => void;
+	getState: () => Record<string, any>;
 	getEventLog: () => AgentEvent[];
 }
 
@@ -44,6 +49,7 @@ const COMMITTED_EVENT_TYPES = [
 	EventType.ACTION,
 	EventType.OBSERVATION,
 	EventType.OUTPUT,
+	EventType.INTERRUPT
 ] as const;
 
 type CommittedEventType = (typeof COMMITTED_EVENT_TYPES)[number];
@@ -60,28 +66,32 @@ function getTurnKey(event: AgentEvent) {
 
 export default class AgentSession implements AgentSessionInterface {
 	private sessionId: string;
+	private store?: SessionStoreInterface;
 	private agentLoop: AgentLoopInterface;
-	private isRunning: boolean;
-	private queue: Job[];
-	private store: SessionStoreInterface;
-	private events: AgentEvent[];
-	private listeners: SessionEventListener[];
-	private activeThoughtTurns: Set<string>;
-	private activeOutputTurns: Set<string>;
+
+	private isRunning = false;
+	private queue: Job[] = [];
+	private currentJob: Job | null = null;
+	private events: AgentEvent[] = [];
+	private listeners: SessionEventListener[] = []
+	private activeThoughtTurns = new Set<string>();
+	private activeOutputTurns = new Set<string>();
+	
 
 	constructor(config: Config) {
 		this.sessionId = config.sessionId;
-		this.isRunning = false;
-		this.queue = [];
-		this.events = [];
-		this.listeners = [];
-		this.activeThoughtTurns = new Set();
-		this.activeOutputTurns = new Set();
 		this.store = config.store;
 		this.agentLoop = config.agentLoop;
 		this.agentLoop.on((event) => {
-			this.handleAgentEvent(event);
+			void this.handleAgentEvent(event);
 		});
+	}
+
+
+	getState() {
+		return {
+			isRunning: this.isRunning,
+		}
 	}
 
 	on(listener: SessionEventListener): () => void {
@@ -96,14 +106,15 @@ export default class AgentSession implements AgentSessionInterface {
 		return [...this.events];
 	}
 
-	private handleAgentEvent(event: AgentEvent) {
+	private async handleAgentEvent(event: AgentEvent) {
+
 		for (const lifecycleEvent of this.projectSessionEvents(event)) {
 			this.emit(lifecycleEvent);
 		}
 
 		if (isCommittedEvent(event)) {
 			this.events.push(event);
-			this.store.append(this.sessionId, event);
+			await this.store?.append(this.sessionId, event);
 		}
 
 	}
@@ -184,6 +195,15 @@ export default class AgentSession implements AgentSessionInterface {
 					meta: event.meta
 				}];
 
+			case EventType.INTERRUPT:
+				this.activeThoughtTurns.clear();
+				this.activeOutputTurns.clear();
+				return [{
+					type: 'interrupt',
+					reason: event.reason,
+					meta: event.meta
+				}]
+
 			default:
 				return [];
 		}
@@ -197,8 +217,10 @@ export default class AgentSession implements AgentSessionInterface {
 
 	prompt(prompt: string) {
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
+		const abortController = new AbortController();
 		this.queue.push({
 			prompt,
+			abortController,
 			resolve,
 			reject,
 		});
@@ -207,21 +229,37 @@ export default class AgentSession implements AgentSessionInterface {
 		return promise;
 	}
 
+
+	interrupt(reason = 'user interrupted') {
+		if (!this.currentJob) return;
+		this.currentJob.abortController.abort(reason);
+	}
+
 	private async run() {
 		if (!this.queue.length) return;
 		if (this.isRunning) return;
 
-		const nextJob = this.queue.shift();
-		if (!nextJob) return;
+		const currentJob = this.queue.shift();
+		if (!currentJob) return;
 
 		try {
 			this.isRunning = true;
-			await this.agentLoop.prompt(nextJob.prompt);
+			this.currentJob = currentJob;
+			await this.agentLoop.prompt(currentJob.prompt, {abortSignal: this.currentJob.abortController.signal});
 			this.emit({ type: 'agent_done' });
-			nextJob.resolve();
+			currentJob.resolve();
 		} catch (e) {
-			nextJob.reject(e);
+			if (currentJob.abortController.signal.aborted) {
+				this.emit({
+					type: 'agent_aborted',
+					reason: currentJob.abortController.signal.reason,
+				});
+				currentJob.resolve();
+				return;
+			}
+			currentJob.reject(e);
 		} finally {
+			this.currentJob = null;
 			this.isRunning = false;
 			this.run();
 		}

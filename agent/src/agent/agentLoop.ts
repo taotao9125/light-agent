@@ -15,8 +15,12 @@ type AgentLoopConfig = {
 
 type AgentEventListener = (event: AgentEvent) => void;
 
+type PromptOptions = {
+	abortSignal: AbortSignal,
+	history?: AgentEvent[]
+}
 export interface AgentLoopInterface {
-	prompt: (prompt: string) => Promise<void>;
+	prompt: (prompt: string, options?: PromptOptions) => Promise<void>;
 	on: (listener: AgentEventListener) => void;
 	getCurrentPromptLog: () => AgentEvent[];
 }
@@ -24,15 +28,14 @@ export interface AgentLoopInterface {
 class AgentLoop implements AgentLoopInterface {
 	private provider: AiProvider;
 	private tools: ToolMeta[];;
-	private eventLog: AgentEvent[];
+	private eventLog: AgentEvent[] = [];
+	private listeners: AgentEventListener[] = [];
 	private model: string;
-	private listeners: AgentEventListener[];
 	private maxTurns: number;
+	private currentRun: { roundId: string; turn: number } = {roundId: '', turn: 0};
 	constructor(config: AgentLoopConfig) {
 		this.provider = config.provider;
 		this.tools = config.tools;
-		this.eventLog = [];
-		this.listeners = [];
 		this.model = config.model;
 		this.maxTurns = config.maxTurns ?? 20;
 	}
@@ -58,18 +61,33 @@ class AgentLoop implements AgentLoopInterface {
 		return this.eventLog.slice(lastInputEventIndex);
 	}
 
-	async runAgentLoop(prompt: string) {
+	async runAgentLoop(prompt: string, options?: PromptOptions) {
+		const {
+			abortSignal
+		} = options ?? {}
+
+		abortSignal?.throwIfAborted();
 
 		// 一个 input 到 output 为一个 roundId
 		const roundId = `round_id_${randomUUID()}`;
 		let turn = 0;
+		this.currentRun = {
+			roundId,
+			turn
+		}
 
 		const inputEvent: AgentEvent = { type: EventType.INPUT, source: 'user', text: prompt, meta: { roundId, turn } };
 		this.eventLog.push(inputEvent);
 		this.emit(inputEvent);
 
 		while (true) {
+			abortSignal?.throwIfAborted();
 			turn++;
+
+			this.currentRun = {
+				roundId,
+				turn
+			}
 
 			let turnThoughtTextBuffer = '';
 			let turnOutputTextBuffer = '';
@@ -89,11 +107,14 @@ class AgentLoop implements AgentLoopInterface {
 			const stream = this.provider.stream({
 				model: this.model,
 				input: this.eventLog,
-				tools: this.tools,
+				tools: this.tools
 			});
 
 			// 需要等把流迭代完了, 才能知道有没有指令来决定是否进行下一轮
 			for await (const chunk of stream) {
+
+				abortSignal?.throwIfAborted();
+
 				if (chunk.type === EventType.AGENT_ERROR) {
 					errorEvents.push(chunk);
 					break;
@@ -145,6 +166,7 @@ class AgentLoop implements AgentLoopInterface {
 			} else {
 				// 观察外部环境输入, 自我修正环
 				for (const action of turnActionEvents) {
+					abortSignal?.throwIfAborted();
 					const { name, id, args } = action;
 					const toolCommand = toolRegistry.get(name);
 					// 外部环境不存在，回传给 ai， 它做下一步决策
@@ -159,28 +181,18 @@ class AgentLoop implements AgentLoopInterface {
 						});
 						continue;
 					}
-
-					try {
-						const content = await toolCommand.execute(args, { cwd: process.cwd() });
-						turnObservationEvents.push({
-							type: 'observation',
-							id,
-							name,
-							isError: false,
-							result: content,
-							meta: { roundId, turn }
-						});
-					} catch (e) {
-						// 外部环境执行错误，回传给 ai, 它执行下一步决策
-						turnObservationEvents.push({
-							type: 'observation',
-							id,
-							name,
-							isError: true,
-							result: e instanceof Error ? e.message : String(e),
-							meta: { roundId, turn }
-						});
-					}
+					const {
+						content,
+						isError
+					} = await toolCommand.execute(args, { cwd: process.cwd(), signal: abortSignal });
+					turnObservationEvents.push({
+						type: 'observation',
+						id,
+						name,
+						isError,
+						result: content,
+						meta: { roundId, turn }
+					});
 
 				}
 			}
@@ -207,8 +219,31 @@ class AgentLoop implements AgentLoopInterface {
 
 	}
 
-	async prompt(prompt: string) {
-		await this.runAgentLoop(prompt);
+	async prompt(prompt: string, options?: PromptOptions) {
+		try {
+			await this.runAgentLoop(prompt, options);
+		} catch (e) {
+			// 记录 interrupt
+			if (options?.abortSignal.aborted) {
+				this.emit({
+					type: EventType.INTERRUPT,
+					reason: String(options?.abortSignal.reason ?? 'aborted'),
+					meta: {
+						roundId: this.currentRun.roundId,
+						turn: this.currentRun.turn
+					}
+				})
+				return;
+			}
+
+			throw e;
+		} finally {
+			this.currentRun = {
+				roundId: '',
+				turn: 0
+			}
+		}
+
 	}
 
 	on(listener: AgentEventListener) {
