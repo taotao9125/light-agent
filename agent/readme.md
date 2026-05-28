@@ -28,6 +28,23 @@ user
         -> AiProvider
         -> ToolRegistry
 
+  User Prompt
+  └─ AgentSession
+     ├─ enqueue job
+     ├─ create AbortController
+     └─ call AgentLoop
+        ├─ emit input
+        ├─ call AiProvider
+        │  └─ adaptor converts eventLog to vendor messages
+        ├─ receive thought/output/action
+        ├─ execute tools
+        │  └─ ToolRegistry -> ToolDefinition.execute()
+        ├─ emit observation
+        └─ loop until output / interrupt / error
+     ├─ receive AgentEvent
+     ├─ persist committed event via SessionStore
+     └─ emit SessionEvent to UI/runtime
+
 ## Event Log
 
 `AgentEvent[]` is the source of truth.
