@@ -51,6 +51,7 @@ export type ObservationEvent = {
 	id: string;
 	name: string;
 	result: any;
+	isError: boolean;
 	meta?: Meta;
 };
 

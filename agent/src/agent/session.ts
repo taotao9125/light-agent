@@ -1,9 +1,11 @@
 import type { AgentLoopInterface } from './agentLoop';
 import { type AgentEvent, EventType, type Meta } from '../protocol/events';
+import {type SessionStoreInterface} from './store';
 
 type Config = {
 	agentLoop: AgentLoopInterface;
 	sessionId: string;
+	store: SessionStoreInterface
 };
 
 type Job = {
@@ -61,6 +63,7 @@ export default class AgentSession implements AgentSessionInterface {
 	private agentLoop: AgentLoopInterface;
 	private isRunning: boolean;
 	private queue: Job[];
+	private store: SessionStoreInterface;
 	private events: AgentEvent[];
 	private listeners: SessionEventListener[];
 	private activeThoughtTurns: Set<string>;
@@ -74,7 +77,7 @@ export default class AgentSession implements AgentSessionInterface {
 		this.listeners = [];
 		this.activeThoughtTurns = new Set();
 		this.activeOutputTurns = new Set();
-
+		this.store = config.store;
 		this.agentLoop = config.agentLoop;
 		this.agentLoop.on((event) => {
 			this.handleAgentEvent(event);
@@ -100,6 +103,7 @@ export default class AgentSession implements AgentSessionInterface {
 
 		if (isCommittedEvent(event)) {
 			this.events.push(event);
+			this.store.append(this.sessionId, event);
 		}
 
 	}

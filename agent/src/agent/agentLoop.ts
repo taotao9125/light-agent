@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { AiProvider } from '../ai/index';
 import type { ActionEvent, AgentError, AgentEvent, ObservationEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
-import {type ToolMeta} from '../tools/types';
+import { type ToolMeta } from '../tools/types';
 import toolRegistry from '../tools/index';
 
 type AgentLoopConfig = {
@@ -143,20 +143,45 @@ class AgentLoop implements AgentLoopInterface {
 			if (!turnActionEvents.length) {
 				shouldBreakLoop = true;
 			} else {
-				// 观察外部环境输入
-				for await (const action of turnActionEvents) {
+				// 观察外部环境输入, 自我修正环
+				for (const action of turnActionEvents) {
 					const { name, id, args } = action;
 					const toolCommand = toolRegistry.get(name);
-					if (toolCommand) {
+					// 外部环境不存在，回传给 ai， 它做下一步决策
+					if (!toolCommand) {
+						turnObservationEvents.push({
+							type: 'observation',
+							isError: true,
+							id,
+							name,
+							result: `Unknown tool: ${action.name}`,
+							meta: { roundId, turn }
+						});
+						continue;
+					}
+
+					try {
 						const content = await toolCommand.execute(args, { cwd: process.cwd() });
 						turnObservationEvents.push({
 							type: 'observation',
 							id,
 							name,
+							isError: false,
 							result: content,
 							meta: { roundId, turn }
 						});
+					} catch (e) {
+						// 外部环境执行错误，回传给 ai, 它执行下一步决策
+						turnObservationEvents.push({
+							type: 'observation',
+							id,
+							name,
+							isError: true,
+							result: e instanceof Error ? e.message : String(e),
+							meta: { roundId, turn }
+						});
 					}
+
 				}
 			}
 

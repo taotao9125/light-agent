@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import { stdin, stdout } from 'node:process';
 import readline from 'node:readline/promises';
+import path from 'path';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
 import AgentLoop from '../agent/agentLoop';
 import AgentSession from '../agent/session';
+import SessionStore from '../agent/store';
 import { createClient } from '../ai/index';
 import toolRegistry from '../tools';
 import 'dotenv/config';
@@ -38,9 +40,17 @@ async function main() {
 		tools: toolRegistry.getToolShapes(),
 	});
 
+
+	const sessionId = 'cli_session'
+	
+	const sessionStore = new SessionStore({
+		rootDir: path.resolve(process.cwd(), '.agent/sessions')
+	})
+
 	const session = new AgentSession({
 		agentLoop,
-		sessionId: 'cli_session',
+		sessionId,
+		store: sessionStore
 	});
 
 	let isThinking = false;
