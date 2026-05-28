@@ -2,8 +2,9 @@
   "compilerOptions": {
     "target": "ES2024",
     "lib": ["ES2024"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "rootDir": "src",
     "outDir": "dist",
     "strict": true,
@@ -13,5 +14,5 @@
     "sourceMap": true,
     "declaration": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

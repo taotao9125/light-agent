@@ -2,10 +2,13 @@
   "name": "agent",
   "version": "1.0.0",
   "description": "",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "node --import tsx src/cli/index.ts",
+    "dev:ui": "node --import tsx src/cli/cli-ui.tsx",
+    "ws:server": "node --import tsx src/server/index.ts",
     "ts:check": "tsc --noEmit",
     "ts:tsc": "tsc",
     "check": "biome check --write"
@@ -17,13 +20,20 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
     "@types/node": "^25.8.0",
+    "@types/react": "^19.2.15",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.22.0",
     "typescript": "^6.0.3"
   },
   "dependencies": {
     "@google/genai": "^2.3.0",
     "dotenv": "^17.4.2",
+    "ink": "^7.0.4",
+    "marked": "^16.4.1",
+    "marked-terminal": "^7.3.0",
     "openai": "^6.38.0",
-    "undici": "^8.3.0"
+    "react": "^19.2.6",
+    "undici": "^8.3.0",
+    "ws": "^8.21.0"
   }
 }

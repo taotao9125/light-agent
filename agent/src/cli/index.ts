@@ -26,6 +26,10 @@ const color = {
 	red: '\x1b[31m',
 };
 
+function isReadlineAbortError(error: unknown) {
+	return error instanceof Error && 'code' in error && error.code === 'ABORT_ERR';
+}
+
 async function main() {
 	const deepSeekProvider = createClient({
 		// 目前只支持 gemini, openai, deepseek
@@ -55,6 +59,29 @@ async function main() {
 
 	let isThinking = false;
 	let isOutputting = false;
+	let isExiting = false;
+	let isWaitingForPrompt = false;
+	let resolvePromptWait: (() => void) | null = null;
+	let interruptPrinted = false;
+
+
+	process.on('SIGINT', () => {
+		if (isWaitingForPrompt) {
+			session.interrupt();
+			resolvePromptWait?.();
+			resolvePromptWait = null;
+			isThinking = false;
+			isOutputting = false;
+			if (!interruptPrinted) {
+				interruptPrinted = true;
+				process.stdout.write(`\n${color.yellow}Agent interrupted${color.reset}\n`);
+			}
+			return;
+		}
+
+		isExiting = true;
+		rl.close();
+	});
 
 	session.on((event) => {
 		switch (event.type) {
@@ -109,6 +136,24 @@ async function main() {
 				process.stderr.write(`\n${color.red}Agent error: ${event.message}${color.reset}\n`);
 				break;
 
+			case 'agent_aborted':
+				isThinking = false;
+				isOutputting = false;
+				if (!interruptPrinted) {
+					interruptPrinted = true;
+					process.stdout.write(`\n${color.yellow}Agent interrupted${color.reset}\n`);
+				}
+				break;
+
+			case 'interrupt':
+				isThinking = false;
+				isOutputting = false;
+				if (!interruptPrinted) {
+					interruptPrinted = true;
+					process.stdout.write(`\n${color.yellow}Agent interrupted${color.reset}\n`);
+				}
+				break;
+
 			case 'agent_done':
 				isThinking = false;
 				isOutputting = false;
@@ -121,21 +166,67 @@ async function main() {
 	});
 
 	while (true) {
-		const text = (await rl.question('\n> ')).trim();
+		let text = '';
+		try {
+			
+				text = (await rl.question('\n> ')).trim();
+			} catch (e) {
+				if (isReadlineAbortError(e)) {
+					isExiting = true;
+					rl.close();
+					break;
+				}
+
+			throw e;
+		}
+
 		if (!text) {
 			continue;
 		}
 
-		if (text === 'exit' || text === 'quit') {
-			rl.close();
-			break;
-		}
+			if (text === 'exit' || text === 'quit') {
+				isExiting = true;
+				rl.close();
+				break;
+				}
 
-		await session.prompt(text);
+				try {
+					isWaitingForPrompt = true;
+					interruptPrinted = false;
+					const promptPromise = session.prompt(text);
+					const promptWaitPromise = new Promise<'interrupted'>((resolve) => {
+						resolvePromptWait = () => resolve('interrupted');
+					});
+					const result = await Promise.race([
+						promptPromise.then(() => 'done' as const),
+						promptWaitPromise,
+					]);
 
-		const _y = session.getEventLog();
-		const _x = _y;
+					if (result === 'interrupted') {
+						promptPromise.catch(() => {});
+						continue;
+					}
+				} catch (e) {
+					if (session.getState().isRunning) {
+						continue;
+					}
+
+					throw e;
+				} finally {
+					isWaitingForPrompt = false;
+					resolvePromptWait = null;
+				}
+
+			if (isExiting) break;
+
 	}
 }
 
-main();
+main().catch((e) => {
+	if (isReadlineAbortError(e)) {
+		rl.close();
+		process.exit(0);
+	}
+
+	throw e;
+});

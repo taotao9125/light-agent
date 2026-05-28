@@ -7,6 +7,9 @@ yarn-error.log*
 lerna-debug.log*
 log.json
 
+.agent
+reports/
+
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
