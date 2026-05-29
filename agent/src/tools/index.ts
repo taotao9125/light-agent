@@ -1,6 +1,6 @@
 import { listFilesTool, readFileTool } from './builtins';
 
-import type { ToolMeta, ToolDefinition } from './types';
+import type { ToolDefinition, ToolMeta } from './types';
 
 class ToolRegistry {
 	private tools = new Map<string, ToolDefinition<any, any>>();

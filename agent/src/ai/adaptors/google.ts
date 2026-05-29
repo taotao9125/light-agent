@@ -1,5 +1,5 @@
-import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
 import type { Content, FunctionCall, FunctionDeclaration, GenerateContentParameters } from '@google/genai';
+import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
 import { type AgentEvent, EventType } from '../../protocol/events';
 import { parseTurnEventGroup, splitEventsToRoundGroups } from '../helpers';
 import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
@@ -73,7 +73,10 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 				contents.push({
 					role: 'model',
 					// No actions in this turn means this is a model-only turn.
-					parts: [...(thoughtText ? [{ text: thoughtText, thought: true }] : []), ...(outputText ? [{ text: outputText }] : [])],
+					parts: [
+						...(thoughtText ? [{ text: thoughtText, thought: true }] : []),
+						...(outputText ? [{ text: outputText }] : []),
+					],
 				});
 			}
 		}

@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AgentEvent Log — 会话回放</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --surface2: #243044;
+      --border: #2d3a4f;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --input: #22c55e;
+      --thought: #a78bfa;
+      --action: #f59e0b;
+      --output: #34d399;
+      --error: #ef4444;
+      font-family: "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-size: 14px; }
+    header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    header h1 { margin: 0; font-size: 1.35rem; }
+    header p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.85rem; max-width: 36rem; }
+    header a { color: var(--accent); font-size: 0.85rem; }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+      padding: 0.75rem 1.5rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    button {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.4rem 0.85rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    label { font-size: 0.78rem; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; }
+    input[type="range"] { width: 100px; accent-color: var(--accent); }
+    .progress-wrap { flex: 1; min-width: 160px; display: flex; align-items: center; gap: 0.5rem; }
+    .progress-wrap input[type="range"] { flex: 1; width: auto; min-width: 80px; }
+    .progress-label { font-size: 0.72rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      min-height: calc(100vh - 140px);
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .audit { max-height: 220px; border-top: 1px solid var(--border); }
+    }
+    .chat-panel {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+    }
+    .chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem 1.5rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .bubble {
+      max-width: 92%;
+      padding: 0.75rem 1rem;
+      border-radius: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .bubble.user {
+      align-self: flex-end;
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid rgba(34, 197, 94, 0.35);
+    }
+    .bubble.assistant {
+      align-self: flex-start;
+      background: rgba(52, 211, 153, 0.1);
+      border: 1px solid rgba(52, 211, 153, 0.3);
+    }
+    .thought-block {
+      align-self: flex-start;
+      max-width: 92%;
+      border: 1px dashed rgba(167, 139, 250, 0.4);
+      border-radius: 10px;
+      overflow: hidden;
+      font-size: 0.82rem;
+    }
+    .thought-block summary {
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      color: var(--thought);
+      background: rgba(167, 139, 250, 0.08);
+    }
+    .thought-block .thought-body {
+      padding: 0.5rem 0.75rem;
+      color: var(--muted);
+      min-height: 1.2em;
+    }
+    .tool-card {
+      align-self: flex-start;
+      max-width: 92%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .tool-card.running { border-color: var(--action); }
+    .tool-card.error { border-color: var(--error); }
+    .tool-head {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--action);
+      background: rgba(245, 158, 11, 0.1);
+    }
+    .tool-card.error .tool-head { color: var(--error); background: rgba(239, 68, 68, 0.1); }
+    .tool-args, .tool-result {
+      margin: 0;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.72rem;
+      font-family: ui-monospace, monospace;
+      overflow-x: auto;
+      border-top: 1px solid var(--border);
+    }
+    .tool-result { color: var(--muted); max-height: 120px; overflow-y: auto; }
+    .banner {
+      align-self: center;
+      font-size: 0.78rem;
+      color: var(--muted);
+      padding: 0.5rem 1rem;
+      background: var(--surface);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      text-align: center;
+      max-width: 95%;
+    }
+    .banner.summary { border-color: #64748b; color: #cbd5e1; }
+    .status-bar {
+      padding: 0.5rem 1.5rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .audit {
+      background: var(--surface);
+      overflow-y: auto;
+      padding: 0.75rem 0;
+    }
+    .audit h2 {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 0;
+      padding: 0 1rem 0.5rem;
+    }
+    .audit-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      padding: 0.4rem 1rem;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      font-size: 0.78rem;
+    }
+    .audit-item:hover { background: rgba(255,255,255,0.04); }
+    .audit-item.active {
+      background: rgba(59, 130, 246, 0.12);
+      border-left-color: var(--accent);
+    }
+    .audit-item.done { opacity: 0.55; }
+    .audit-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-top: 0.35rem;
+      flex-shrink: 0;
+    }
+    .audit-meta { color: var(--muted); font-size: 0.68rem; margin-top: 0.15rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>AgentEvent 会话回放</h1>
+      <p>从 append-only log 按 <strong>seq</strong> 重放；thought/output 模拟 delta 流式。只读历史，不调用模型。</p>
+    </div>
+    <a href="index.html">← 演示中心</a> ·
+    <a href="event-log-report.html">报表</a>
+  </header>
+
+  <div class="controls">
+    <button type="button" class="primary" id="btnPlay">▶ 播放</button>
+    <button type="button" id="btnPause" disabled>⏸ 暂停</button>
+    <button type="button" id="btnStep">⏭ 单步</button>
+    <button type="button" id="btnReset">↺ 重置</button>
+    <label>
+      速度
+      <input type="range" id="speed" min="0.25" max="3" step="0.25" value="1" />
+      <span id="speedLabel">1×</span>
+    </label>
+    <label>
+      <input type="checkbox" id="streamSim" checked />
+      模拟流式
+    </label>
+    <div class="progress-wrap">
+      <span class="progress-label" id="progressLabel">0 / 0</span>
+      <input type="range" id="progress" min="0" max="0" value="0" />
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="chat-panel">
+      <div class="chat" id="chat"></div>
+      <div class="status-bar" id="status">就绪 — 点击播放或单步</div>
+    </div>
+    <aside class="audit">
+      <h2>事件审计轨 (seq)</h2>
+      <div id="auditList"></div>
+    </aside>
+  </div>
+
+  <script src="demo-log.js"></script>
+  <script src="demo-replay.js"></script>
+  <script>
+    const LOG = window.DEMO_LOG;
+    const SESSION = window.DEMO_SESSION;
+    const TYPE_COLORS = window.DEMO_TYPE_COLORS;
+
+    const chatEl = document.getElementById('chat');
+    const auditListEl = document.getElementById('auditList');
+    const statusEl = document.getElementById('status');
+    const progressEl = document.getElementById('progress');
+    const progressLabelEl = document.getElementById('progressLabel');
+
+    let schedule = [];
+    let seqToStepIndex = new Map();
+    let cursor = 0;
+    let playing = false;
+    let timer = null;
+    let streamState = {};
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function rebuildSchedule() {
+      const streamSim = document.getElementById('streamSim').checked;
+      schedule = buildReplaySchedule(LOG, {
+        streamChunk: streamSim ? 6 : 9999,
+        streamDelay: streamSim ? 28 : 0,
+        pauseAfterSeq: streamSim ? 350 : 120,
+      });
+      progressEl.max = Math.max(0, schedule.length - 1);
+      progressLabelEl.textContent = `step 0 / ${schedule.length}`;
+      seqToStepIndex = new Map();
+      schedule.forEach((step, i) => {
+        if (step.sourceSeq != null && !seqToStepIndex.has(step.sourceSeq)) {
+          seqToStepIndex.set(step.sourceSeq, i);
+        }
+      });
+    }
+
+    function renderAuditList() {
+      auditListEl.innerHTML = LOG.map((e) => {
+        const c = TYPE_COLORS[e.type] || '#666';
+        return `<div class="audit-item" data-seq="${e.seq}" title="${e.type}">
+          <span class="audit-dot" style="background:${c}"></span>
+          <div>
+            <div><strong>${e.seq}</strong> ${e.type}</div>
+            <div class="audit-meta">${e.eventId} · turn ${e.meta?.turn ?? '—'}</div>
+          </div>
+        </div>`;
+      }).join('');
+
+      auditListEl.querySelectorAll('.audit-item').forEach((el) => {
+        el.addEventListener('click', () => seekToSeq(Number(el.dataset.seq)));
+      });
+    }
+
+    function updateAuditHighlight(sourceSeq) {
+      auditListEl.querySelectorAll('.audit-item').forEach((el) => {
+        const seq = Number(el.dataset.seq);
+        el.classList.toggle('active', seq === sourceSeq);
+        el.classList.toggle('done', seq < sourceSeq);
+      });
+    }
+
+    function resetUi() {
+      clearTimeout(timer);
+      timer = null;
+      playing = false;
+      cursor = 0;
+      streamState = {};
+      chatEl.innerHTML = '';
+      document.getElementById('btnPlay').disabled = false;
+      document.getElementById('btnPause').disabled = true;
+      progressEl.value = 0;
+      updateAuditHighlight(0);
+      auditListEl.querySelectorAll('.audit-item').forEach((el) => {
+        el.classList.remove('active', 'done');
+      });
+      statusEl.textContent = '已重置 — 点击播放';
+      rebuildSchedule();
+      progressLabelEl.textContent = `step 0 / ${schedule.length}`;
+    }
+
+    function turnKey(meta) {
+      if (!meta?.roundId || meta.turn == null) return null;
+      return `${meta.roundId}:${meta.turn}`;
+    }
+
+    function applySessionEvent(se) {
+      switch (se.type) {
+        case 'agent_start':
+          statusEl.textContent = `Round 开始 · ${se.meta?.roundId ?? ''}`;
+          break;
+        case 'input': {
+          const div = document.createElement('div');
+          div.className = 'bubble user';
+          div.textContent = se.text;
+          div.dataset.seq = String(se.meta?.turn);
+          chatEl.appendChild(div);
+          break;
+        }
+        case 'thought_start': {
+          const key = turnKey(se.meta);
+          const details = document.createElement('details');
+          details.className = 'thought-block';
+          details.open = true;
+          details.innerHTML = `<summary>💭 思考中 (turn ${se.meta?.turn ?? '?'})</summary><div class="thought-body"></div>`;
+          chatEl.appendChild(details);
+          if (key) streamState[`thought:${key}`] = details.querySelector('.thought-body');
+          break;
+        }
+        case 'thought_delta': {
+          const key = turnKey(se.meta);
+          const body = key && streamState[`thought:${key}`];
+          if (body) body.textContent += se.text;
+          break;
+        }
+        case 'thought_done': {
+          const key = turnKey(se.meta);
+          const block = key && streamState[`thought:${key}`]?.closest('details');
+          if (block) {
+            block.querySelector('.thought-body').textContent = se.text;
+            block.querySelector('summary').textContent = `💭 思考 (turn ${se.meta?.turn ?? '?'})`;
+            block.open = false;
+          }
+          break;
+        }
+        case 'action_start': {
+          const card = document.createElement('div');
+          card.className = 'tool-card running';
+          card.dataset.callId = se.id;
+          card.innerHTML = `
+            <div class="tool-head">⚙ ${escapeHtml(se.name)} <span style="color:var(--muted)">运行中…</span></div>
+            <pre class="tool-args">${escapeHtml(JSON.stringify(se.args, null, 2))}</pre>`;
+          chatEl.appendChild(card);
+          streamState[`tool:${se.id}`] = card;
+          break;
+        }
+        case 'action_done': {
+          const card = streamState[`tool:${se.id}`];
+          if (!card) break;
+          card.classList.remove('running');
+          if (se.isError) card.classList.add('error');
+          const head = card.querySelector('.tool-head');
+          head.innerHTML = se.isError
+            ? `✗ ${escapeHtml(se.name)}`
+            : `✓ ${escapeHtml(se.name)}`;
+          const pre = document.createElement('pre');
+          pre.className = 'tool-result';
+          pre.textContent = String(se.result ?? '');
+          card.appendChild(pre);
+          break;
+        }
+        case 'output_start': {
+          const key = turnKey(se.meta);
+          const div = document.createElement('div');
+          div.className = 'bubble assistant';
+          div.innerHTML = '<span class="out-stream"></span>';
+          chatEl.appendChild(div);
+          if (key) streamState[`output:${key}`] = div.querySelector('.out-stream');
+          break;
+        }
+        case 'output_delta': {
+          const key = turnKey(se.meta);
+          const span = key && streamState[`output:${key}`];
+          if (span) span.textContent += se.text;
+          break;
+        }
+        case 'output_done': {
+          const key = turnKey(se.meta);
+          const span = key && streamState[`output:${key}`];
+          if (span) span.textContent = se.text;
+          break;
+        }
+        case 'summary': {
+          const div = document.createElement('div');
+          div.className = 'banner summary';
+          div.textContent = `📎 Context 压缩：${se.text}`;
+          chatEl.appendChild(div);
+          break;
+        }
+        case 'agent_error':
+          chatEl.insertAdjacentHTML(
+            'beforeend',
+            `<div class="banner" style="border-color:var(--error);color:var(--error)">⚠ ${escapeHtml(se.message)}</div>`,
+          );
+          break;
+        default:
+          break;
+      }
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    function applyStep(step) {
+      if (step.kind === 'pause') {
+        if (step.sourceSeq) updateAuditHighlight(step.sourceSeq);
+        return step.delayMs ?? 300;
+      }
+      if (step.sourceSeq) updateAuditHighlight(step.sourceSeq);
+      for (const se of step.sessionEvents) {
+        applySessionEvent(se);
+      }
+      if (step.sourceSeq) {
+        statusEl.textContent = `回放 seq ${step.sourceSeq} · ${step.kind}`;
+      }
+      return step.delayMs ?? 0;
+    }
+
+    function scheduleNext() {
+      if (!playing || cursor >= schedule.length) {
+        playing = false;
+        document.getElementById('btnPlay').disabled = false;
+        document.getElementById('btnPause').disabled = true;
+        if (cursor >= schedule.length) {
+          statusEl.textContent = '回放结束';
+          updateAuditHighlight(LOG[LOG.length - 1]?.seq ?? 0);
+        }
+        return;
+      }
+
+      const step = schedule[cursor];
+      const delay = applyStep(step);
+      cursor += 1;
+      progressEl.value = cursor;
+      progressLabelEl.textContent = `step ${cursor} / ${schedule.length}`;
+
+      const speed = Number(document.getElementById('speed').value);
+      const ms = Math.max(0, delay / speed);
+      timer = setTimeout(scheduleNext, ms);
+    }
+
+    function play() {
+      if (cursor >= schedule.length) resetUi();
+      rebuildSchedule();
+      if (cursor >= schedule.length) return;
+      playing = true;
+      document.getElementById('btnPlay').disabled = true;
+      document.getElementById('btnPause').disabled = false;
+      statusEl.textContent = '播放中…';
+      scheduleNext();
+    }
+
+    function pause() {
+      playing = false;
+      clearTimeout(timer);
+      document.getElementById('btnPlay').disabled = false;
+      document.getElementById('btnPause').disabled = true;
+      statusEl.textContent = `已暂停 · step ${cursor}/${schedule.length}`;
+    }
+
+    function stepOnce() {
+      pause();
+      if (cursor >= schedule.length) return;
+      applyStep(schedule[cursor]);
+      cursor += 1;
+      progressEl.value = cursor;
+      progressLabelEl.textContent = `step ${cursor} / ${schedule.length}`;
+      if (cursor >= schedule.length) statusEl.textContent = '回放结束';
+    }
+
+    function seekToStep(index) {
+      pause();
+      resetUi();
+      rebuildSchedule();
+      for (let i = 0; i < index && i < schedule.length; i++) {
+        applyStep(schedule[i]);
+        cursor = i + 1;
+      }
+      progressEl.value = cursor;
+      progressLabelEl.textContent = `step ${cursor} / ${schedule.length}`;
+      progressEl.max = Math.max(0, schedule.length - 1);
+    }
+
+    function seekToSeq(seq) {
+      const idx = seqToStepIndex.get(seq);
+      if (idx != null) seekToStep(idx);
+    }
+
+    document.getElementById('btnPlay').addEventListener('click', play);
+    document.getElementById('btnPause').addEventListener('click', pause);
+    document.getElementById('btnStep').addEventListener('click', stepOnce);
+    document.getElementById('btnReset').addEventListener('click', resetUi);
+    document.getElementById('streamSim').addEventListener('change', () => {
+      const was = cursor;
+      rebuildSchedule();
+      progressEl.max = Math.max(0, schedule.length - 1);
+      progressLabelEl.textContent = `step ${Math.min(was, schedule.length)} / ${schedule.length}`;
+    });
+    document.getElementById('speed').addEventListener('input', (e) => {
+      document.getElementById('speedLabel').textContent = `${e.target.value}×`;
+    });
+    progressEl.addEventListener('input', (e) => {
+      seekToStep(Number(e.target.value));
+    });
+
+    rebuildSchedule();
+    renderAuditList();
+    progressEl.max = Math.max(0, schedule.length - 1);
+    progressLabelEl.textContent = `step 0 / ${schedule.length}`;
+  </script>
+</body>
+</html>

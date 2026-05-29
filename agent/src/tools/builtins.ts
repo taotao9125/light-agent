@@ -2,10 +2,13 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { ToolDefinition } from './types';
 
-export const readFileTool: ToolDefinition<{ path: string }, Promise<{
-	content: string;
-	isError: boolean;
-}>> = {
+export const readFileTool: ToolDefinition<
+	{ path: string },
+	Promise<{
+		content: string;
+		isError: boolean;
+	}>
+> = {
 	name: 'read_file',
 	description: 'Read the full contents of a specific file when the user asks to inspect, open, or read a file.',
 	schema: {
@@ -25,7 +28,7 @@ export const readFileTool: ToolDefinition<{ path: string }, Promise<{
 		try {
 			return {
 				content: await fs.readFile(realPath, { encoding: 'utf8', signal: context.signal }),
-				isError: false
+				isError: false,
 			};
 		} catch (e) {
 			// 用户取消往上抛
@@ -34,8 +37,8 @@ export const readFileTool: ToolDefinition<{ path: string }, Promise<{
 			}
 			return {
 				content: e instanceof Error ? e.message : String(e),
-				isError: true
-			}
+				isError: true,
+			};
 		}
 	},
 };
@@ -44,10 +47,12 @@ export const listFilesTool: ToolDefinition<
 	{ path?: string },
 	Promise<{
 		isError: boolean;
-		content: string | {
-			name: string;
-			type: 'file' | 'directory';
-		}[];
+		content:
+			| string
+			| {
+					name: string;
+					type: 'file' | 'directory';
+			  }[];
 	}>
 > = {
 	name: 'list_files',
@@ -79,7 +84,6 @@ export const listFilesTool: ToolDefinition<
 				})),
 			};
 		} catch (e) {
-
 			// 用户取消往上抛
 			if (context.signal?.aborted) {
 				throw e;

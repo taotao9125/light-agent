@@ -12,13 +12,12 @@ export const EventType = {
 	OUTPUT_DELTA: 'output_delta',
 	INTERRUPT: 'interrupt',
 	AGENT_ERROR: 'agent_error',
-
 } as const;
 
 export type Meta = {
 	roundId: string;
 	turn: number;
-}
+};
 
 export type InputEvent = {
 	type: typeof EventType.INPUT;
@@ -72,7 +71,6 @@ export type AgentError = { type: typeof EventType.AGENT_ERROR; message: string; 
 
 export type INTERRUPT = { type: typeof EventType.INTERRUPT; reason: string; meta?: Meta };
 
-
 export type AgentEvent =
 	| InputEvent
 	| ThoughtEvent
@@ -82,4 +80,4 @@ export type AgentEvent =
 	| OutputEvent
 	| OutputDeltaEvent
 	| AgentError
-	| INTERRUPT
+	| INTERRUPT;

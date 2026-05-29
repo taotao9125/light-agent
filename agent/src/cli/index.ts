@@ -44,17 +44,16 @@ async function main() {
 		tools: toolRegistry.getToolShapes(),
 	});
 
+	const sessionId = 'cli_session';
 
-	const sessionId = 'cli_session'
-	
 	const sessionStore = new SessionStore({
-		rootDir: path.resolve(process.cwd(), '.agent/sessions')
-	})
+		rootDir: path.resolve(process.cwd(), '.agent/sessions'),
+	});
 
 	const session = new AgentSession({
 		agentLoop,
 		sessionId,
-		store: sessionStore
+		store: sessionStore,
 	});
 
 	let isThinking = false;
@@ -63,7 +62,6 @@ async function main() {
 	let isWaitingForPrompt = false;
 	let resolvePromptWait: (() => void) | null = null;
 	let interruptPrinted = false;
-
 
 	process.on('SIGINT', () => {
 		if (isWaitingForPrompt) {
@@ -114,7 +112,9 @@ async function main() {
 					process.stdout.write(`${color.reset}\n`);
 					isThinking = false;
 				}
-				process.stdout.write(`${color.yellow}tool: ${event.name} ${JSON.stringify(event.args)}${color.reset}\n`);
+				process.stdout.write(
+					`${color.yellow}tool: ${event.name} ${JSON.stringify(event.args)}${color.reset}\n`,
+				);
 				break;
 
 			case 'action_done':
@@ -168,14 +168,13 @@ async function main() {
 	while (true) {
 		let text = '';
 		try {
-			
-				text = (await rl.question('\n> ')).trim();
-			} catch (e) {
-				if (isReadlineAbortError(e)) {
-					isExiting = true;
-					rl.close();
-					break;
-				}
+			text = (await rl.question('\n> ')).trim();
+		} catch (e) {
+			if (isReadlineAbortError(e)) {
+				isExiting = true;
+				rl.close();
+				break;
+			}
 
 			throw e;
 		}
@@ -184,41 +183,37 @@ async function main() {
 			continue;
 		}
 
-			if (text === 'exit' || text === 'quit') {
-				isExiting = true;
-				rl.close();
-				break;
-				}
+		if (text === 'exit' || text === 'quit') {
+			isExiting = true;
+			rl.close();
+			break;
+		}
 
-				try {
-					isWaitingForPrompt = true;
-					interruptPrinted = false;
-					const promptPromise = session.prompt(text);
-					const promptWaitPromise = new Promise<'interrupted'>((resolve) => {
-						resolvePromptWait = () => resolve('interrupted');
-					});
-					const result = await Promise.race([
-						promptPromise.then(() => 'done' as const),
-						promptWaitPromise,
-					]);
+		try {
+			isWaitingForPrompt = true;
+			interruptPrinted = false;
+			const promptPromise = session.prompt(text);
+			const promptWaitPromise = new Promise<'interrupted'>((resolve) => {
+				resolvePromptWait = () => resolve('interrupted');
+			});
+			const result = await Promise.race([promptPromise.then(() => 'done' as const), promptWaitPromise]);
 
-					if (result === 'interrupted') {
-						promptPromise.catch(() => {});
-						continue;
-					}
-				} catch (e) {
-					if (session.getState().isRunning) {
-						continue;
-					}
+			if (result === 'interrupted') {
+				promptPromise.catch(() => {});
+				continue;
+			}
+		} catch (e) {
+			if (session.getState().isRunning) {
+				continue;
+			}
 
-					throw e;
-				} finally {
-					isWaitingForPrompt = false;
-					resolvePromptWait = null;
-				}
+			throw e;
+		} finally {
+			isWaitingForPrompt = false;
+			resolvePromptWait = null;
+		}
 
-			if (isExiting) break;
-
+		if (isExiting) break;
 	}
 }
 

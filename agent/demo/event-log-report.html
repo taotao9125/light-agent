@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AgentEvent Log — 演示报表</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --surface2: #243044;
+      --border: #2d3a4f;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --input: #22c55e;
+      --thought: #a78bfa;
+      --action: #f59e0b;
+      --observation: #06b6d4;
+      --output: #34d399;
+      --error: #ef4444;
+      --summary: #64748b;
+      font-family: "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      font-size: 14px;
+    }
+    header {
+      padding: 2rem 2rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #15202b 0%, var(--bg) 100%);
+    }
+    header h1 { margin: 0 0 0.5rem; font-size: 1.75rem; font-weight: 600; }
+    header p { margin: 0; color: var(--muted); max-width: 52rem; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1rem;
+      padding: 1.5rem 2rem;
+    }
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+    }
+    .stat .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .stat .value { font-size: 1.5rem; font-weight: 600; margin-top: 0.25rem; }
+    main { padding: 0 2rem 3rem; max-width: 1100px; margin: 0 auto; }
+    h2.section {
+      font-size: 1rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 2rem 0 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .round {
+      margin-bottom: 2rem;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--surface);
+    }
+    .round-header {
+      padding: 1rem 1.25rem;
+      background: var(--surface2);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem 1.5rem;
+    }
+    .round-header .title { font-weight: 600; font-size: 1.05rem; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 500;
+      background: rgba(255,255,255,0.06);
+      color: var(--muted);
+    }
+    .badge strong { color: var(--text); font-weight: 600; }
+    .turn {
+      border-top: 1px solid var(--border);
+      padding: 0.75rem 1.25rem 1rem;
+    }
+    .turn-label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .turn-label span { color: var(--accent); font-weight: 600; }
+    .event {
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 0.75rem 1rem;
+      padding: 0.65rem 0;
+      border-bottom: 1px dashed rgba(255,255,255,0.06);
+    }
+    .event:last-child { border-bottom: none; }
+    .event-type {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      text-align: center;
+      align-self: start;
+    }
+    .type-input { background: rgba(34,197,94,0.2); color: var(--input); }
+    .type-thought { background: rgba(167,139,250,0.2); color: var(--thought); }
+    .type-action { background: rgba(245,158,11,0.2); color: var(--action); }
+    .type-observation { background: rgba(6,182,212,0.2); color: var(--observation); }
+    .type-output { background: rgba(52,211,153,0.2); color: var(--output); }
+    .type-summary { background: rgba(100,116,139,0.3); color: #cbd5e1; }
+    .type-agent_error { background: rgba(239,68,68,0.2); color: var(--error); }
+    .event-body { min-width: 0; }
+    .event-text {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 0.9rem;
+      margin: 0 0 0.5rem;
+    }
+    .event-text.collapsed {
+      max-height: 4.5em;
+      overflow: hidden;
+      mask-image: linear-gradient(180deg, #000 60%, transparent);
+    }
+    .meta-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.75rem;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .meta-grid kbd {
+      background: rgba(0,0,0,0.25);
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+      font-family: ui-monospace, monospace;
+      font-size: 0.68rem;
+      color: #94a3b8;
+    }
+    .tool-args {
+      font-family: ui-monospace, monospace;
+      font-size: 0.78rem;
+      background: rgba(0,0,0,0.3);
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      margin: 0.35rem 0;
+      overflow-x: auto;
+    }
+    .timeline-bar {
+      height: 8px;
+      background: var(--surface2);
+      border-radius: 4px;
+      margin: 1rem 2rem 0;
+      overflow: hidden;
+      display: flex;
+    }
+    .timeline-seg {
+      height: 100%;
+      min-width: 2px;
+      transition: opacity 0.15s;
+    }
+    .timeline-seg:hover { opacity: 0.85; filter: brightness(1.2); }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      padding: 0.75rem 2rem 1.5rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .legend i {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      margin-right: 0.35rem;
+      vertical-align: middle;
+    }
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+      border-top: 1px solid var(--border);
+    }
+    .json-toggle {
+      margin-top: 0.5rem;
+      font-size: 0.72rem;
+      color: var(--accent);
+      cursor: pointer;
+      user-select: none;
+    }
+    pre.raw {
+      display: none;
+      font-size: 0.68rem;
+      overflow-x: auto;
+      background: #0a0e14;
+      padding: 0.75rem;
+      border-radius: 6px;
+      margin-top: 0.5rem;
+    }
+    pre.raw.open { display: block; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AgentEvent Log 演示报表</h1>
+    <p>
+      基于 append-only 事件流虚构的一次会话：<strong>用户要求分析 bookstore 项目并修复测试</strong>。
+      展示 round / turn、工具链、审计 meta（token、延迟、trace）如何从<strong>同一条 log</strong> 投影为时间线、统计与合规视图。
+    </p>
+  </header>
+
+  <div class="timeline-bar" id="timeline"></div>
+  <div class="legend" id="legend"></div>
+
+  <div class="stats" id="stats"></div>
+  <main id="content"></main>
+
+  <footer>
+    数据为演示用假数据 · session <code>sess_demo_8f3a</code> ·
+    <a href="index.html" style="color:#3b82f6">能力演示中心 →</a> ·
+    <a href="replay.html" style="color:#3b82f6">回放</a> ·
+    对应协议 <code>agent/src/protocol/events.ts</code>
+  </footer>
+
+  <script src="demo-log.js"></script>
+  <script>
+    const SESSION = window.DEMO_SESSION;
+    const LOG = window.DEMO_LOG;
+    const TYPE_COLORS = window.DEMO_TYPE_COLORS;
+
+    function groupByRound(events) {
+      const map = new Map();
+      for (const e of events) {
+        const rid = e.meta?.roundId ?? 'unknown';
+        if (!map.has(rid)) map.set(rid, { roundId: rid, events: [] });
+        map.get(rid).events.push(e);
+      }
+      return [...map.values()];
+    }
+
+    function groupByTurn(events) {
+      const map = new Map();
+      for (const e of events) {
+        const t = e.meta?.turn ?? -1;
+        if (!map.has(t)) map.set(t, []);
+        map.get(t).push(e);
+      }
+      return [...map.entries()].sort((a, b) => a[0] - b[0]);
+    }
+
+    function renderStats() {
+      const tools = LOG.filter((e) => e.type === 'action').length;
+      const errors = LOG.filter((e) => e.type === 'observation' && e.isError).length;
+      const tokens = LOG.reduce((sum, e) => {
+        const u = e.meta?.usage;
+        if (!u) return sum;
+        return sum + (u.promptTokens || 0) + (u.completionTokens || 0);
+      }, 0);
+      const rounds = new Set(LOG.map((e) => e.meta?.roundId)).size;
+
+      document.getElementById('stats').innerHTML = `
+        <div class="stat"><div class="label">事件总数</div><div class="value">${LOG.length}</div></div>
+        <div class="stat"><div class="label">用户轮次 (round)</div><div class="value">${rounds}</div></div>
+        <div class="stat"><div class="label">工具调用</div><div class="value">${tools}</div></div>
+        <div class="stat"><div class="label">工具失败</div><div class="value">${errors}</div></div>
+        <div class="stat"><div class="label">累计 tokens</div><div class="value">${tokens.toLocaleString()}</div></div>
+        <div class="stat"><div class="label">Session</div><div class="value" style="font-size:0.85rem">${SESSION.sessionId}</div></div>
+      `;
+    }
+
+    function renderTimeline() {
+      const bar = document.getElementById('timeline');
+      const total = LOG.length;
+      bar.innerHTML = LOG.map((e) => {
+        const w = (100 / total).toFixed(2);
+        const c = TYPE_COLORS[e.type] || '#666';
+        return `<div class="timeline-seg" style="width:${w}%;background:${c}" title="seq ${e.seq}: ${e.type}"></div>`;
+      }).join('');
+      document.getElementById('legend').innerHTML = Object.entries(TYPE_COLORS)
+        .map(([t, c]) => `<span><i style="background:${c}"></i>${t}</span>`)
+        .join('');
+    }
+
+    function metaHtml(e) {
+      const parts = [];
+      if (e.seq != null) parts.push(`<kbd>seq=${e.seq}</kbd>`);
+      if (e.eventId) parts.push(`<kbd>${e.eventId}</kbd>`);
+      if (e.at) parts.push(`<kbd>${e.at}</kbd>`);
+      const m = e.meta || {};
+      if (m.turn != null) parts.push(`<kbd>turn=${m.turn}</kbd>`);
+      if (m.latencyMs != null) parts.push(`<kbd>${m.latencyMs}ms</kbd>`);
+      if (m.usage) parts.push(`<kbd>tokens ${m.usage.promptTokens}+${m.usage.completionTokens}</kbd>`);
+      if (m.traceId) parts.push(`<kbd>trace ${m.traceId.slice(0, 12)}…</kbd>`);
+      if (m.exitCode != null) parts.push(`<kbd>exit ${m.exitCode}</kbd>`);
+      if (m.resultBytes) parts.push(`<kbd>${m.resultBytes}B</kbd>`);
+      if (m.compressedFromSeq) parts.push(`<kbd>compress seq ${m.compressedFromSeq.join('–')}</kbd>`);
+      if (m.reason) parts.push(`<kbd>${m.reason}</kbd>`);
+      return `<div class="meta-grid">${parts.join('')}</div>`;
+    }
+
+    function eventBody(e) {
+      let html = '';
+      if (e.text) {
+        const long = e.text.length > 200;
+        html += `<p class="event-text${long ? ' collapsed' : ''}">${escapeHtml(e.text)}</p>`;
+      }
+      if (e.args) {
+        html += `<pre class="tool-args">${escapeHtml(JSON.stringify(e.args, null, 2))}</pre>`;
+      }
+      if (e.result != null) {
+        const label = e.isError ? '❌ result' : '✓ result';
+        html += `<p class="event-text" style="color:${e.isError ? 'var(--error)' : 'var(--muted)'}"><strong>${label}</strong>\n${escapeHtml(String(e.result))}</p>`;
+      }
+      html += metaHtml(e);
+      html += `<div class="json-toggle" onclick="this.nextElementSibling.classList.toggle('open')">▸ 原始 JSON</div>`;
+      html += `<pre class="raw">${escapeHtml(JSON.stringify(e, null, 2))}</pre>`;
+      return html;
+    }
+
+    function escapeHtml(s) {
+      return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderContent() {
+      const rounds = groupByRound(LOG);
+      let html = '';
+
+      html += `<h2 class="section">会话概览</h2>`;
+      html += `<div class="round"><div class="round-header">
+        <span class="title">Session ${SESSION.sessionId}</span>
+        <span class="badge">用户 <strong>${SESSION.userId}</strong></span>
+        <span class="badge">模型 <strong>${SESSION.model}</strong></span>
+        <span class="badge">厂商 <strong>${SESSION.provider}</strong></span>
+        <span class="badge">开始 <strong>${SESSION.startedAt}</strong></span>
+      </div></div>`;
+
+      html += `<h2 class="section">按 Round 展开的事件流</h2>`;
+
+      for (const round of rounds) {
+        const inputEv = round.events.find((e) => e.type === 'input' && e.meta?.turn === 0);
+        const title = inputEv ? inputEv.text.slice(0, 60) + (inputEv.text.length > 60 ? '…' : '') : round.roundId;
+
+        html += `<article class="round" id="${round.roundId}">`;
+        html += `<div class="round-header">
+          <span class="title">${escapeHtml(title)}</span>
+          <span class="badge">roundId <strong>${round.roundId}</strong></span>
+          <span class="badge">事件 <strong>${round.events.length}</strong></span>
+        </div>`;
+
+        const turns = groupByTurn(round.events.filter((e) => e.type !== 'summary'));
+        for (const [turn, events] of turns) {
+          html += `<div class="turn"><div class="turn-label">Turn <span>${turn}</span></div>`;
+          for (const e of events) {
+            const typeClass = 'type-' + e.type.replace('_', '_');
+            html += `<div class="event">
+              <div class="event-type ${typeClass}">${e.type}</div>
+              <div class="event-body">${eventBody(e)}</div>
+            </div>`;
+          }
+          html += `</div>`;
+        }
+
+        const summaries = round.events.filter((e) => e.type === 'summary');
+        for (const e of summaries) {
+          html += `<div class="turn"><div class="turn-label">Context 压缩</div>`;
+          html += `<div class="event">
+            <div class="event-type type-summary">summary</div>
+            <div class="event-body">${eventBody(e)}</div>
+          </div></div>`;
+        }
+
+        html += `</article>`;
+      }
+
+      document.getElementById('content').innerHTML = html;
+    }
+
+    renderStats();
+    renderTimeline();
+    renderContent();
+  </script>
+</body>
+</html>

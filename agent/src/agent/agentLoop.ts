@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { AiProvider } from '../ai/index';
+import type { Context } from '../protocol/context';
 import type { ActionEvent, AgentError, AgentEvent, ObservationEvent } from '../protocol/events';
-import type { Context} from '../protocol/context';
 import { EventType } from '../protocol/events';
-import { type ToolMeta } from '../tools/types';
 import toolRegistry from '../tools/index';
+import type { ToolMeta } from '../tools/types';
 
 type AgentLoopConfig = {
 	provider: AiProvider;
@@ -13,24 +13,23 @@ type AgentLoopConfig = {
 	maxTurns?: number;
 };
 
-
 type AgentEventListener = (event: AgentEvent) => void;
 
 type PromptOptions = {
 	abortSignal: AbortSignal;
 	buildContext: () => Context;
-}
+};
 export interface AgentLoopInterface {
 	prompt: (prompt: string, options: PromptOptions) => Promise<void>;
 	on: (listener: AgentEventListener) => void;
 }
 class AgentLoop implements AgentLoopInterface {
 	private provider: AiProvider;
-	private tools: ToolMeta[];;
+	private tools: ToolMeta[];
 	private listeners: AgentEventListener[] = [];
 	private model: string;
 	private maxTurns: number;
-	private currentRun: { roundId: string; turn: number } = {roundId: '', turn: 0};
+	private currentRun: { roundId: string; turn: number } = { roundId: '', turn: 0 };
 	constructor(config: AgentLoopConfig) {
 		this.provider = config.provider;
 		this.tools = config.tools;
@@ -51,10 +50,7 @@ class AgentLoop implements AgentLoopInterface {
 	// 4. no action	+ no output = error;
 
 	async runAgentLoop(prompt: string, options: PromptOptions) {
-		const {
-			abortSignal,
-			buildContext
-		} = options;
+		const { abortSignal, buildContext } = options;
 
 		abortSignal?.throwIfAborted();
 
@@ -63,8 +59,8 @@ class AgentLoop implements AgentLoopInterface {
 		let turn = 0;
 		this.currentRun = {
 			roundId,
-			turn
-		}
+			turn,
+		};
 
 		const inputEvent: AgentEvent = { type: EventType.INPUT, source: 'user', text: prompt, meta: { roundId, turn } };
 		this.emit(inputEvent);
@@ -75,8 +71,8 @@ class AgentLoop implements AgentLoopInterface {
 
 			this.currentRun = {
 				roundId,
-				turn
-			}
+				turn,
+			};
 
 			let turnThoughtTextBuffer = '';
 			let turnOutputTextBuffer = '';
@@ -88,7 +84,7 @@ class AgentLoop implements AgentLoopInterface {
 				this.emit({
 					type: EventType.AGENT_ERROR,
 					message: `Agent stopped after reaching max turns: ${this.maxTurns}`,
-					meta: { roundId, turn }
+					meta: { roundId, turn },
 				});
 				break;
 			}
@@ -98,12 +94,11 @@ class AgentLoop implements AgentLoopInterface {
 			const stream = this.provider.stream({
 				model: this.model,
 				input: context.events,
-				tools: this.tools
+				tools: this.tools,
 			});
 
 			// 需要等把流迭代完了, 才能知道有没有指令来决定是否进行下一轮
 			for await (const chunk of stream) {
-
 				abortSignal?.throwIfAborted();
 
 				if (chunk.type === EventType.AGENT_ERROR) {
@@ -114,15 +109,19 @@ class AgentLoop implements AgentLoopInterface {
 				// 一旦有 action, LLM 需要 observe 外部调用, 进入下一步调用
 				if (chunk.type === EventType.ACTION) {
 					if (!toolRegistry.get(chunk.name)) {
-						errorEvents.push({ type: EventType.AGENT_ERROR, message: `unknown tool \`${chunk.name}\``, meta: { roundId, turn } });
+						errorEvents.push({
+							type: EventType.AGENT_ERROR,
+							message: `unknown tool \`${chunk.name}\``,
+							meta: { roundId, turn },
+						});
 						break;
 					}
 					turnActionEvents.push({
 						...chunk,
 						meta: {
 							roundId,
-							turn
-						}
+							turn,
+						},
 					});
 				}
 
@@ -138,9 +137,12 @@ class AgentLoop implements AgentLoopInterface {
 				}
 			}
 
-
 			if (!turnActionEvents.length && !turnOutputTextBuffer) {
-				errorEvents.push({ type: EventType.AGENT_ERROR, message: 'LLM did not return an action or output.', meta: { roundId, turn } });
+				errorEvents.push({
+					type: EventType.AGENT_ERROR,
+					message: 'LLM did not return an action or output.',
+					meta: { roundId, turn },
+				});
 			}
 
 			if (errorEvents.length) {
@@ -168,42 +170,39 @@ class AgentLoop implements AgentLoopInterface {
 							id,
 							name,
 							result: `Unknown tool: ${action.name}`,
-							meta: { roundId, turn }
+							meta: { roundId, turn },
 						});
 						continue;
 					}
-					const {
-						content,
-						isError
-					} = await toolCommand.execute(args, { cwd: process.cwd(), signal: abortSignal });
+					const { content, isError } = await toolCommand.execute(args, {
+						cwd: process.cwd(),
+						signal: abortSignal,
+					});
 					turnObservationEvents.push({
 						type: 'observation',
 						id,
 						name,
 						isError,
 						result: content,
-						meta: { roundId, turn }
+						meta: { roundId, turn },
 					});
-
 				}
 			}
 
 			if (turnThoughtTextBuffer) {
-				this.emit({ type: EventType.THOUGHT, text: turnThoughtTextBuffer, meta: { roundId, turn } })
+				this.emit({ type: EventType.THOUGHT, text: turnThoughtTextBuffer, meta: { roundId, turn } });
 			}
 
-			turnActionEvents.forEach(event => this.emit(event));
+			turnActionEvents.forEach((event) => this.emit(event));
 
-			turnObservationEvents.forEach(event => this.emit(event));
+			turnObservationEvents.forEach((event) => this.emit(event));
 
 			if (turnOutputTextBuffer) {
-			 this.emit({ type: EventType.OUTPUT, text: turnOutputTextBuffer, meta: { roundId, turn } })
+				this.emit({ type: EventType.OUTPUT, text: turnOutputTextBuffer, meta: { roundId, turn } });
 			}
-
 
 			if (shouldBreakLoop) break;
 		}
-
 	}
 
 	async prompt(prompt: string, options: PromptOptions) {
@@ -217,9 +216,9 @@ class AgentLoop implements AgentLoopInterface {
 					reason: String(options?.abortSignal.reason ?? 'aborted'),
 					meta: {
 						roundId: this.currentRun.roundId,
-						turn: this.currentRun.turn
-					}
-				})
+						turn: this.currentRun.turn,
+					},
+				});
 				return;
 			}
 
@@ -227,10 +226,9 @@ class AgentLoop implements AgentLoopInterface {
 		} finally {
 			this.currentRun = {
 				roundId: '',
-				turn: 0
-			}
+				turn: 0,
+			};
 		}
-
 	}
 
 	on(listener: AgentEventListener) {

@@ -1,12 +1,12 @@
-import type { AgentLoopInterface } from './agentLoop';
 import { type AgentEvent, EventType, type Meta } from '../protocol/events';
-import {type SessionStoreInterface} from './store';
+import type { AgentLoopInterface } from './agentLoop';
 import contextBuilder from './contextBuider';
+import type { SessionStoreInterface } from './store';
 
 type Config = {
 	agentLoop: AgentLoopInterface;
 	sessionId: string;
-	store?: SessionStoreInterface
+	store?: SessionStoreInterface;
 };
 
 type Job = {
@@ -16,23 +16,21 @@ type Job = {
 	abortController: AbortController;
 };
 
-
-export type SessionEvent = 
+export type SessionEvent =
 	| { type: 'agent_start'; meta?: Meta }
 	| { type: 'agent_done'; meta?: Meta }
 	| { type: 'agent_aborted'; reason?: unknown; meta?: Meta }
-	| { type: 'agent_error'; message: string;  meta?: Meta }
+	| { type: 'agent_error'; message: string; meta?: Meta }
 	| { type: 'input'; text: string; source?: 'user' | 'system'; meta?: Meta }
 	| { type: 'thought_start'; meta?: Meta }
-	| { type: 'thought_delta'; text: string;  meta?: Meta }
-	| { type: 'thought_done'; text: string;  meta?: Meta}
+	| { type: 'thought_delta'; text: string; meta?: Meta }
+	| { type: 'thought_done'; text: string; meta?: Meta }
 	| { type: 'action_start'; id: string; name: string; args: Record<string, any>; meta?: Meta }
-	| { type: 'action_done'; id: string; result: any;  name: string; meta?: Meta }
+	| { type: 'action_done'; id: string; result: any; name: string; meta?: Meta }
 	| { type: 'output_start'; meta?: Meta }
-	| { type: 'output_delta'; text: string;  meta?: Meta }
-	| { type: 'output_done'; text: string;  meta?: Meta }
-	| { type: 'interrupt'; reason: string;  meta?: Meta }
-
+	| { type: 'output_delta'; text: string; meta?: Meta }
+	| { type: 'output_done'; text: string; meta?: Meta }
+	| { type: 'interrupt'; reason: string; meta?: Meta };
 
 type SessionEventListener = (event: SessionEvent) => void;
 
@@ -50,7 +48,7 @@ const COMMITTED_EVENT_TYPES = [
 	EventType.ACTION,
 	EventType.OBSERVATION,
 	EventType.OUTPUT,
-	EventType.INTERRUPT
+	EventType.INTERRUPT,
 ] as const;
 
 type CommittedEventType = (typeof COMMITTED_EVENT_TYPES)[number];
@@ -74,10 +72,9 @@ export default class AgentSession implements AgentSessionInterface {
 	private queue: Job[] = [];
 	private currentJob: Job | null = null;
 	private events: AgentEvent[] = [];
-	private listeners: SessionEventListener[] = []
+	private listeners: SessionEventListener[] = [];
 	private activeThoughtTurns = new Set<string>();
 	private activeOutputTurns = new Set<string>();
-	
 
 	constructor(config: Config) {
 		this.sessionId = config.sessionId;
@@ -88,11 +85,10 @@ export default class AgentSession implements AgentSessionInterface {
 		});
 	}
 
-
 	getState() {
 		return {
 			isRunning: this.isRunning,
-		}
+		};
 	}
 
 	on(listener: SessionEventListener): () => void {
@@ -107,14 +103,12 @@ export default class AgentSession implements AgentSessionInterface {
 		return [...this.events];
 	}
 
-	private  handleAgentEvent(event: AgentEvent) {
-
+	private handleAgentEvent(event: AgentEvent) {
 		for (const lifecycleEvent of this.projectSessionEvents(event)) {
 			this.emit(lifecycleEvent);
 		}
 
 		this.commitEvent(event);
-
 	}
 
 	async commitEvent(event: AgentEvent) {
@@ -135,13 +129,13 @@ export default class AgentSession implements AgentSessionInterface {
 			case EventType.THOUGHT_DELTA: {
 				const key = getTurnKey(event);
 				if (!key || this.activeThoughtTurns.has(key)) {
-					return [{ type: 'thought_delta', text: event.text, meta: event.meta }]
-				};
+					return [{ type: 'thought_delta', text: event.text, meta: event.meta }];
+				}
 
 				this.activeThoughtTurns.add(key);
 				return [
 					{ type: 'thought_start', meta: event.meta },
-					{ type: 'thought_delta', text: event.text, meta: event.meta }
+					{ type: 'thought_delta', text: event.text, meta: event.meta },
 				];
 			}
 
@@ -149,7 +143,7 @@ export default class AgentSession implements AgentSessionInterface {
 				const key = getTurnKey(event);
 				if (key) this.activeThoughtTurns.delete(key);
 
-				return [{ type: 'thought_done', text: event.text,  meta: event.meta }];
+				return [{ type: 'thought_done', text: event.text, meta: event.meta }];
 			}
 
 			case EventType.OUTPUT_DELTA: {
@@ -162,7 +156,7 @@ export default class AgentSession implements AgentSessionInterface {
 
 				return [
 					{ type: 'output_start', meta: event.meta },
-					{ type: 'output_delta', text: event.text, meta: event.meta }
+					{ type: 'output_delta', text: event.text, meta: event.meta },
 				];
 			}
 
@@ -174,40 +168,48 @@ export default class AgentSession implements AgentSessionInterface {
 			}
 
 			case EventType.ACTION:
-				return [{
-					type: 'action_start',
-					id: event.id,
-					name: event.name,
-					args: event.args,
-					meta: event.meta,
-				}];
+				return [
+					{
+						type: 'action_start',
+						id: event.id,
+						name: event.name,
+						args: event.args,
+						meta: event.meta,
+					},
+				];
 
 			case EventType.OBSERVATION:
-				return [{
-					type: 'action_done',
-					id: event.id,
-					result: event.result,
-					name: event.name,
-					meta: event.meta,
-				}];
+				return [
+					{
+						type: 'action_done',
+						id: event.id,
+						result: event.result,
+						name: event.name,
+						meta: event.meta,
+					},
+				];
 
 			case EventType.AGENT_ERROR:
 				this.activeThoughtTurns.clear();
 				this.activeOutputTurns.clear();
-				return [{
-					type: 'agent_error',
-					message: event.message,
-					meta: event.meta
-				}];
+				return [
+					{
+						type: 'agent_error',
+						message: event.message,
+						meta: event.meta,
+					},
+				];
 
 			case EventType.INTERRUPT:
 				this.activeThoughtTurns.clear();
 				this.activeOutputTurns.clear();
-				return [{
-					type: 'interrupt',
-					reason: event.reason,
-					meta: event.meta
-				}]
+				return [
+					{
+						type: 'interrupt',
+						reason: event.reason,
+						meta: event.meta,
+					},
+				];
 
 			default:
 				return [];
@@ -234,12 +236,10 @@ export default class AgentSession implements AgentSessionInterface {
 		return promise;
 	}
 
-
 	interrupt(reason = 'user interrupted') {
 		if (!this.currentJob) return;
 		this.currentJob.abortController.abort(reason);
 	}
-
 
 	buildContext() {
 		return contextBuilder(this.events);
@@ -257,7 +257,7 @@ export default class AgentSession implements AgentSessionInterface {
 			this.currentJob = currentJob;
 			await this.agentLoop.prompt(currentJob.prompt, {
 				abortSignal: this.currentJob.abortController.signal,
-				buildContext: this.buildContext.bind(this)
+				buildContext: this.buildContext.bind(this),
 			});
 			this.emit({ type: 'agent_done' });
 			currentJob.resolve();

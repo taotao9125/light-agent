@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
-import { WebSocket, WebSocketServer, type RawData } from 'ws';
+import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import 'dotenv/config';
 
 import AgentLoop from '../agent/agentLoop';
+import type { SessionEvent } from '../agent/session';
 import AgentSession from '../agent/session';
 import SessionStore from '../agent/store';
-import type { SessionEvent } from '../agent/session';
 import { createClient } from '../ai/index';
 import toolRegistry from '../tools';
 
@@ -88,7 +88,7 @@ function createSession(sessionId: string) {
 	const agentLoop = new AgentLoop({
 		provider,
 		model: 'deepseek-v4-flash',
-		tools: toolRegistry.getToolShapes()
+		tools: toolRegistry.getToolShapes(),
 	});
 
 	const store = new SessionStore({

@@ -1,5 +1,5 @@
-import {type AgentEvent, EventType} from './events';
+import { type AgentEvent, EventType } from './events';
 
 export type Context = {
-  events: AgentEvent[]
-}
+	events: AgentEvent[];
+};
