@@ -1,6 +1,7 @@
 import type { AgentLoopInterface } from './agentLoop';
 import { type AgentEvent, EventType, type Meta } from '../protocol/events';
 import {type SessionStoreInterface} from './store';
+import contextBuilder from './contextBuider';
 
 type Config = {
 	agentLoop: AgentLoopInterface;
@@ -106,17 +107,21 @@ export default class AgentSession implements AgentSessionInterface {
 		return [...this.events];
 	}
 
-	private async handleAgentEvent(event: AgentEvent) {
+	private  handleAgentEvent(event: AgentEvent) {
 
 		for (const lifecycleEvent of this.projectSessionEvents(event)) {
 			this.emit(lifecycleEvent);
 		}
 
+		this.commitEvent(event);
+
+	}
+
+	async commitEvent(event: AgentEvent) {
 		if (isCommittedEvent(event)) {
 			this.events.push(event);
 			await this.store?.append(this.sessionId, event);
 		}
-
 	}
 
 	private projectSessionEvents(event: AgentEvent): SessionEvent[] {
@@ -235,6 +240,11 @@ export default class AgentSession implements AgentSessionInterface {
 		this.currentJob.abortController.abort(reason);
 	}
 
+
+	buildContext() {
+		return contextBuilder(this.events);
+	}
+
 	private async run() {
 		if (!this.queue.length) return;
 		if (this.isRunning) return;
@@ -245,7 +255,10 @@ export default class AgentSession implements AgentSessionInterface {
 		try {
 			this.isRunning = true;
 			this.currentJob = currentJob;
-			await this.agentLoop.prompt(currentJob.prompt, {abortSignal: this.currentJob.abortController.signal});
+			await this.agentLoop.prompt(currentJob.prompt, {
+				abortSignal: this.currentJob.abortController.signal,
+				buildContext: this.buildContext.bind(this)
+			});
 			this.emit({ type: 'agent_done' });
 			currentJob.resolve();
 		} catch (e) {

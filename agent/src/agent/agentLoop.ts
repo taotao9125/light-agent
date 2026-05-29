@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AiProvider } from '../ai/index';
 import type { ActionEvent, AgentError, AgentEvent, ObservationEvent } from '../protocol/events';
+import type { Context} from '../protocol/context';
 import { EventType } from '../protocol/events';
 import { type ToolMeta } from '../tools/types';
 import toolRegistry from '../tools/index';
@@ -16,19 +17,16 @@ type AgentLoopConfig = {
 type AgentEventListener = (event: AgentEvent) => void;
 
 type PromptOptions = {
-	abortSignal: AbortSignal,
-	history?: AgentEvent[]
+	abortSignal: AbortSignal;
+	buildContext: () => Context;
 }
 export interface AgentLoopInterface {
-	prompt: (prompt: string, options?: PromptOptions) => Promise<void>;
+	prompt: (prompt: string, options: PromptOptions) => Promise<void>;
 	on: (listener: AgentEventListener) => void;
-	getCurrentPromptLog: () => AgentEvent[];
 }
-
 class AgentLoop implements AgentLoopInterface {
 	private provider: AiProvider;
 	private tools: ToolMeta[];;
-	private eventLog: AgentEvent[] = [];
 	private listeners: AgentEventListener[] = [];
 	private model: string;
 	private maxTurns: number;
@@ -52,19 +50,11 @@ class AgentLoop implements AgentLoopInterface {
 	// 3. no action + has output = done;
 	// 4. no action	+ no output = error;
 
-	logs() {
-		return this.eventLog;
-	}
-
-	getCurrentPromptLog() {
-		const lastInputEventIndex = this.eventLog.findLastIndex(event => event.type === EventType.INPUT);
-		return this.eventLog.slice(lastInputEventIndex);
-	}
-
-	async runAgentLoop(prompt: string, options?: PromptOptions) {
+	async runAgentLoop(prompt: string, options: PromptOptions) {
 		const {
-			abortSignal
-		} = options ?? {}
+			abortSignal,
+			buildContext
+		} = options;
 
 		abortSignal?.throwIfAborted();
 
@@ -77,7 +67,6 @@ class AgentLoop implements AgentLoopInterface {
 		}
 
 		const inputEvent: AgentEvent = { type: EventType.INPUT, source: 'user', text: prompt, meta: { roundId, turn } };
-		this.eventLog.push(inputEvent);
 		this.emit(inputEvent);
 
 		while (true) {
@@ -104,9 +93,11 @@ class AgentLoop implements AgentLoopInterface {
 				break;
 			}
 
+			const context = buildContext();
+
 			const stream = this.provider.stream({
 				model: this.model,
-				input: this.eventLog,
+				input: context.events,
 				tools: this.tools
 			});
 
@@ -199,18 +190,14 @@ class AgentLoop implements AgentLoopInterface {
 
 			if (turnThoughtTextBuffer) {
 				this.emit({ type: EventType.THOUGHT, text: turnThoughtTextBuffer, meta: { roundId, turn } })
-				this.eventLog.push({ type: EventType.THOUGHT, text: turnThoughtTextBuffer, meta: { roundId, turn } });
 			}
 
-			this.eventLog.push(...turnActionEvents);
 			turnActionEvents.forEach(event => this.emit(event));
 
-			this.eventLog.push(...turnObservationEvents);
 			turnObservationEvents.forEach(event => this.emit(event));
 
 			if (turnOutputTextBuffer) {
-				this.emit({ type: EventType.OUTPUT, text: turnOutputTextBuffer, meta: { roundId, turn } })
-				this.eventLog.push({ type: EventType.OUTPUT, text: turnOutputTextBuffer, meta: { roundId, turn } });
+			 this.emit({ type: EventType.OUTPUT, text: turnOutputTextBuffer, meta: { roundId, turn } })
 			}
 
 
@@ -219,7 +206,7 @@ class AgentLoop implements AgentLoopInterface {
 
 	}
 
-	async prompt(prompt: string, options?: PromptOptions) {
+	async prompt(prompt: string, options: PromptOptions) {
 		try {
 			await this.runAgentLoop(prompt, options);
 		} catch (e) {
