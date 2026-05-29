@@ -49,6 +49,7 @@ const COMMITTED_EVENT_TYPES = [
 	EventType.OBSERVATION,
 	EventType.OUTPUT,
 	EventType.INTERRUPT,
+	EventType.AGENT_ERROR,
 ] as const;
 
 type CommittedEventType = (typeof COMMITTED_EVENT_TYPES)[number];
@@ -103,12 +104,12 @@ export default class AgentSession implements AgentSessionInterface {
 		return [...this.canonicalEvents];
 	}
 
-	private handleAgentEvent(event: AgentEvent) {
+	private async handleAgentEvent(event: AgentEvent) {
 		for (const lifecycleEvent of this.projectSessionEvents(event)) {
 			this.emit(lifecycleEvent);
 		}
 
-		this.commitEvent(event);
+		await this.commitEvent(event);
 	}
 
 	async commitEvent(event: AgentEvent) {
