@@ -17,6 +17,13 @@ export type Config = {
 
 export default class SessionStore implements SessionStoreInterface {
   private rootDir: string;
+  private isRunning: boolean = false;
+  private queue: {
+    sessionId: string,
+    event: AgentEvent,
+    resolve: () => void;
+    reject: (reason?: unknown) => void;
+  }[] = [];
   constructor(config: Config) {
     this.rootDir = config.rootDir;
   }
@@ -37,13 +44,38 @@ export default class SessionStore implements SessionStoreInterface {
     }
   }
 
-  // to do 队列 append
+  async run() {
+    const currentJob = this.queue.shift();
+    if (!currentJob) return;
+
+    try {
+      this.isRunning = true;
+      await mkdir(this.rootDir, { recursive: true });
+      await appendFile(
+        this.getFilePath(currentJob.sessionId),
+        `${JSON.stringify(currentJob.event)}\n`,
+        'utf-8'
+      )
+      currentJob.resolve();
+    } catch (e) {
+      currentJob?.reject(e)
+    } finally {
+      this.isRunning = false;
+      this.run();
+    }
+  }
+
   async append(sessionId: string, event: AgentEvent): Promise<void> {
-    await mkdir(this.rootDir, { recursive: true });
-    await appendFile(
-      this.getFilePath(sessionId),
-      `${JSON.stringify(event)}\n`,
-      'utf-8'
-    )
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    this.queue.push({
+      sessionId,
+      event,
+      resolve,
+      reject
+    })
+
+    this.run();
+
+    return promise;
   }
 }
