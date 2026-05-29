@@ -71,7 +71,7 @@ export default class AgentSession implements AgentSessionInterface {
 	private isRunning = false;
 	private queue: Job[] = [];
 	private currentJob: Job | null = null;
-	private events: AgentEvent[] = [];
+	private canonicalEvents: AgentEvent[] = [];
 	private listeners: SessionEventListener[] = [];
 	private activeThoughtTurns = new Set<string>();
 	private activeOutputTurns = new Set<string>();
@@ -100,7 +100,7 @@ export default class AgentSession implements AgentSessionInterface {
 	}
 
 	getEventLog(): AgentEvent[] {
-		return [...this.events];
+		return [...this.canonicalEvents];
 	}
 
 	private handleAgentEvent(event: AgentEvent) {
@@ -113,7 +113,7 @@ export default class AgentSession implements AgentSessionInterface {
 
 	async commitEvent(event: AgentEvent) {
 		if (isCommittedEvent(event)) {
-			this.events.push(event);
+			this.canonicalEvents.push(event);
 			await this.store?.append(this.sessionId, event);
 		}
 	}
@@ -242,7 +242,7 @@ export default class AgentSession implements AgentSessionInterface {
 	}
 
 	buildContext() {
-		return contextBuilder(this.events);
+		return contextBuilder(this.canonicalEvents);
 	}
 
 	private async run() {
