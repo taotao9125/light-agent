@@ -94,6 +94,7 @@ class AgentLoop implements AgentLoopInterface {
 			const stream = this.provider.stream({
 				model: this.model,
 				input: context.events,
+				systemPrompt: context.systemPrompt,
 				tools: this.tools,
 			});
 

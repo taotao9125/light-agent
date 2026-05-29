@@ -108,9 +108,16 @@ export default class OpenAIAdaptor implements AiProvider {
 	}
 
 	protected normalizeRequestConfig(requestConfig: AiRequestConfig): ChatCompletionCreateParamsStreaming {
+		const messages = normalizeDeepSeekInputMessage(requestConfig.input);
+		if (requestConfig.systemPrompt) {
+			messages.unshift({
+				role: 'system',
+				content: requestConfig.systemPrompt
+			})
+		}
 		return {
 			model: requestConfig.model,
-			messages: normalizeDeepSeekInputMessage(requestConfig.input),
+			messages,
 			tools: requestConfig.tools?.map((tool) => ({
 				type: 'function',
 				function: {

@@ -9,6 +9,7 @@ export type AiRequestConfig = {
 	model: string;
 	input: AgentEvent[];
 	tools?: ToolMeta[];
+	systemPrompt?: string;
 };
 
 export interface AiProvider {

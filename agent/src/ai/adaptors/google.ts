@@ -104,6 +104,7 @@ export default class GoogleAdaptor implements AiProvider {
 			model: requestConfig.model,
 			contents: normalizeGoogleContents(requestConfig.input),
 			config: {
+				systemInstruction: requestConfig.systemPrompt,
 				thinkingConfig: {
 					// Ask Gemini to include thought parts when the model supports
 					// them, so the adapter can emit ThoughtEvent.
