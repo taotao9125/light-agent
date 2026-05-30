@@ -42,7 +42,7 @@ export interface AgentSessionInterface {
 	getEventLog: () => AgentEvent[];
 }
 
-const COMMITTED_EVENT_TYPES = [
+const COMMITTED_EVENT_TYPES = new Set<string>([
 	EventType.INPUT,
 	EventType.THOUGHT,
 	EventType.ACTION,
@@ -50,12 +50,10 @@ const COMMITTED_EVENT_TYPES = [
 	EventType.OUTPUT,
 	EventType.INTERRUPT,
 	EventType.AGENT_ERROR,
-] as const;
+]);
 
-type CommittedEventType = (typeof COMMITTED_EVENT_TYPES)[number];
-
-function isCommittedEvent(event: AgentEvent): event is Extract<AgentEvent, { type: CommittedEventType }> {
-	return (COMMITTED_EVENT_TYPES as readonly string[]).includes(event.type);
+function isCommittedEvent(event: AgentEvent){
+	return COMMITTED_EVENT_TYPES.has(event.type);
 }
 
 function getTurnKey(event: AgentEvent) {
