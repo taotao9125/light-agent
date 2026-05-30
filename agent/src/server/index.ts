@@ -5,8 +5,8 @@ import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import 'dotenv/config';
 
 import AgentLoop from '../agent/agentLoop';
-import type { SessionEvent } from '../agent/session';
-import AgentSession from '../agent/session';
+import type { SessionEvent } from '../agent/agent';
+import AgentSession from '../agent/agent';
 import SessionStore from '../agent/store';
 import { createClient } from '../ai/index';
 import toolRegistry from '../tools';

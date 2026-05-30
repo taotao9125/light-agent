@@ -1,7 +1,12 @@
 import { type AgentEvent, EventType, type Meta } from '../protocol/events';
 import type { AgentLoopInterface } from './agentLoop';
-import contextBuilder from './contextBuilder';
+import type {AiProvider} from '../ai/index';
 import type { SessionStoreInterface } from './store';
+import contextBuilder from './contextBuilder';
+import toolRegistry from './toolRegistry';
+import type {ToolDefinition} from './types';
+
+
 import type {ContextSource} from './contextBuilder';
 
 type Config = {
@@ -10,6 +15,32 @@ type Config = {
 	store?: SessionStoreInterface;
 	contextSource: ContextSource
 };
+
+export interface AgentSessionInterface {
+	prompt: (prompt: string) => Promise<void>;
+	on: (listener: SessionEventListener) => () => void;
+	registerTool: (name: string, tool: ToolDefinition<any, any>) => void;
+	interrupt: () => void;
+	getState: () => Record<string, any>;
+	getEventLog: () => AgentEvent[];
+}
+
+
+
+type AgentConfig = {
+	id: string;
+	model: {
+		provider: AiProvider,
+		name: string;
+	},
+	context?: {
+		source: ContextSource
+	},
+	runtime?: {
+		maxTurns?: number
+	}
+}
+
 
 type Job = {
 	prompt: string;
@@ -36,13 +67,6 @@ export type SessionEvent =
 
 type SessionEventListener = (event: SessionEvent) => void;
 
-export interface AgentSessionInterface {
-	prompt: (prompt: string) => Promise<void>;
-	on: (listener: SessionEventListener) => () => void;
-	interrupt: () => void;
-	getState: () => Record<string, any>;
-	getEventLog: () => AgentEvent[];
-}
 
 const COMMITTED_EVENT_TYPES = new Set<string>([
 	EventType.INPUT,
@@ -189,6 +213,10 @@ export default class AgentSession implements AgentSessionInterface {
 		});
 	}
 
+	registerTool(name: string, tool: ToolDefinition<any, any>) {
+		toolRegistry.register(name, tool);
+	}
+
 	getState() {
 		return {
 			isRunning: this.isRunning,
@@ -268,6 +296,7 @@ export default class AgentSession implements AgentSessionInterface {
 			await this.agentLoop.prompt(currentJob.prompt, {
 				abortSignal: this.currentJob.abortController.signal,
 				buildContext: this.buildContext.bind(this),
+				getTools: () => toolRegistry.getTools()
 			});
 			this.emit({ type: 'agent_done' });
 			currentJob.resolve();

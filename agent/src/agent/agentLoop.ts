@@ -1,15 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { AiProvider } from '../ai/index';
-import type { Context } from '../protocol/context';
+import type { Context } from './contextBuilder';
 import type { ActionEvent, AgentError, AgentEvent, ObservationEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
-import toolRegistry from '../tools/index';
-import type { ToolMeta } from '../tools/types';
+
+import type {ToolDefinition, ToolMeta} from './types';
 
 type AgentLoopConfig = {
 	provider: AiProvider;
 	model: string;
-	tools: ToolMeta[];
 	maxTurns?: number;
 };
 
@@ -18,21 +17,37 @@ type AgentEventListener = (event: AgentEvent) => void;
 type PromptOptions = {
 	abortSignal: AbortSignal;
 	buildContext: () => Context;
+	getTools: () => ToolDefinition<any, any>[]
 };
 export interface AgentLoopInterface {
 	prompt: (prompt: string, options: PromptOptions) => Promise<void>;
 	on: (listener: AgentEventListener) => void;
 }
+
+function toToolsMap(tools: ToolDefinition<any, any>[]) {
+	const map = new Map<string, ToolDefinition<any, any>['execute']>();
+	for (const tool of tools) {
+		map.set(tool.name,  tool.execute)
+	}
+	return map;
+}
+
+function toToolsMeta(tools: ToolDefinition<any, any>[]) {
+	return tools.map(tool => ({
+		name: tool.name,
+		description: tool.description,
+		schema: tool.schema
+	}))
+}
+
 class AgentLoop implements AgentLoopInterface {
 	private provider: AiProvider;
-	private tools: ToolMeta[];
 	private listeners: AgentEventListener[] = [];
 	private model: string;
 	private maxTurns: number;
 	private currentRun: { roundId: string; turn: number } = { roundId: '', turn: 0 };
 	constructor(config: AgentLoopConfig) {
 		this.provider = config.provider;
-		this.tools = config.tools;
 		this.model = config.model;
 		this.maxTurns = config.maxTurns ?? 20;
 	}
@@ -80,6 +95,14 @@ class AgentLoop implements AgentLoopInterface {
 			const turnObservationEvents: ObservationEvent[] = [];
 			const errorEvents: AgentError[] = [];
 
+			// enable tool register dynamically
+			const tools = options.getTools();
+			const toolsMap = toToolsMap(tools);
+			const toolsMeta = toToolsMeta(tools);
+
+			// refresh context
+			const context = buildContext();
+
 			if (turn > this.maxTurns) {
 				this.emit({
 					type: EventType.AGENT_ERROR,
@@ -89,13 +112,13 @@ class AgentLoop implements AgentLoopInterface {
 				break;
 			}
 
-			const context = buildContext();
+			
 
 			const stream = this.provider.stream({
 				model: this.model,
 				input: context.events,
 				systemPrompt: context.systemPrompt,
-				tools: this.tools,
+				tools: toolsMeta,
 			});
 
 			// 需要等把流迭代完了, 才能知道有没有指令来决定是否进行下一轮
@@ -109,7 +132,7 @@ class AgentLoop implements AgentLoopInterface {
 
 				// 一旦有 action, LLM 需要 observe 外部调用, 进入下一步调用
 				if (chunk.type === EventType.ACTION) {
-					if (!toolRegistry.get(chunk.name)) {
+					if (!toolsMap.get(chunk.name)) {
 						errorEvents.push({
 							type: EventType.AGENT_ERROR,
 							message: `unknown tool \`${chunk.name}\``,
@@ -162,7 +185,7 @@ class AgentLoop implements AgentLoopInterface {
 				for (const action of turnActionEvents) {
 					abortSignal?.throwIfAborted();
 					const { name, id, args } = action;
-					const toolCommand = toolRegistry.get(name);
+					const toolCommand = toolsMap.get(name);
 					// 外部环境不存在，回传给 ai， 它做下一步决策
 					if (!toolCommand) {
 						turnObservationEvents.push({
@@ -175,7 +198,7 @@ class AgentLoop implements AgentLoopInterface {
 						});
 						continue;
 					}
-					const { content, isError } = await toolCommand.execute(args, {
+					const { content, isError } = await toolCommand(args, {
 						cwd: process.cwd(),
 						signal: abortSignal,
 					});

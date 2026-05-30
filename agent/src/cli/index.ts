@@ -5,10 +5,13 @@ import path from 'path';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
 import AgentLoop from '../agent/agentLoop';
-import AgentSession from '../agent/session';
+import Agent from '../agent/agent';
 import SessionStore from '../agent/store';
 import { createClient } from '../ai/index';
-import toolRegistry from '../tools';
+
+
+import readFileTool from './tools/readFile';
+import listFilesTool from './tools/listFile';
 import loadRuleSources from './loadRuleSource'
 import 'dotenv/config';
 
@@ -44,7 +47,6 @@ async function main() {
 	const agentLoop = new AgentLoop({
 		provider: deepSeekProvider,
 		model: 'deepseek-v4-flash',
-		tools: toolRegistry.getToolShapes(),
 	});
 
 	const sessionId = 'cli_session';
@@ -56,7 +58,7 @@ async function main() {
 
 	const rulesSource = await loadRuleSources(process.cwd());
 
-	const session = new AgentSession({
+	const agent = new Agent({
 		agentLoop,
 		sessionId,
 		store: sessionStore,
@@ -64,6 +66,9 @@ async function main() {
 			rules: rulesSource
 		}
 	});
+
+	agent.registerTool(readFileTool.name, readFileTool);
+	agent.registerTool(listFilesTool.name, listFilesTool);
 
 	let isThinking = false;
 	let isOutputting = false;
@@ -74,7 +79,7 @@ async function main() {
 
 	process.on('SIGINT', () => {
 		if (isWaitingForPrompt) {
-			session.interrupt();
+			agent.interrupt();
 			resolvePromptWait?.();
 			resolvePromptWait = null;
 			isThinking = false;
@@ -90,7 +95,7 @@ async function main() {
 		rl.close();
 	});
 
-	session.on((event) => {
+	agent.on((event) => {
 		switch (event.type) {
 			case 'agent_start':
 				process.stdout.write(`${color.green}开始执行 agent${color.reset}\n`);
@@ -201,7 +206,7 @@ async function main() {
 		try {
 			isWaitingForPrompt = true;
 			interruptPrinted = false;
-			const promptPromise = session.prompt(text);
+			const promptPromise = agent.prompt(text);
 			const promptWaitPromise = new Promise<'interrupted'>((resolve) => {
 				resolvePromptWait = () => resolve('interrupted');
 			});
@@ -212,7 +217,7 @@ async function main() {
 				continue;
 			}
 		} catch (e) {
-			if (session.getState().isRunning) {
+			if (agent.getState().isRunning) {
 				continue;
 			}
 
