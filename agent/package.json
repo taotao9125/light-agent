@@ -30,6 +30,7 @@
   "dependencies": {
     "@google/genai": "^2.3.0",
     "dotenv": "^17.4.2",
+    "fast-glob": "^3.3.3",
     "ink": "^7.0.4",
     "marked": "^16.4.1",
     "marked-terminal": "^7.3.0",

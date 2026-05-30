@@ -1,12 +1,14 @@
 import { type AgentEvent, EventType, type Meta } from '../protocol/events';
 import type { AgentLoopInterface } from './agentLoop';
-import contextBuilder from './contextBuider';
+import contextBuilder from './contextBuilder';
 import type { SessionStoreInterface } from './store';
+import type {ContextSource} from './contextBuilder';
 
 type Config = {
 	agentLoop: AgentLoopInterface;
 	sessionId: string;
 	store?: SessionStoreInterface;
+	contextSource: ContextSource
 };
 
 type Job = {
@@ -168,6 +170,7 @@ export default class AgentSession implements AgentSessionInterface {
 	private sessionId: string;
 	private store?: SessionStoreInterface;
 	private agentLoop: AgentLoopInterface;
+	private contextSource: ContextSource;
 
 	private isRunning = false;
 	private queue: Job[] = [];
@@ -179,6 +182,7 @@ export default class AgentSession implements AgentSessionInterface {
 	constructor(config: Config) {
 		this.sessionId = config.sessionId;
 		this.store = config.store;
+		this.contextSource = config.contextSource;
 		this.agentLoop = config.agentLoop;
 		this.agentLoop.on((event) => {
 			void this.handleAgentEvent(event);
@@ -245,7 +249,10 @@ export default class AgentSession implements AgentSessionInterface {
 	}
 
 	buildContext() {
-		return contextBuilder(this.canonicalEvents);
+		return contextBuilder({
+			events: this.canonicalEvents,
+			...this.contextSource
+		});
 	}
 
 	private async run() {

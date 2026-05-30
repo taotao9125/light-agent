@@ -9,6 +9,7 @@ import AgentSession from '../agent/session';
 import SessionStore from '../agent/store';
 import { createClient } from '../ai/index';
 import toolRegistry from '../tools';
+import loadRuleSources from './loadRuleSource'
 import 'dotenv/config';
 
 setGlobalDispatcher(new ProxyAgent(process.env.HTTPS_PROXY as string));
@@ -30,6 +31,8 @@ function isReadlineAbortError(error: unknown) {
 	return error instanceof Error && 'code' in error && error.code === 'ABORT_ERR';
 }
 
+
+
 async function main() {
 	const deepSeekProvider = createClient({
 		// 目前只支持 gemini, openai, deepseek
@@ -50,10 +53,16 @@ async function main() {
 		rootDir: path.resolve(process.cwd(), '.agent/sessions'),
 	});
 
+
+	const rulesSource = await loadRuleSources(process.cwd());
+
 	const session = new AgentSession({
 		agentLoop,
 		sessionId,
 		store: sessionStore,
+		contextSource: {
+			rules: rulesSource
+		}
 	});
 
 	let isThinking = false;
