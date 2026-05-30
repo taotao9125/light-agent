@@ -52,7 +52,7 @@ const COMMITTED_EVENT_TYPES = new Set<string>([
 	EventType.AGENT_ERROR,
 ]);
 
-function isCommittedEvent(event: AgentEvent){
+function isCommittedEvent(event: AgentEvent) {
 	return COMMITTED_EVENT_TYPES.has(event.type);
 }
 
@@ -60,6 +60,108 @@ function getTurnKey(event: AgentEvent) {
 	const { roundId, turn } = event.meta ?? {};
 	if (!roundId || turn == null) return undefined;
 	return `${roundId}:${turn}`;
+}
+
+function createSessionEventProjector() {
+	const activeThoughtTurns = new Set<string>();
+	const activeOutputTurns = new Set<string>();
+	return function projectSessionEvents(event: AgentEvent): SessionEvent[] {
+		switch (event.type) {
+			case EventType.INPUT:
+				return [
+					{ type: 'agent_start', meta: event.meta },
+					{ type: 'input', text: event.text, source: event.source, meta: event.meta },
+				];
+
+			case EventType.THOUGHT_DELTA: {
+				const key = getTurnKey(event);
+				if (!key || activeThoughtTurns.has(key)) {
+					return [{ type: 'thought_delta', text: event.text, meta: event.meta }];
+				}
+
+				activeThoughtTurns.add(key);
+				return [
+					{ type: 'thought_start', meta: event.meta },
+					{ type: 'thought_delta', text: event.text, meta: event.meta },
+				];
+			}
+
+			case EventType.THOUGHT: {
+				const key = getTurnKey(event);
+				if (key) activeThoughtTurns.delete(key);
+
+				return [{ type: 'thought_done', text: event.text, meta: event.meta }];
+			}
+
+			case EventType.OUTPUT_DELTA: {
+				const key = getTurnKey(event);
+				if (!key || activeOutputTurns.has(key)) {
+					return [{ type: 'output_delta', text: event.text, meta: event.meta }];
+				}
+
+				activeOutputTurns.add(key);
+
+				return [
+					{ type: 'output_start', meta: event.meta },
+					{ type: 'output_delta', text: event.text, meta: event.meta },
+				];
+			}
+
+			case EventType.OUTPUT: {
+				const key = getTurnKey(event);
+				if (key) activeOutputTurns.delete(key);
+
+				return [{ type: 'output_done', text: event.text, meta: event.meta }];
+			}
+
+			case EventType.ACTION:
+				return [
+					{
+						type: 'action_start',
+						id: event.id,
+						name: event.name,
+						args: event.args,
+						meta: event.meta,
+					},
+				];
+
+			case EventType.OBSERVATION:
+				return [
+					{
+						type: 'action_done',
+						id: event.id,
+						result: event.result,
+						name: event.name,
+						meta: event.meta,
+					},
+				];
+
+			case EventType.AGENT_ERROR:
+				activeThoughtTurns.clear();
+				activeOutputTurns.clear();
+				return [
+					{
+						type: 'agent_error',
+						message: event.message,
+						meta: event.meta,
+					},
+				];
+
+			case EventType.INTERRUPT:
+				activeThoughtTurns.clear();
+				activeOutputTurns.clear();
+				return [
+					{
+						type: 'interrupt',
+						reason: event.reason,
+						meta: event.meta,
+					},
+				];
+
+			default:
+				return [];
+		}
+	}
 }
 
 export default class AgentSession implements AgentSessionInterface {
@@ -72,8 +174,7 @@ export default class AgentSession implements AgentSessionInterface {
 	private currentJob: Job | null = null;
 	private canonicalEvents: AgentEvent[] = [];
 	private listeners: SessionEventListener[] = [];
-	private activeThoughtTurns = new Set<string>();
-	private activeOutputTurns = new Set<string>();
+	private projectSessionEvents = createSessionEventProjector();
 
 	constructor(config: Config) {
 		this.sessionId = config.sessionId;
@@ -117,103 +218,6 @@ export default class AgentSession implements AgentSessionInterface {
 		}
 	}
 
-	private projectSessionEvents(event: AgentEvent): SessionEvent[] {
-		switch (event.type) {
-			case EventType.INPUT:
-				return [
-					{ type: 'agent_start', meta: event.meta },
-					{ type: 'input', text: event.text, source: event.source, meta: event.meta },
-				];
-
-			case EventType.THOUGHT_DELTA: {
-				const key = getTurnKey(event);
-				if (!key || this.activeThoughtTurns.has(key)) {
-					return [{ type: 'thought_delta', text: event.text, meta: event.meta }];
-				}
-
-				this.activeThoughtTurns.add(key);
-				return [
-					{ type: 'thought_start', meta: event.meta },
-					{ type: 'thought_delta', text: event.text, meta: event.meta },
-				];
-			}
-
-			case EventType.THOUGHT: {
-				const key = getTurnKey(event);
-				if (key) this.activeThoughtTurns.delete(key);
-
-				return [{ type: 'thought_done', text: event.text, meta: event.meta }];
-			}
-
-			case EventType.OUTPUT_DELTA: {
-				const key = getTurnKey(event);
-				if (!key || this.activeOutputTurns.has(key)) {
-					return [{ type: 'output_delta', text: event.text, meta: event.meta }];
-				}
-
-				this.activeOutputTurns.add(key);
-
-				return [
-					{ type: 'output_start', meta: event.meta },
-					{ type: 'output_delta', text: event.text, meta: event.meta },
-				];
-			}
-
-			case EventType.OUTPUT: {
-				const key = getTurnKey(event);
-				if (key) this.activeOutputTurns.delete(key);
-
-				return [{ type: 'output_done', text: event.text, meta: event.meta }];
-			}
-
-			case EventType.ACTION:
-				return [
-					{
-						type: 'action_start',
-						id: event.id,
-						name: event.name,
-						args: event.args,
-						meta: event.meta,
-					},
-				];
-
-			case EventType.OBSERVATION:
-				return [
-					{
-						type: 'action_done',
-						id: event.id,
-						result: event.result,
-						name: event.name,
-						meta: event.meta,
-					},
-				];
-
-			case EventType.AGENT_ERROR:
-				this.activeThoughtTurns.clear();
-				this.activeOutputTurns.clear();
-				return [
-					{
-						type: 'agent_error',
-						message: event.message,
-						meta: event.meta,
-					},
-				];
-
-			case EventType.INTERRUPT:
-				this.activeThoughtTurns.clear();
-				this.activeOutputTurns.clear();
-				return [
-					{
-						type: 'interrupt',
-						reason: event.reason,
-						meta: event.meta,
-					},
-				];
-
-			default:
-				return [];
-		}
-	}
 
 	private emit(event: SessionEvent) {
 		for (const listener of this.listeners) {
