@@ -12,6 +12,7 @@ import { createClient } from '../ai/index';
 
 import readFileTool from './tools/readFile';
 import listFilesTool from './tools/listFile';
+import listFilesToolNew from './tools/listFileNew';
 import loadRuleSources from './loadRuleSource'
 import 'dotenv/config';
 
@@ -68,7 +69,7 @@ async function main() {
 	});
 
 	agent.registerTool(readFileTool.name, readFileTool);
-	agent.registerTool(listFilesTool.name, listFilesTool);
+	agent.registerTool(listFilesToolNew.name, listFilesToolNew);
 
 	let isThinking = false;
 	let isOutputting = false;

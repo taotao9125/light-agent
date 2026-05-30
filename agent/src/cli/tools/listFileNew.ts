@@ -1,0 +1,90 @@
+import { execFile } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import type { ToolDefinition } from '../../agent/types';
+
+const execFileAsync = promisify(execFile);
+
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const rgPath = path.resolve(currentDir, 'bins/rg');
+
+type ListFilesArgs = {
+	path?: string;
+	glob?: string;
+	limit?: number;
+};
+
+const listFilesNewTool: ToolDefinition<
+	ListFilesArgs,
+	Promise<{
+		isError: boolean;
+		content: string | string[];
+	}>
+> = {
+	name: 'list_files_new',
+	description: 'List project files recursively using ripgrep, respecting ignore rules such as .gitignore.',
+	schema: {
+		type: 'object',
+		properties: {
+			path: {
+				type: 'string',
+				description: 'Directory path relative to the agent working directory. Defaults to current directory.',
+			},
+			glob: {
+				type: 'string',
+				description: 'Optional glob filter, such as **/*.ts or src/**/*.tsx.',
+			},
+			limit: {
+				type: 'number',
+				description: 'Maximum number of file paths to return. Defaults to 200.',
+			},
+		},
+		additionalProperties: false,
+	},
+	async execute(args, context) {
+		context.signal?.throwIfAborted();
+
+		const targetPath = args.path ?? '.';
+		const limit = Math.max(1, Math.min(args.limit ?? 200, 1000));
+		const commandArgs = ['--files'];
+
+		if (args.glob) {
+			commandArgs.push('-g', args.glob);
+		}
+
+		commandArgs.push(targetPath);
+
+		try {
+			const { stdout } = await execFileAsync(rgPath, commandArgs, {
+				cwd: context.cwd,
+				signal: context.signal,
+				maxBuffer: 1024 * 1024,
+			});
+
+			context.signal?.throwIfAborted();
+
+			const files = stdout
+				.split('\n')
+				.map((line) => line.trim())
+				.filter(Boolean)
+				.slice(0, limit);
+
+			return {
+				isError: false,
+				content: files,
+			};
+		} catch (e) {
+			if (context.signal?.aborted) {
+				throw e;
+			}
+
+			return {
+				isError: true,
+				content: e instanceof Error ? e.message : String(e),
+			};
+		}
+	},
+};
+
+export default listFilesNewTool;
