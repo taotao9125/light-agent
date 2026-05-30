@@ -22,28 +22,20 @@ user
 
 
 
-  -> AgentManager
-    -> AgentSession
-      -> AgentLoop
-        -> AiProvider
-        -> ToolRegistry
 
-  User Prompt
-  └─ AgentSession
-     ├─ enqueue job
-     ├─ create AbortController
-     └─ call AgentLoop
-        ├─ emit input
-        ├─ call AiProvider
-        │  └─ adaptor converts eventLog to vendor messages
-        ├─ receive thought/output/action
-        ├─ execute tools
-        │  └─ ToolRegistry -> ToolDefinition.execute()
-        ├─ emit observation
-        └─ loop until output / interrupt / error
-     ├─ receive AgentEvent
-     ├─ persist committed event via SessionStore
-     └─ emit SessionEvent to UI/runtime
+  Agent
+    owns canonicalEvents
+    owns toolRegistry
+    owns contextSource
+    schedules AgentLoop
+
+  AgentLoop
+    pulls latest context snapshot
+    pulls latest tool snapshot
+    runs provider stream
+
+  ContextBuilder
+    builds systemPrompt + events
 
 ## Event Log
 
