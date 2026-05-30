@@ -24,10 +24,11 @@ export interface AgentLoopInterface {
 	on: (listener: AgentEventListener) => void;
 }
 
+
 function toToolsMap(tools: ToolDefinition<any, any>[]) {
-	const map = new Map<string, ToolDefinition<any, any>['execute']>();
+	const map = new Map<string, ToolDefinition<any, any>>();
 	for (const tool of tools) {
-		map.set(tool.name,  tool.execute)
+		map.set(tool.name, tool)
 	}
 	return map;
 }
@@ -198,7 +199,7 @@ class AgentLoop implements AgentLoopInterface {
 						});
 						continue;
 					}
-					const { content, isError } = await toolCommand(args, {
+					const { content, isError } = await toolCommand.execute(args, {
 						cwd: process.cwd(),
 						signal: abortSignal,
 					});

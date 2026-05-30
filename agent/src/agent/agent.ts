@@ -3,11 +3,10 @@ import type { AgentLoopInterface } from './agentLoop';
 import type {AiProvider} from '../ai/index';
 import type { SessionStoreInterface } from './store';
 import contextBuilder from './contextBuilder';
-import toolRegistry from './toolRegistry';
+import toolRegistryClass from './toolRegistry';
 import type {ToolDefinition} from './types';
-
-
 import type {ContextSource} from './contextBuilder';
+
 
 type Config = {
 	agentLoop: AgentLoopInterface;
@@ -77,6 +76,9 @@ const COMMITTED_EVENT_TYPES = new Set<string>([
 	EventType.INTERRUPT,
 	EventType.AGENT_ERROR,
 ]);
+
+
+const toolRegistry = new toolRegistryClass();
 
 function isCommittedEvent(event: AgentEvent) {
 	return COMMITTED_EVENT_TYPES.has(event.type);
