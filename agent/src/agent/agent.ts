@@ -1,11 +1,11 @@
 import { type AgentEvent, EventType, type Meta } from '../protocol/events';
 import type { AgentLoopInterface } from './agentLoop';
-import type {AiProvider} from '../ai/index';
+// import type { AiProvider } from '../ai/index';
 import type { SessionStoreInterface } from './store';
 import contextBuilder from './contextBuilder';
 import toolRegistryClass from './toolRegistry';
-import type {ToolDefinition} from './types';
-import type {ContextSource} from './contextBuilder';
+import type { ToolDefinition } from './types';
+import type { ContextSource } from './contextBuilder';
 
 
 type Config = {
@@ -15,30 +15,29 @@ type Config = {
 	contextSource: ContextSource
 };
 
-export interface AgentSessionInterface {
+export interface AgentInterface {
 	prompt: (prompt: string) => Promise<void>;
-	on: (listener: SessionEventListener) => () => void;
+	on: (listener: AgentEventListener) => () => void;
 	registerTool: (name: string, tool: ToolDefinition<any, any>) => void;
 	interrupt: () => void;
 	getState: () => Record<string, any>;
-	getEventLog: () => AgentEvent[];
 }
 
 
 
-type AgentConfig = {
-	id: string;
-	model: {
-		provider: AiProvider,
-		name: string;
-	},
-	context?: {
-		source: ContextSource
-	},
-	runtime?: {
-		maxTurns?: number
-	}
-}
+// type AgentConfig = {
+// 	id: string;
+// 	model: {
+// 		provider: AiProvider,
+// 		name: string;
+// 	},
+// 	context?: {
+// 		source: ContextSource
+// 	},
+// 	runtime?: {
+// 		maxTurns?: number
+// 	}
+// }
 
 
 type Job = {
@@ -64,7 +63,11 @@ export type SessionEvent =
 	| { type: 'output_done'; text: string; meta?: Meta }
 	| { type: 'interrupt'; reason: string; meta?: Meta };
 
-type SessionEventListener = (event: SessionEvent) => void;
+type AgentEventListener = (event: SessionEvent) => void;
+
+// interface AgentLoopDeps {
+// 	buildContext(): Context;
+// }
 
 
 const COMMITTED_EVENT_TYPES = new Set<string>([
@@ -90,10 +93,10 @@ function getTurnKey(event: AgentEvent) {
 	return `${roundId}:${turn}`;
 }
 
-function createSessionEventProjector() {
+function createAgentEventProjector() {
 	const activeThoughtTurns = new Set<string>();
 	const activeOutputTurns = new Set<string>();
-	return function projectSessionEvents(event: AgentEvent): SessionEvent[] {
+	return function projectAgentEvents(event: AgentEvent): SessionEvent[] {
 		switch (event.type) {
 			case EventType.INPUT:
 				return [
@@ -192,19 +195,21 @@ function createSessionEventProjector() {
 	}
 }
 
-export default class AgentSession implements AgentSessionInterface {
+export default class Agent implements AgentInterface {
 	private sessionId: string;
 	private store?: SessionStoreInterface;
 	private agentLoop: AgentLoopInterface;
 	private contextSource: ContextSource;
 
-	private isRunning = false;
-	private queue: Job[] = [];
-	private currentJob: Job | null = null;
-	private canonicalEvents: AgentEvent[] = [];
-	private listeners: SessionEventListener[] = [];
-	private projectSessionEvents = createSessionEventProjector();
+	private runRecords = {
+		pending: [] as Job[] ,
+		activeJob: null as Job | null,
+		isRunning: false
+	}
 
+	private canonicalEvents: AgentEvent[] = [];
+	private listeners: AgentEventListener[] = [];
+	private projectAgentEvents = createAgentEventProjector();
 	constructor(config: Config) {
 		this.sessionId = config.sessionId;
 		this.store = config.store;
@@ -215,37 +220,15 @@ export default class AgentSession implements AgentSessionInterface {
 		});
 	}
 
-	registerTool(name: string, tool: ToolDefinition<any, any>) {
-		toolRegistry.register(name, tool);
-	}
-
-	getState() {
-		return {
-			isRunning: this.isRunning,
-		};
-	}
-
-	on(listener: SessionEventListener): () => void {
-		this.listeners.push(listener);
-
-		return () => {
-			this.listeners = this.listeners.filter((item) => item !== listener);
-		};
-	}
-
-	getEventLog(): AgentEvent[] {
-		return [...this.canonicalEvents];
-	}
-
 	private async handleAgentEvent(event: AgentEvent) {
-		for (const lifecycleEvent of this.projectSessionEvents(event)) {
+		for (const lifecycleEvent of this.projectAgentEvents(event)) {
 			this.emit(lifecycleEvent);
 		}
 
 		await this.commitEvent(event);
 	}
 
-	async commitEvent(event: AgentEvent) {
+	private async commitEvent(event: AgentEvent) {
 		if (isCommittedEvent(event)) {
 			this.canonicalEvents.push(event);
 			await this.store?.append(this.sessionId, event);
@@ -259,26 +242,7 @@ export default class AgentSession implements AgentSessionInterface {
 		}
 	}
 
-	prompt(prompt: string) {
-		const { promise, resolve, reject } = Promise.withResolvers<void>();
-		const abortController = new AbortController();
-		this.queue.push({
-			prompt,
-			abortController,
-			resolve,
-			reject,
-		});
-		this.run();
-
-		return promise;
-	}
-
-	interrupt(reason = 'user interrupted') {
-		if (!this.currentJob) return;
-		this.currentJob.abortController.abort(reason);
-	}
-
-	buildContext() {
+	private buildContext() {
 		return contextBuilder({
 			events: this.canonicalEvents,
 			...this.contextSource
@@ -286,17 +250,17 @@ export default class AgentSession implements AgentSessionInterface {
 	}
 
 	private async run() {
-		if (!this.queue.length) return;
-		if (this.isRunning) return;
+		if (!this.runRecords.pending.length) return;
+		if (this.runRecords.isRunning) return;
 
-		const currentJob = this.queue.shift();
+		const currentJob = this.runRecords.pending.shift();
 		if (!currentJob) return;
 
 		try {
-			this.isRunning = true;
-			this.currentJob = currentJob;
+			this.runRecords.isRunning = true;
+			this.runRecords.activeJob = currentJob;
 			await this.agentLoop.prompt(currentJob.prompt, {
-				abortSignal: this.currentJob.abortController.signal,
+				abortSignal: this.runRecords.activeJob.abortController.signal,
 				buildContext: this.buildContext.bind(this),
 				getTools: () => toolRegistry.getTools()
 			});
@@ -313,9 +277,51 @@ export default class AgentSession implements AgentSessionInterface {
 			}
 			currentJob.reject(e);
 		} finally {
-			this.currentJob = null;
-			this.isRunning = false;
+			this.runRecords.activeJob = null;
+			this.runRecords.isRunning = false;
 			this.run();
 		}
 	}
+
+
+
+	prompt(prompt: string) {
+		const { promise, resolve, reject } = Promise.withResolvers<void>();
+		const abortController = new AbortController();
+		this.runRecords.pending.push({
+			prompt,
+			abortController,
+			resolve,
+			reject,
+		});
+		this.run();
+
+		return promise;
+	}
+
+	on(listener: AgentEventListener): () => void {
+		this.listeners.push(listener);
+
+		return () => {
+			this.listeners = this.listeners.filter((item) => item !== listener);
+		};
+	}
+
+	registerTool(name: string, tool: ToolDefinition<any, any>) {
+		toolRegistry.register(name, tool);
+	}
+
+	interrupt(reason = 'user interrupted') {
+		if (!this.currentJob) return;
+		this.currentJob.abortController.abort(reason);
+	}
+
+	getState() {
+		return {
+			isRunning: this.runRecords.isRunning,
+			canonicalEvents: this.canonicalEvents
+		};
+	}
+
+
 }
