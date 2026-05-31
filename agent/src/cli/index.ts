@@ -64,7 +64,10 @@ async function main() {
 		sessionId,
 		store: sessionStore,
 		contextSource: {
-			rules: rulesSource
+			contextBuildStrategy: {
+				maxSingleObservationToken: 3000,
+				keepRecentRounds: 5
+			}
 		}
 	});
 
