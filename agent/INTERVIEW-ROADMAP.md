@@ -45,7 +45,7 @@
 
 | # | 做什么 | 面试解决什么 | 估时 |
 |---|--------|--------------|------|
-| **1** | **contextBuilder 接上 pipe**：`applyMaxSingleObservationTokens` + **keep recent N turn / token** | 「长会话 / context 窗口 / 怎么控 token」 | 12–16h |
+| **1** | **contextBuilder 接上 pipe**：`rebuildObservation` + **`keepRecentRounds`**（或 `keepRecentTokens`） | 「长会话 / context 窗口 / 怎么控 token」 | 12–16h |
 | **2** | **contextBuilder.test.ts**（3–5 个用例）+ 1 个「50 event log → buildContext token 下降」集成测 | 「你怎么保证没回归」 | 8–10h |
 | **3** | **最小 compaction**（纯函数即可）：切点 + summary 占位 + `resolveCompactedContext` 进 pipe | 「比 sliding window 更进一步呢？」 | 16–20h |
 | **4** | **agentLoop 三处小修**：tool try/catch → error OBS；ACTION 先 emit；`cwd` 从 options 注入 | 「工具失败 / 事件顺序 / 生产细节」 | 6–8h |
@@ -55,8 +55,8 @@
 #### S 级完成自检
 
 - [ ] **S1** `rebuildEvents` pipe 已启用，不再透传全量 events
-- [ ] **S1** `applyMaxSingleObservationTokens` 已接入（`strategy.maxSingleObservationTokens`）
-- [ ] **S1** `keepRecentTurns` 或 `keepRecentTokens` 已实现（按 turn 边界切）
+- [ ] **S1** `rebuildObservation` 已接入（`contextBuildStrategy.maxSingleObservationToken`）
+- [ ] **S1** `keepRecentRounds` 或 `keepRecentTokens` 已实现（**按 round 边界切**，见下术语）
 - [ ] **S2** `contextBuilder.test.ts` ≥ 3 个用例通过
 - [ ] **S2** 集成测：50+ events → `buildContext` token/条数明显下降
 - [ ] **S3** `compaction.ts` 存在：`findCutPoint` / `compactLog` / `resolveCompactedContext`
@@ -100,18 +100,24 @@
 
 ### Week 1 — 技术面最大漏洞：Context（~40h）
 
+> **术语（与 `contextBuilder.ts` / `events.ts` 对齐）**
+>
+> - **round**（`meta.roundId`）：用户一次 prompt 的完整单元（含多步 thought → action → observation）。**window 层按 round 切**。
+> - **turn**（`meta.turn`）：同一 round 内 AgentLoop 的第 N 次 LLM 循环。**不按 turn 切 window**——否则会裁掉中间步骤，破坏「thought 引用 observation」的连贯性。
+> - 每次 loop 仍会 `buildContext()` 做投影；sliding window 用 **`keepRecentRounds(max)`**，按 `roundId` 分组后保留最近 N 轮。
+
 | 天 | 任务 |
 |----|------|
-| D1–D2 | contextBuilder：`truncate` + `keepRecentTurns`（或 `keepRecentTokens`） |
+| D1–D2 | contextBuilder：`rebuildObservation` + `keepRecentRounds`（或 `keepRecentTokens`） |
 | D3 | `contextBuilder.test.ts` |
 | D4 | agentLoop：tool 错误 + ACTION 先 emit |
 | D5 | `ARCHITECTURE.md` 初稿 + 画一遍白板 |
 
-**Week 1 出口：** 能对着代码讲清「每 turn context 怎么来的、为什么不会无限涨」。
+**Week 1 出口：** 能对着代码讲清「每次 buildContext 怎么投影、为什么 history 不会无限涨、为什么 window 按 round 而不是 turn 切」。
 
 #### Week 1 每日任务
 
-- [ ] **D1–D2** contextBuilder：`truncate` + `keepRecentTurns`（或 `keepRecentTokens`）
+- [ ] **D1–D2** contextBuilder：`rebuildObservation` + `keepRecentRounds`（或 `keepRecentTokens`）
 - [ ] **D3** `contextBuilder.test.ts`
 - [ ] **D4** agentLoop：tool 错误 + ACTION 先 emit
 - [ ] **D5** `ARCHITECTURE.md` 初稿 + 画一遍白板
@@ -121,7 +127,8 @@
 - [ ] 打开 `contextBuilder.ts`，`events` 经 pipe 处理，不是原样 `input.events`
 - [ ] 跑测试：`pnpm test` 中 context 相关用例绿
 - [ ] 口述 2 分钟：「单条 observation 太大怎么办？」能指到函数
-- [ ] 口述 2 分钟：「history 太长怎么办（window 层）？」能指到函数
+- [ ] 口述 2 分钟：「history 太长怎么办（window 层）？」能指到 `keepRecentRounds`
+- [ ] 口述 1 分钟：「为什么按 round 切、不按 turn 切？」能结合 `roundId` / tool 链说明
 - [ ] 未开始写 compaction（Week 2 再做）— 避免抢进度导致地基不牢
 
 ---
@@ -136,7 +143,7 @@
 
 **Week 2 出口：** 「context 满了怎么办？」→ **三层**：truncate → window → compact，**两层有代码**。
 
-> Compaction 不必追求完美 split turn；**能跑、能测、能讲** 即可。
+> Compaction 切点优先落在 **round 边界**（旧 round 摘要），不必追求完美；**能跑、能测、能讲** 即可。
 
 #### Week 2 每日任务
 
@@ -218,9 +225,9 @@
 - [ ] 2. Tool loop 怎么实现？何时结束一轮？
 - [ ] 3. Streaming 时 `THOUGHT_DELTA` 和 `THOUGHT` 区别？
 - [ ] 4. `ACTION` 和 `OBSERVATION` 为什么要成对？
-- [ ] 5. Context 每 turn 为什么 refresh？
-- [ ] 6. Observation 太大怎么办？
-- [ ] 7. History 太长怎么办？（window + compact）
+- [ ] 5. 每次 provider 调用前 Context 为什么 rebuild？（log 是 SSOT，view 是投影）
+- [ ] 6. Observation 太大怎么办？（`rebuildObservation` / `truncateText`）
+- [ ] 7. History 太长怎么办？（`keepRecentRounds` window + Week2 compact）
 - [ ] 8. Compaction 切点怎么选？
 - [ ] 9. Compact 后 log 里旧 events 还在吗？
 - [ ] 10. 工具 `execute` 失败怎么处理？
@@ -236,8 +243,8 @@
 |------|------|-----------|
 | 1 | | |
 | 2 | `agentLoop.ts` | `runAgentLoop` |
-| 6 | `contextBuilder.ts` | |
-| 7 | | |
+| 6 | `contextBuilder.ts` | `rebuildObservation` |
+| 7 | `contextBuilder.ts` | `keepRecentRounds` |
 | 8 | `compaction.ts` | |
 | … | | |
 
@@ -294,7 +301,7 @@
 自研 Agent Runtime (TypeScript)                          2025.xx
 • 设计 INPUT→THOUGHT→ACTION→OBSERVATION→OUTPUT 事件协议与 round/turn 元数据
 • 实现 streaming tool loop，对接 OpenAI / Gemini function calling
-• Session JSONL 持久化；ContextBuilder 投影（observation 截断 + 近期 turn 保留）
+• Session JSONL 持久化；ContextBuilder 投影（observation 截断 + 近期 round 保留）
 • [可选] Compaction 摘要 + ContextBuildReport 可观测性
 GitHub: xxx  Demo: xxx
 ```
@@ -307,13 +314,13 @@ GitHub: xxx  Demo: xxx
 
 **Problem：** 长会话 agent 会 context 爆、tool 结果过大、难以 debug。
 
-**Approach：** Event log 作 SSOT；AgentLoop 只管单轮推理环；ContextBuilder 每 turn 投影；Session 持久化。
+**Approach：** Event log 作 SSOT；AgentLoop 只管 loop 内推理环；ContextBuilder 每次调用前投影（truncate + 按 round 窗口）；Session 持久化。
 
 **Tradeoffs：** 为什么不用 LangChain 全家桶 → 可控、可测、语义 event 适合 tool 审计。
 
 **Deep dive 准备：**
 
-- context 满了怎么办（truncate → window → compaction）
+- context 满了怎么办（truncate → `keepRecentRounds` window → compaction）
 - ACTION/OBSERVATION 为什么要成对
 - streaming 时何时 commit event
 - 工具失败怎么处理
@@ -346,7 +353,7 @@ Week1  context 实装 + 测试
 
 - [ ] prompt 全路径
 - [ ] tool loop 结束条件
-- [ ] context 三层：truncate / window / compact
+- [ ] context 三层：truncate / window（`keepRecentRounds`）/ compact
 - [ ] 工具失败处理
 - [ ] 为什么自研 runtime（vs LangChain）
 

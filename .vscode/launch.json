@@ -5,29 +5,12 @@
       "name": "AGENT",
       "type": "node",
       "request": "launch",
-      "runtimeExecutable": "node",
+      "runtimeExecutable": "${env:HOME}/.nvm/versions/node/v24.16.0/bin/node",
       "runtimeArgs": [
         "--import",
         "tsx"
       ],
       "program": "${workspaceFolder}/agent/src/cli/index.ts",
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}/agent",
-      "skipFiles": [
-        "<node_internals>/**",
-       "node_modules/**"
-      ]
-    },
-    {
-      "name": "process",
-      "type": "node",
-      "request": "launch",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "--import",
-        "tsx"
-      ],
-      "program": "${workspaceFolder}/agent/src/process.ts",
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}/agent",
       "skipFiles": [
@@ -62,19 +45,6 @@
       "skipFiles": [
         "<node_internals>/**",
         "node_modules/**"
-      ]
-    },
-    {
-      "type": "node",
-      "request": "launch",
-      "name": "Debug workflow index",
-      "cwd": "${workspaceFolder}/mcp_server",
-      "runtimeExecutable": "${env:HOME}/.nvm/versions/node/v24.14.1/bin/node",
-      "program": "${workspaceFolder}/mcp_server/src/index.js",
-      "console": "integratedTerminal",
-      "skipFiles": [
-        "<node_internals>/**",
-        "${workspaceFolder}/mcp_server/node_modules/**"
       ]
     }
   ]
