@@ -1,6 +1,7 @@
 
 import type { AgentEvent } from '../protocol/events';
 import {EventType} from '../protocol/events';
+import {pipe, toRoundMap, truncateText, stringify} from './helpers';
 
 
 const BASE_RULE = [
@@ -51,47 +52,22 @@ export type Context = {
 const CHAR_LENGTH_PER_TOKEN = 4;
 
 
-function truncateText(text: string, maxLength: number) {
-	if (text.length <= maxLength) return text;
-	const placeHolder = '\n\n...[truncated]...\n\n';
+function formatRules(rules: Rule[]): string {
+	if (!rules.length) return '';
+	const rulePrompts = [
+		'# Project Rules',
+		rules.map(rule => {
+			return [
+				rule.name ? `## Rule: ${rule.name}` : '',
+				rule.content
+			].filter(Boolean).join('\n\n')
+		})
+	].join('\n\n');
 
-	if (maxLength <= placeHolder.length) return text.slice(0, maxLength);
-
-	const budgetLength = maxLength - placeHolder.length;
-
-	const headLength = Math.floor(budgetLength * 0.7);
-	const tailLength = budgetLength - headLength;
-
-	return text.slice(0, headLength) + placeHolder + text.slice(-tailLength);
-
+	return rulePrompts;
 }
 
 
-type Task<T> = (p: T) => T;
-function pipe<T>(...tasks: Task<T>[]) {
-	return (initValue: T): T => {
-		return tasks.reduce((acc, task) => {
-			acc = task(acc);
-			return acc;
-		}, initValue)
-	}
-}
-
-
-
-function toRoundMap(events: AgentEvent[]) {
-	const map = new Map<string, AgentEvent[]>();
-	for (const event of events) {
-		const roundId = event.meta?.roundId;
-		if (!roundId) continue;
-
-		if (!map.has(roundId)) {
-			map.set(roundId, []);
-		}
-		map.get(roundId)?.push(event);
-	}
-	return map;
-}
 
 /** keep latest x rounds, not turns */
 function keepRecentRounds(maxRecentRounds: number) {
@@ -107,12 +83,14 @@ function rebuildObservation(maxSingleObservationToken: number) {
 	return (events: AgentEvent[]): AgentEvent[] => {
 		return events.map(event => {
 			if (event.type !== EventType.OBSERVATION) return event;
-			const result = event.result;
+			
+			const result = typeof event.result === 'string'
+				? event.result
+				: stringify(event.result);
+
 			return {
 				...event,
-				result: typeof result === 'string'
-					? truncateText(result, maxSingleObservationToken * CHAR_LENGTH_PER_TOKEN)
-					: result
+				result: truncateText(result, maxSingleObservationToken * CHAR_LENGTH_PER_TOKEN)
 				
 			}
 		})
@@ -128,20 +106,6 @@ function rebuildEvents(contextBuildStrategy: ContextBuildStrategy) {
 }
 
 
-function formatRules(rules: Rule[]): string {
-	if (!rules.length) return '';
-	const rulePrompts = [
-		'# Project Rules',
-		rules.map(rule => {
-			return [
-				rule.name ? `## Rule: ${rule.name}` : '',
-				rule.content
-			].filter(Boolean).join('\n\n')
-		})
-	].join('\n\n');
-
-	return rulePrompts;
-}
 
 export default function contextBuilder(input: ContextSource & { events: AgentEvent[] }): Context {
 	const {
