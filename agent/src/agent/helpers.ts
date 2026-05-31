@@ -46,7 +46,8 @@ export function truncateText(text: string, maxLength: number) {
 export function stringify(value: unknown): string {
     if (typeof value === 'string') return value;
     try {
-        return JSON.stringify(value);
+        // undefined value call String(undefined)
+        return JSON.stringify(value) ?? String(value);
     } catch {
         return String(value);
     }
