@@ -103,11 +103,11 @@ function truncateObservation(maxSingleObservationToken: number) {
 	}
 }
 
-// canonical events rebuild pipe line
+// canonical events rebuild pipe line: window first, then truncate
 function rebuildEvents(contextBuildStrategy: ContextBuildStrategy) {
 	return pipe<AgentEvent[]>(
-		truncateObservation(contextBuildStrategy.maxSingleObservationToken ?? Infinity),
-		keepRecentRounds(contextBuildStrategy.keepRecentRounds ?? Infinity)
+		keepRecentRounds(contextBuildStrategy.keepRecentRounds ?? Infinity),
+		truncateObservation(contextBuildStrategy.maxSingleObservationToken ?? Infinity)
 	)
 }
 
