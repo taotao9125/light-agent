@@ -202,9 +202,8 @@ export default class Agent implements AgentInterface {
 	private contextSource: ContextSource;
 
 	private runRecords = {
-		pending: [] as Job[] ,
+		queue: [] as Job[] ,
 		activeJob: null as Job | null,
-		isRunning: false
 	}
 
 	private canonicalEvents: AgentEvent[] = [];
@@ -249,15 +248,14 @@ export default class Agent implements AgentInterface {
 		});
 	}
 
-	private async run() {
-		if (!this.runRecords.pending.length) return;
-		if (this.runRecords.isRunning) return;
+	private async processQueue() {
+		if (!this.runRecords.queue.length) return;
+		if (this.runRecords.activeJob) return;
 
-		const currentJob = this.runRecords.pending.shift();
+		const currentJob = this.runRecords.queue.shift();
 		if (!currentJob) return;
 
 		try {
-			this.runRecords.isRunning = true;
 			this.runRecords.activeJob = currentJob;
 			await this.agentLoop.prompt(currentJob.prompt, {
 				abortSignal: this.runRecords.activeJob.abortController.signal,
@@ -278,8 +276,7 @@ export default class Agent implements AgentInterface {
 			currentJob.reject(e);
 		} finally {
 			this.runRecords.activeJob = null;
-			this.runRecords.isRunning = false;
-			this.run();
+			this.processQueue();
 		}
 	}
 
@@ -288,13 +285,14 @@ export default class Agent implements AgentInterface {
 	prompt(prompt: string) {
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
 		const abortController = new AbortController();
-		this.runRecords.pending.push({
+		this.runRecords.queue.push({
 			prompt,
 			abortController,
 			resolve,
 			reject,
 		});
-		this.run();
+		
+		this.processQueue();
 
 		return promise;
 	}
@@ -312,13 +310,14 @@ export default class Agent implements AgentInterface {
 	}
 
 	interrupt(reason = 'user interrupted') {
-		if (!this.currentJob) return;
-		this.currentJob.abortController.abort(reason);
+		const avtiveJob = this.runRecords.activeJob
+		if (!avtiveJob) return;
+		avtiveJob.abortController.abort(reason);
 	}
 
 	getState() {
 		return {
-			isRunning: this.runRecords.isRunning,
+			isRunning: !!this.runRecords.activeJob,
 			canonicalEvents: this.canonicalEvents
 		};
 	}
