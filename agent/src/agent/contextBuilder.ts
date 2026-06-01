@@ -85,7 +85,7 @@ function keepRecentRounds(maxRecentRounds: number) {
 }
 
 /** truncate observation result if it exceed token budget. */
-function rebuildObservation(maxSingleObservationToken: number) {
+function truncateObservation(maxSingleObservationToken: number) {
 	return (events: AgentEvent[]): AgentEvent[] => {
 		return events.map(event => {
 			if (event.type !== EventType.OBSERVATION) return event;
@@ -106,7 +106,7 @@ function rebuildObservation(maxSingleObservationToken: number) {
 // canonical events rebuild pipe line
 function rebuildEvents(contextBuildStrategy: ContextBuildStrategy) {
 	return pipe<AgentEvent[]>(
-		rebuildObservation(contextBuildStrategy.maxSingleObservationToken ?? Infinity),
+		truncateObservation(contextBuildStrategy.maxSingleObservationToken ?? Infinity),
 		keepRecentRounds(contextBuildStrategy.keepRecentRounds ?? Infinity)
 	)
 }
