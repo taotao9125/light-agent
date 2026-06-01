@@ -1,5 +1,16 @@
 # Agent Runtime Architecture
 
+
+```text
+CLI
+└── new Agent(config)
+    └── Agent.constructor(config)
+        └── new AgentLoop({ vender })
+            └── AgentLoop.constructor({ vender })
+                └── createClient(vender)
+                    └── AiProvider / VendorAdaptor
+```
+
 ## agent interface
 
 ```typescript
@@ -58,35 +69,43 @@ interface AgentLoopClassConfig = {
   strategy: {
     maxTurns: number;
   },
-  deps: {
+  // deps: {
+
+  // }
+}
+
+
+type Deps = {
     abortSignal: abortSignal;
-    refreshContext: () => Context;
-    refreshTools: () => ToolDefinition<any, any>[];
-    refreshVenderConfig: () => VenderConfig
-  }
+    pullContextSnap: () => Context;
+    pullToolsSnap: () => ToolDefinition<any, any>[];
+    pullVenderConfigSnap: () => VenderConfig
 }
 
 decalare class AgentLoop {
   privite venderClient: AiProvider
   constructor(config: AgentLoopClassConfig) {
     this.venderClient = createClient(AgentLoopClassConfig.vender);
-    this.deps = config.deps;
+    // this.deps = config.deps;
     // this.venderClient.stream()
-  }
+  },
+  prompt(prompt: string: deps: Deps )
 }
+
+
 
 /**
 const {
   systemPrompt,
   events
-} = this.deps.refreshContext();
+} = this.deps.pullContextSnap();
 
-const toolsMeta =  toToolsMeta(this.deps.refreshTools());
+const toolsMeta =  toToolsMeta(this.deps.pullToolsSnap());
 
 this.venderClient.stream({
   model: this.model,
-  input: context.events,
-  systemPrompt: context.systemPrompt,
+  input: events,
+  systemPrompt: systemPrompt
   tools: toolsMeta,
 })
 **/
