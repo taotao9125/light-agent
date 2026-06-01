@@ -3,7 +3,7 @@ import type { CreateClient } from '../ai/index';
 import { createClient } from '../ai/index';
 import type { ActionEvent, AgentError, AgentEvent, ObservationEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
-import type {AgentLoopConfig, ContextBuildOuput} from './types';
+import type { AgentLoopConfig, ContextBuildOuput } from './types';
 
 import type { ToolDefinition } from './types';
 
@@ -95,7 +95,6 @@ class AgentLoop implements AgentLoopInterface {
 			let turnThoughtTextBuffer = '';
 			let turnOutputTextBuffer = '';
 			const turnActionEvents: ActionEvent[] = [];
-			const turnObservationEvents: ObservationEvent[] = [];
 			const errorEvents: AgentError[] = [];
 
 			// enable tool register dynamically
@@ -133,16 +132,7 @@ class AgentLoop implements AgentLoopInterface {
 					break;
 				}
 
-				// 一旦有 action, LLM 需要 observe 外部调用, 进入下一步调用
 				if (chunk.type === EventType.ACTION) {
-					if (!toolsMap.get(chunk.name)) {
-						errorEvents.push({
-							type: EventType.AGENT_ERROR,
-							message: `unknown tool \`${chunk.name}\``,
-							meta: { roundId, turn },
-						});
-						break;
-					}
 					turnActionEvents.push({
 						...chunk,
 						meta: {
@@ -179,6 +169,12 @@ class AgentLoop implements AgentLoopInterface {
 				break;
 			}
 
+			// thought done
+			if (turnThoughtTextBuffer) {
+				this.emit({ type: EventType.THOUGHT, text: turnThoughtTextBuffer, meta: { roundId, turn } });
+			}
+
+
 			let shouldBreakLoop = false;
 
 			if (!turnActionEvents.length) {
@@ -188,41 +184,35 @@ class AgentLoop implements AgentLoopInterface {
 				for (const action of turnActionEvents) {
 					abortSignal?.throwIfAborted();
 					const { name, id, args } = action;
+					this.emit(action);
 					const toolCommand = toolsMap.get(name);
 					// 外部环境不存在，回传给 ai， 它做下一步决策
 					if (!toolCommand) {
-						turnObservationEvents.push({
-							type: 'observation',
+						this.emit({
+							type: EventType.OBSERVATION,
 							isError: true,
 							id,
 							name,
 							result: `Unknown tool: ${action.name}`,
 							meta: { roundId, turn },
-						});
+						})
 						continue;
 					}
 					const { content, isError } = await toolCommand.execute(args, {
 						cwd: process.cwd(),
 						signal: abortSignal,
 					});
-					turnObservationEvents.push({
-						type: 'observation',
+					this.emit({
+						type: EventType.OBSERVATION,
 						id,
 						name,
 						isError,
 						result: content,
 						meta: { roundId, turn },
-					});
+					})
+
 				}
 			}
-
-			if (turnThoughtTextBuffer) {
-				this.emit({ type: EventType.THOUGHT, text: turnThoughtTextBuffer, meta: { roundId, turn } });
-			}
-
-			turnActionEvents.forEach((event) => this.emit(event));
-
-			turnObservationEvents.forEach((event) => this.emit(event));
 
 			if (turnOutputTextBuffer) {
 				this.emit({ type: EventType.OUTPUT, text: turnOutputTextBuffer, meta: { roundId, turn } });
