@@ -1,11 +1,13 @@
 import { type AgentEvent, EventType, type Meta } from '../protocol/events';
 import type { AgentLoopInterface } from './agentLoop';
-// import type { AiProvider } from '../ai/index';
 import type { SessionStoreInterface } from './store';
 import contextBuilder from './contextBuilder';
 import toolRegistryClass from './toolRegistry';
 import type { ToolDefinition } from './types';
 import type { ContextSource } from './contextBuilder';
+
+import type {AgentEventListener, SessionEvent} from './helpers';
+import {createAgentEventProjector} from './helpers';
 
 
 type Config = {
@@ -25,19 +27,6 @@ export interface AgentInterface {
 
 
 
-// type AgentConfig = {
-// 	id: string;
-// 	model: {
-// 		provider: AiProvider,
-// 		name: string;
-// 	},
-// 	context?: {
-// 		source: ContextSource
-// 	},
-// 	runtime?: {
-// 		maxTurns?: number
-// 	}
-// }
 
 
 type Job = {
@@ -47,27 +36,7 @@ type Job = {
 	abortController: AbortController;
 };
 
-export type SessionEvent =
-	| { type: 'agent_start'; meta?: Meta }
-	| { type: 'agent_done'; meta?: Meta }
-	| { type: 'agent_aborted'; reason?: unknown; meta?: Meta }
-	| { type: 'agent_error'; message: string; meta?: Meta }
-	| { type: 'input'; text: string; source?: 'user' | 'system'; meta?: Meta }
-	| { type: 'thought_start'; meta?: Meta }
-	| { type: 'thought_delta'; text: string; meta?: Meta }
-	| { type: 'thought_done'; text: string; meta?: Meta }
-	| { type: 'action_start'; id: string; name: string; args: Record<string, any>; meta?: Meta }
-	| { type: 'action_done'; id: string; result: any; name: string; meta?: Meta }
-	| { type: 'output_start'; meta?: Meta }
-	| { type: 'output_delta'; text: string; meta?: Meta }
-	| { type: 'output_done'; text: string; meta?: Meta }
-	| { type: 'interrupt'; reason: string; meta?: Meta };
 
-type AgentEventListener = (event: SessionEvent) => void;
-
-// interface AgentLoopDeps {
-// 	buildContext(): Context;
-// }
 
 
 const COMMITTED_EVENT_TYPES = new Set<string>([
@@ -81,119 +50,12 @@ const COMMITTED_EVENT_TYPES = new Set<string>([
 ]);
 
 
-const toolRegistry = new toolRegistryClass();
 
 function isCommittedEvent(event: AgentEvent) {
 	return COMMITTED_EVENT_TYPES.has(event.type);
 }
 
-function getTurnKey(event: AgentEvent) {
-	const { roundId, turn } = event.meta ?? {};
-	if (!roundId || turn == null) return undefined;
-	return `${roundId}:${turn}`;
-}
 
-function createAgentEventProjector() {
-	const activeThoughtTurns = new Set<string>();
-	const activeOutputTurns = new Set<string>();
-	return function projectAgentEvents(event: AgentEvent): SessionEvent[] {
-		switch (event.type) {
-			case EventType.INPUT:
-				return [
-					{ type: 'agent_start', meta: event.meta },
-					{ type: 'input', text: event.text, source: event.source, meta: event.meta },
-				];
-
-			case EventType.THOUGHT_DELTA: {
-				const key = getTurnKey(event);
-				if (!key || activeThoughtTurns.has(key)) {
-					return [{ type: 'thought_delta', text: event.text, meta: event.meta }];
-				}
-
-				activeThoughtTurns.add(key);
-				return [
-					{ type: 'thought_start', meta: event.meta },
-					{ type: 'thought_delta', text: event.text, meta: event.meta },
-				];
-			}
-
-			case EventType.THOUGHT: {
-				const key = getTurnKey(event);
-				if (key) activeThoughtTurns.delete(key);
-
-				return [{ type: 'thought_done', text: event.text, meta: event.meta }];
-			}
-
-			case EventType.OUTPUT_DELTA: {
-				const key = getTurnKey(event);
-				if (!key || activeOutputTurns.has(key)) {
-					return [{ type: 'output_delta', text: event.text, meta: event.meta }];
-				}
-
-				activeOutputTurns.add(key);
-
-				return [
-					{ type: 'output_start', meta: event.meta },
-					{ type: 'output_delta', text: event.text, meta: event.meta },
-				];
-			}
-
-			case EventType.OUTPUT: {
-				const key = getTurnKey(event);
-				if (key) activeOutputTurns.delete(key);
-
-				return [{ type: 'output_done', text: event.text, meta: event.meta }];
-			}
-
-			case EventType.ACTION:
-				return [
-					{
-						type: 'action_start',
-						id: event.id,
-						name: event.name,
-						args: event.args,
-						meta: event.meta,
-					},
-				];
-
-			case EventType.OBSERVATION:
-				return [
-					{
-						type: 'action_done',
-						id: event.id,
-						result: event.result,
-						name: event.name,
-						meta: event.meta,
-					},
-				];
-
-			case EventType.AGENT_ERROR:
-				activeThoughtTurns.clear();
-				activeOutputTurns.clear();
-				return [
-					{
-						type: 'agent_error',
-						message: event.message,
-						meta: event.meta,
-					},
-				];
-
-			case EventType.INTERRUPT:
-				activeThoughtTurns.clear();
-				activeOutputTurns.clear();
-				return [
-					{
-						type: 'interrupt',
-						reason: event.reason,
-						meta: event.meta,
-					},
-				];
-
-			default:
-				return [];
-		}
-	}
-}
 
 export default class Agent implements AgentInterface {
 	private sessionId: string;
@@ -209,6 +71,7 @@ export default class Agent implements AgentInterface {
 	private canonicalEvents: AgentEvent[] = [];
 	private listeners: AgentEventListener[] = [];
 	private projectAgentEvents = createAgentEventProjector();
+	private toolRegistry = new toolRegistryClass();
 	constructor(config: Config) {
 		this.sessionId = config.sessionId;
 		this.store = config.store;
@@ -260,7 +123,7 @@ export default class Agent implements AgentInterface {
 			await this.agentLoop.prompt(currentJob.prompt, {
 				abortSignal: this.runRecords.activeJob.abortController.signal,
 				buildContext: this.buildContext.bind(this),
-				getTools: () => toolRegistry.getTools()
+				getTools: () => this.toolRegistry.getTools()
 			});
 			this.emit({ type: 'agent_done' });
 			currentJob.resolve();
@@ -281,7 +144,6 @@ export default class Agent implements AgentInterface {
 	}
 
 
-
 	prompt(prompt: string) {
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
 		const abortController = new AbortController();
@@ -291,7 +153,7 @@ export default class Agent implements AgentInterface {
 			resolve,
 			reject,
 		});
-		
+
 		this.processQueue();
 
 		return promise;
@@ -306,7 +168,7 @@ export default class Agent implements AgentInterface {
 	}
 
 	registerTool(name: string, tool: ToolDefinition<any, any>) {
-		toolRegistry.register(name, tool);
+		this.toolRegistry.register(name, tool);
 	}
 
 	interrupt(reason = 'user interrupted') {
