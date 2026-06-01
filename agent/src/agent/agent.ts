@@ -1,20 +1,20 @@
 import { type AgentEvent, EventType, type Meta } from '../protocol/events';
 import type { AgentLoopInterface } from './agentLoop';
+import AgentLoop from './agentLoop';
 import type { SessionStoreInterface } from './store';
 import contextBuilder from './contextBuilder';
 import toolRegistryClass from './toolRegistry';
-import type { ToolDefinition } from './types';
-import type { ContextSource } from './contextBuilder';
+import type { Vender, ToolDefinition, ContextBuildInput } from './types';
 
-import type {AgentEventListener, SessionEvent} from './helpers';
-import {createAgentEventProjector} from './helpers';
+import type { AgentEventListener, SessionEvent } from './helpers';
+import { createAgentEventProjector } from './helpers';
 
 
 type Config = {
-	agentLoop: AgentLoopInterface;
 	sessionId: string;
 	store?: SessionStoreInterface;
-	contextSource: ContextSource
+	vender: Vender,
+	context: ContextBuildInput
 };
 
 export interface AgentInterface {
@@ -24,8 +24,6 @@ export interface AgentInterface {
 	interrupt: () => void;
 	getState: () => Record<string, any>;
 }
-
-
 
 
 
@@ -61,13 +59,13 @@ export default class Agent implements AgentInterface {
 	private sessionId: string;
 	private store?: SessionStoreInterface;
 	private agentLoop: AgentLoopInterface;
-	private contextSource: ContextSource;
 
 	private runRecords = {
-		queue: [] as Job[] ,
+		queue: [] as Job[],
 		activeJob: null as Job | null,
 	}
 
+	private context: ContextBuildInput;
 	private canonicalEvents: AgentEvent[] = [];
 	private listeners: AgentEventListener[] = [];
 	private projectAgentEvents = createAgentEventProjector();
@@ -75,8 +73,11 @@ export default class Agent implements AgentInterface {
 	constructor(config: Config) {
 		this.sessionId = config.sessionId;
 		this.store = config.store;
-		this.contextSource = config.contextSource;
-		this.agentLoop = config.agentLoop;
+		this.context = config.context;
+
+		this.agentLoop = new AgentLoop({
+			vender: config.vender,
+		});
 		this.agentLoop.on((event) => {
 			void this.handleAgentEvent(event);
 		});
@@ -104,12 +105,7 @@ export default class Agent implements AgentInterface {
 		}
 	}
 
-	private buildContext() {
-		return contextBuilder({
-			events: this.canonicalEvents,
-			...this.contextSource
-		});
-	}
+
 
 	private async processQueue() {
 		if (!this.runRecords.queue.length) return;
@@ -121,9 +117,9 @@ export default class Agent implements AgentInterface {
 		try {
 			this.runRecords.activeJob = currentJob;
 			await this.agentLoop.prompt(currentJob.prompt, {
-				abortSignal: this.runRecords.activeJob.abortController.signal,
-				buildContext: this.buildContext.bind(this),
-				getTools: () => this.toolRegistry.getTools()
+				abortSignal: currentJob.abortController.signal,
+				pullContextSnap: () => contextBuilder({ events: this.canonicalEvents, ...this.context }),
+				pullToolsSnap: () => this.toolRegistry.getTools()
 			});
 			this.emit({ type: 'agent_done' });
 			currentJob.resolve();

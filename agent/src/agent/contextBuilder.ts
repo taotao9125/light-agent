@@ -2,9 +2,8 @@
 import type { AgentEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
 import { pipe, toRoundMap, truncateText, stringify } from './helpers';
+import type {Rule, ContextBuildInput, ContextBuildOuput, ContextBuildStrategy} from './types';
 
-
-type Rule = { content: string; name?: string; path?: string };
 
 const BASE_RULES: Rule[] = [
 	{
@@ -38,22 +37,6 @@ const BASE_RULES: Rule[] = [
 ]
 
 
-type ContextBuildStrategy = {
-	maxSingleObservationToken?: number;
-	keepRecentRounds?: number;
-}
-export type ContextSource = {
-	cwd?: string;
-	rules?: Rule[];
-	skills?: string[];
-	memories?: string[];
-	contextBuildStrategy: ContextBuildStrategy
-}
-
-export type Context = {
-	events: AgentEvent[];
-	systemPrompt: string;
-};
 
 const CHAR_LENGTH_PER_TOKEN = 4;
 
@@ -119,14 +102,15 @@ function rebuildSystemPrompt(rules: Rule[]) {
 	].join('\n\n')
 }
 
-export default function contextBuilder(input: ContextSource & { events: AgentEvent[] }): Context {
+export default function contextBuilder(input: ContextBuildInput & { events: AgentEvent[] }): ContextBuildOuput {
 	const {
+		source,
+		contextBuildStrategy,
 		events,
-		rules = [],
-		contextBuildStrategy
 	} = input;
+
 	return {
-		systemPrompt: rebuildSystemPrompt(rules),
+		systemPrompt: rebuildSystemPrompt(source.rules ?? []),
 		events: rebuildEvents(contextBuildStrategy)(events)
 	};
 }

@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { EventType, type AgentEvent, type ObservationEvent } from '../protocol/events';
+import type { ContextBuildStrategy } from './types';
 import contextBuilder from './contextBuilder';
 
 /** truncateText 插入的中间标记 */
@@ -58,12 +59,10 @@ function buildManyRounds(count: number): AgentEvent[] {
 }
 
 /** 默认走公开 API；strategy 为空时 pipe 内用 Infinity，相当于不裁剪 */
-function defaultInput(events: AgentEvent[], strategy: {
-	maxSingleObservationToken?: number;
-	keepRecentRounds?: number;
-} = {}) {
+function defaultInput(events: AgentEvent[], strategy: ContextBuildStrategy = {}) {
 	return contextBuilder({
 		events,
+		source: {},
 		contextBuildStrategy: strategy,
 	});
 }
@@ -84,7 +83,9 @@ describe('contextBuilder', () => {
 
 		const withProjectRules = contextBuilder({
 			events: [],
-			rules: [{ name: 'Demo Rule', content: 'Always use tools when needed.' }],
+			source: {
+				rules: [{ name: 'Demo Rule', content: 'Always use tools when needed.' }],
+			},
 			contextBuildStrategy: {},
 		});
 

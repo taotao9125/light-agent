@@ -38,33 +38,31 @@ function isReadlineAbortError(error: unknown) {
 
 
 async function main() {
-	const deepSeekProvider = createClient({
-		// 目前只支持 gemini, openai, deepseek
-		vendorName: 'deepseek',
-		apiKey: process.env.AI_DEEP_SEEK_API_KEY as string,
-		baseURL: process.env.AI_DEEP_SEEK_API_HOST as string,
-	});
-
-	const agentLoop = new AgentLoop({
-		provider: deepSeekProvider,
-		model: 'deepseek-v4-flash',
-	});
-
+	
+	
 	const sessionId = 'cli_session';
 
 	const sessionStore = new SessionStore({
 		rootDir: path.resolve(process.cwd(), '.agent/sessions'),
 	});
 
-
 	const rulesSource = await loadRuleSources(process.cwd());
 
+
+	/*-------------------------------------------*/
 	const agent = new Agent({
-		agentLoop,
+		vender: {
+			name: 'deepseek',
+			apiKey: process.env.AI_DEEP_SEEK_API_KEY as string,
+			baseURL: process.env.AI_DEEP_SEEK_API_HOST as string,
+			model: 'deepseek-v4-flash'
+		},
 		sessionId,
 		store: sessionStore,
-		contextSource: {
-			rules: rulesSource,
+		context: {
+			source: {
+				rules: rulesSource,
+			},
 			contextBuildStrategy: {
 				maxSingleObservationToken: 3000,
 				keepRecentRounds: 5
@@ -74,6 +72,10 @@ async function main() {
 
 	agent.registerTool(readFileTool.name, readFileTool);
 	agent.registerTool(listFilesToolNew.name, listFilesToolNew);
+
+
+
+	/*-------------------------------------------*/
 
 	let isThinking = false;
 	let isOutputting = false;

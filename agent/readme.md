@@ -1,6 +1,6 @@
 # Agent Runtime Architecture
 
-## interface
+## agent interface
 
 ```typescript
 
@@ -10,10 +10,9 @@ type Rule = {
   content: string;
 }
 
-interface AgentClassConfig {
-  /** 厂商 */
-  vender: {
-    /** 厂商名 {@example "deepseek"} */
+
+type Vender = {
+   /** 厂商名 {@example "deepseek"} */
     name: string;
     /** api key */
     apiKey: string;
@@ -21,7 +20,11 @@ interface AgentClassConfig {
     baseURL: string;
     /** 模型名称 {@example "deepseek-v4-flash"} */
     model: string;
-  },
+}
+
+interface AgentClassConfig {
+  /** 厂商 */
+  vender: Vender,
   context: {
     source: {
       /** 自定义 rule */
@@ -43,7 +46,50 @@ decalare class Agent {
   on(listener: (event: RuntimeEvent) => void);
   registerTool(name: string, tool: ToolDefinition<any, any>) => void;
   interrupt: () => void;
+  
 }
+
+```
+
+## agent loop interface
+```typescript
+interface AgentLoopClassConfig = {
+  vender: Vender,
+  strategy: {
+    maxTurns: number;
+  },
+  deps: {
+    abortSignal: abortSignal;
+    refreshContext: () => Context;
+    refreshTools: () => ToolDefinition<any, any>[];
+    refreshVenderConfig: () => VenderConfig
+  }
+}
+
+decalare class AgentLoop {
+  privite venderClient: AiProvider
+  constructor(config: AgentLoopClassConfig) {
+    this.venderClient = createClient(AgentLoopClassConfig.vender);
+    this.deps = config.deps;
+    // this.venderClient.stream()
+  }
+}
+
+/**
+const {
+  systemPrompt,
+  events
+} = this.deps.refreshContext();
+
+const toolsMeta =  toToolsMeta(this.deps.refreshTools());
+
+this.venderClient.stream({
+  model: this.model,
+  input: context.events,
+  systemPrompt: context.systemPrompt,
+  tools: toolsMeta,
+})
+**/
 
 ```
 

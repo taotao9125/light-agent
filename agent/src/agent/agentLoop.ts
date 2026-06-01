@@ -1,26 +1,24 @@
 import { randomUUID } from 'node:crypto';
-import type { AiProvider } from '../ai/index';
-import type { Context } from './contextBuilder';
+import type { CreateClient } from '../ai/index';
+import { createClient } from '../ai/index';
 import type { ActionEvent, AgentError, AgentEvent, ObservationEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
+import type {AgentLoopConfig, ContextBuildOuput} from './types';
 
-import type {ToolDefinition, ToolMeta} from './types';
+import type { ToolDefinition } from './types';
 
-type AgentLoopConfig = {
-	provider: AiProvider;
-	model: string;
-	maxTurns?: number;
-};
+
+
 
 type AgentEventListener = (event: AgentEvent) => void;
 
-type PromptOptions = {
+type LoopDeps = {
 	abortSignal: AbortSignal;
-	buildContext: () => Context;
-	getTools: () => ToolDefinition<any, any>[]
+	pullContextSnap: () => ContextBuildOuput;
+	pullToolsSnap: () => ToolDefinition<any, any>[]
 };
 export interface AgentLoopInterface {
-	prompt: (prompt: string, options: PromptOptions) => Promise<void>;
+	prompt: (prompt: string, options: LoopDeps) => Promise<void>;
 	on: (listener: AgentEventListener) => void;
 }
 
@@ -42,18 +40,22 @@ function toToolsMeta(tools: ToolDefinition<any, any>[]) {
 }
 
 class AgentLoop implements AgentLoopInterface {
-	private provider: AiProvider;
+	private AiClient: ReturnType<CreateClient>;
 	private listeners: AgentEventListener[] = [];
 	private model: string;
 	private maxTurns: number;
 	private currentRun: { roundId: string; turn: number } = { roundId: '', turn: 0 };
 	constructor(config: AgentLoopConfig) {
-		this.provider = config.provider;
-		this.model = config.model;
-		this.maxTurns = config.maxTurns ?? 20;
+		this.model = config.vender.model;
+		this.maxTurns = 20;
+		this.AiClient = createClient({
+			venderName: config.vender.name,
+			apiKey: config.vender.apiKey,
+			baseURL: config.vender.baseURL
+		})
 	}
 
-	emit(event: AgentEvent): void {
+	private emit(event: AgentEvent): void {
 		this.listeners.forEach((listener) => {
 			listener(event);
 		});
@@ -65,8 +67,8 @@ class AgentLoop implements AgentLoopInterface {
 	// 3. no action + has output = done;
 	// 4. no action	+ no output = error;
 
-	async runAgentLoop(prompt: string, options: PromptOptions) {
-		const { abortSignal, buildContext } = options;
+	private async runAgentLoop(prompt: string, loopDeps: LoopDeps) {
+		const { abortSignal } = loopDeps;
 
 		abortSignal?.throwIfAborted();
 
@@ -97,12 +99,12 @@ class AgentLoop implements AgentLoopInterface {
 			const errorEvents: AgentError[] = [];
 
 			// enable tool register dynamically
-			const tools = options.getTools();
+			const tools = loopDeps.pullToolsSnap();
 			const toolsMap = toToolsMap(tools);
 			const toolsMeta = toToolsMeta(tools);
 
 			// refresh context
-			const context = buildContext();
+			const context = loopDeps.pullContextSnap();
 
 			if (turn > this.maxTurns) {
 				this.emit({
@@ -113,9 +115,9 @@ class AgentLoop implements AgentLoopInterface {
 				break;
 			}
 
-			
 
-			const stream = this.provider.stream({
+
+			const stream = this.AiClient.stream({
 				model: this.model,
 				input: context.events,
 				systemPrompt: context.systemPrompt,
@@ -230,15 +232,15 @@ class AgentLoop implements AgentLoopInterface {
 		}
 	}
 
-	async prompt(prompt: string, options: PromptOptions) {
+	async prompt(prompt: string, loopDeps: LoopDeps) {
 		try {
-			await this.runAgentLoop(prompt, options);
+			await this.runAgentLoop(prompt, loopDeps);
 		} catch (e) {
 			// 记录 interrupt
-			if (options?.abortSignal.aborted) {
+			if (loopDeps.abortSignal.aborted) {
 				this.emit({
 					type: EventType.INTERRUPT,
-					reason: String(options?.abortSignal.reason ?? 'aborted'),
+					reason: String(loopDeps.abortSignal.reason ?? 'aborted'),
 					meta: {
 						roundId: this.currentRun.roundId,
 						turn: this.currentRun.turn,
