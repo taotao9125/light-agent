@@ -63,19 +63,9 @@ class AgentLoop implements AgentLoopInterface {
 	 * 2. stream 开始前
 	 * 3. tool 开始前
 	 * 4. tool 返回 isAborted
-	 *
-	 *
-	 * fail 时机是 LLM 出错，这要进入 canonicalEvents，审计时用的着
-	 * 1. stream 有 error, 如无权限, 超过 token, 模型层我们无能为力
-	 * 2. 无 action 和 无 output, 可以认为是 LLM 脑子坏了，无能为力
-	 *
-	 * loop 正常出口时机
-	 * 无 action, 有 output （注意，无 ouput 就是 fail, 如上LLM 脑子坏了）
-	 *
-	 * loop 其他出口, abort, fail
 	 * 
 	 * 退出 loop 的机制, 
-	 * 1. 需要 emit agent_stop, 比如 llm 层错误, user abort, runtime 限制，如 maxturn
+	 * 1. stop 事件发生, 分三种, llm, runtime 限制, user 取消， 需要 emit agent_stop, 统一 return 退出
 	 * 2. 正常无 action, 有 output
 	 *
 	 */
