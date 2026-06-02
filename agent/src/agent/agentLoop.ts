@@ -3,6 +3,7 @@ import type { CreateClient } from '../ai/index';
 import { createClient } from '../ai/index';
 import type { ActionEvent, AgentEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
+import { stringify } from './helpers';
 import type { AgentLoopConfig, ContextBuildOuput, ToolDefinition } from './types';
 
 type AgentEventListener = (event: AgentEvent) => void;
@@ -61,7 +62,7 @@ class AgentLoop implements AgentLoopInterface {
 	 * 1. turn 开始前
 	 * 2. stream 开始前
 	 * 3. tool 开始前
-	 * 4. tool 返回 isAborted
+	 * 4. tool 执行后
 	 *
 	 * 退出 loop 的机制,
 	 * 1. stop 事件发生, 分三种, llm, runtime 限制, user 取消， 需要 emit agent_stop, 统一 return 退出
@@ -76,20 +77,20 @@ class AgentLoop implements AgentLoopInterface {
 		const roundId = `round_id_${randomUUID()}`;
 		let turn = 0;
 
+		const emitAbort = () => {
+			this.emit({
+				type: EventType.AGENT_STOP,
+				cause: 'user',
+				// 注意 abortSignal.reason 要随时去读
+				message: String(abortSignal.reason ?? 'aborted'),
+				meta: { roundId, turn },
+			});
+		};
+
 		const inputEvent: AgentEvent = { type: EventType.INPUT, source: 'user', text: prompt, meta: { roundId, turn } };
 		this.emit(inputEvent);
 
 		while (true) {
-			const emitAbort = () => {
-				this.emit({
-					type: EventType.AGENT_STOP,
-					cause: 'user',
-					// 注意 abortSignal.reason 要随时去读
-					message: String(abortSignal.reason ?? 'aborted'),
-					meta: { roundId, turn },
-				});
-			};
-
 			if (abortSignal.aborted) {
 				emitAbort();
 				// 用户取消, 退出
@@ -97,9 +98,6 @@ class AgentLoop implements AgentLoopInterface {
 			}
 
 			turn++;
-
-			let turnThoughtTextBuffer = '';
-			let turnOutputTextBuffer = '';
 
 			const turnActionEvents: ActionEvent[] = [];
 			// 这就支持了动态注册工具的能力
@@ -127,58 +125,50 @@ class AgentLoop implements AgentLoopInterface {
 				tools: toolsMeta,
 			});
 
-			// 需要等把流迭代完了, 才能知道有没有指令来决定是否进行下一轮
 			for await (const chunk of stream) {
 				if (abortSignal.aborted) {
 					emitAbort();
 					return;
 				}
 
-				if (chunk.type === EventType.AGENT_STOP) {
-					// LLM 厂商的错误, 我们无能为力, 但要进 canonicalEvents, 需要审计, 但不进下一轮的 prompt context ,对 LLM 来说没用。
-					this.emit({ ...chunk, meta: { roundId, turn } });
-					return;
+				switch (chunk.type) {
+					case EventType.AGENT_STOP:
+						// LLM 厂商的错误, 我们无能为力, 但要进 canonicalEvents, 需要审计, 但不进下一轮的 prompt context ,对 LLM 来说没用。
+						this.emit({ ...chunk, meta: { roundId, turn } });
+						return;
+
+					case EventType.THOUGHT_DELTA:
+						this.emit({ type: EventType.THOUGHT_DELTA, text: chunk.text, meta: { roundId, turn } });
+						break;
+
+					case EventType.THOUGHT:
+						this.emit({ type: EventType.THOUGHT, text: chunk.text, meta: { roundId, turn } });
+						break;
+
+					// 搜集 action 命令，需要等把流迭代完了, 才能知道有没有指令来决定是否进行下一轮
+					case EventType.ACTION:
+						turnActionEvents.push({
+							...chunk,
+							meta: {
+								roundId,
+								turn,
+							},
+						});
+						break;
+
+					case EventType.OUTPUT_DELTA:
+						this.emit({ type: EventType.OUTPUT_DELTA, text: chunk.text, meta: { roundId, turn } });
+						break;
+
+					case EventType.OUTPUT:
+						this.emit({ type: EventType.OUTPUT, text: chunk.text, meta: { roundId, turn } });
+						break;
+					default:
+						break;
 				}
-
-				// 搜集 action 命令
-				if (chunk.type === EventType.ACTION) {
-					turnActionEvents.push({
-						...chunk,
-						meta: {
-							roundId,
-							turn,
-						},
-					});
-				}
-
-				if (chunk.type === EventType.THOUGHT) {
-					// 存起来用于下一次
-					this.emit({ type: EventType.THOUGHT_DELTA, text: chunk.text, meta: { roundId, turn } });
-					turnThoughtTextBuffer += chunk.text;
-				}
-
-				if (chunk.type === EventType.OUTPUT) {
-					this.emit({ type: EventType.OUTPUT_DELTA, text: chunk.text, meta: { roundId, turn } });
-					turnOutputTextBuffer += chunk.text;
-				}
-			}
-
-			if (!turnActionEvents.length && !turnOutputTextBuffer) {
-				const message = 'LLM did not return an action or output.';
-				// 跟上面 stream 里 error 捕捉一样, LLM 层的错误 agent 无能为力
-				this.emit({ type: EventType.AGENT_STOP, cause: 'llm', message, meta: { roundId, turn } });
-				return;
-			}
-
-			// thought done
-			if (turnThoughtTextBuffer) {
-				this.emit({ type: EventType.THOUGHT, text: turnThoughtTextBuffer, meta: { roundId, turn } });
 			}
 
 			if (!turnActionEvents.length) {
-				if (turnOutputTextBuffer) {
-					this.emit({ type: EventType.OUTPUT, text: turnOutputTextBuffer, meta: { roundId, turn } });
-				}
 				return;
 			}
 
@@ -208,24 +198,18 @@ class AgentLoop implements AgentLoopInterface {
 				}
 
 				try {
-					const { content, isError, isAborted } = await toolCommand.execute(args, {
+					const content = await toolCommand.execute(args, {
 						signal: abortSignal,
 					});
-
-					if (isAborted) {
-						emitAbort();
-						return;
-					}
 
 					// 外部执行错误也回传给 ai， 它做下一步决策
 					this.emit({
 						...observationBase,
-						isError,
-						result: content,
+						isError: false,
+						result: stringify(content),
 					});
 				} catch (e) {
-				    // 兜底，防止 action 调用没按照标准格式，直接 throw error;
-
+					// 兜底
 					// 可能工具里面 abortSignal.throwIfAborted()
 					if (abortSignal.aborted) {
 						emitAbort();
@@ -238,10 +222,6 @@ class AgentLoop implements AgentLoopInterface {
 						result: String(e),
 					});
 				}
-			}
-
-			if (turnOutputTextBuffer) {
-				this.emit({ type: EventType.OUTPUT, text: turnOutputTextBuffer, meta: { roundId, turn } });
 			}
 		}
 	}

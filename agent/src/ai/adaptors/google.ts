@@ -1,12 +1,10 @@
 import type { Content, FunctionCall, FunctionDeclaration, GenerateContentParameters } from '@google/genai';
 import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
 import { type AgentEvent, EventType } from '../../protocol/events';
-import { parseTurnEventGroup, splitEventsToRoundGroups } from '../helpers';
+import { parseTurnEventGroup, splitEventsToRoundGroups, stringifyContent } from '../helpers';
 import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
 
 const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
-	// Google expects a history of Content objects. A round is one user prompt,
-	// and each turn inside that round becomes one model/function-response pair.
 	const roundGroups = splitEventsToRoundGroups(events);
 
 	return roundGroups.flatMap((roundGroup): Content[] => {
@@ -14,8 +12,6 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 		const contents: Content[] = [];
 
 		if (input?.type === EventType.INPUT) {
-			// Gemini uses role "user" for human/system input in the contents
-			// history. System-level steering can later move to systemInstruction.
 			contents.push({
 				role: 'user',
 				parts: [{ text: input.text }],
@@ -32,13 +28,8 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 				contents.push({
 					role: 'model',
 					parts: [
-						// Thought parts are Gemini's reasoning representation.
-						// `thought: true` keeps them separate from visible text.
 						...(thoughtText ? [{ text: thoughtText, thought: true }] : []),
-						// Output text is visible assistant content. It may be a
-						// progress message before a tool call.
 						...(outputText ? [{ text: outputText }] : []),
-						// ActionEvent maps to Gemini functionCall parts.
 						...actions.map((action) => ({
 							functionCall: {
 								id: action.id,
@@ -51,15 +42,13 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 
 				if (observations.length) {
 					contents.push({
-						// Function responses are sent as user-role content because
-						// they are external results returned back to the model.
 						role: 'user',
 						parts: observations.map((observation) => ({
 							functionResponse: {
 								id: observation.id,
 								name: observation.name,
 								response: {
-									output: observation.result,
+									output: stringifyContent(observation.result),
 								},
 							},
 						})),
@@ -72,7 +61,6 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 			if (thoughtText || outputText) {
 				contents.push({
 					role: 'model',
-					// No actions in this turn means this is a model-only turn.
 					parts: [
 						...(thoughtText ? [{ text: thoughtText, thought: true }] : []),
 						...(outputText ? [{ text: outputText }] : []),
@@ -106,16 +94,12 @@ export default class GoogleAdaptor implements AiProvider {
 			config: {
 				systemInstruction: requestConfig.systemPrompt,
 				thinkingConfig: {
-					// Ask Gemini to include thought parts when the model supports
-					// them, so the adapter can emit ThoughtEvent.
 					includeThoughts: true,
 				},
 				tools: functionDeclarations.length ? [{ functionDeclarations }] : undefined,
 				toolConfig: functionDeclarations.length
 					? {
 							functionCallingConfig: {
-								// AUTO lets the model choose between natural text
-								// and function calls, matching the agent loop.
 								mode: FunctionCallingConfigMode.AUTO,
 							},
 						}
@@ -127,6 +111,8 @@ export default class GoogleAdaptor implements AiProvider {
 	async *stream(requestConfig: AiRequestConfig): ReturnType<AiProvider['stream']> {
 		const config = this.normalizeRequestConfig(requestConfig);
 		const functionCalls: FunctionCall[] = [];
+		let thoughtTextBuffer = '';
+		let outputTextBuffer = '';
 
 		try {
 			const stream = await this.client.models.generateContentStream(config);
@@ -136,26 +122,36 @@ export default class GoogleAdaptor implements AiProvider {
 
 				for (const part of parts) {
 					if (part.text) {
-						// Gemini marks reasoning parts with `thought: true`.
-						// Everything else is visible assistant output.
-						yield {
-							type: part.thought ? EventType.THOUGHT : EventType.OUTPUT,
-							text: part.text,
-						};
+						if (part.thought) {
+							thoughtTextBuffer += part.text;
+							yield { type: EventType.THOUGHT_DELTA, text: part.text };
+						} else {
+							outputTextBuffer += part.text;
+							yield { type: EventType.OUTPUT_DELTA, text: part.text };
+						}
 					}
 
 					if (part.functionCall) {
-						// Function calls are collected until the stream ends so
-						// Agent can decide loop continuation after a full LLM turn.
 						functionCalls.push(part.functionCall);
 					}
 				}
 
 				if (!parts.length && chunk.functionCalls?.length) {
-					// Some SDK response shapes expose function calls directly on
-					// the chunk; keep this fallback for compatibility.
 					functionCalls.push(...chunk.functionCalls);
 				}
+			}
+
+			// thought -> action -> output
+			if (!functionCalls.length && !outputTextBuffer) {
+				yield {
+					type: EventType.AGENT_STOP,
+					cause: 'llm',
+					message: 'LLM did not return an action or output.',
+				};
+			}
+
+			if (thoughtTextBuffer) {
+				yield { type: EventType.THOUGHT, text: thoughtTextBuffer };
 			}
 
 			for (const [index, call] of functionCalls.entries()) {
@@ -167,6 +163,10 @@ export default class GoogleAdaptor implements AiProvider {
 					name: call.name,
 					args: call.args ?? {},
 				};
+			}
+
+			if (outputTextBuffer) {
+				yield { type: EventType.OUTPUT, text: outputTextBuffer };
 			}
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e);

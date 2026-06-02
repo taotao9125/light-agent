@@ -141,6 +141,10 @@ export default class OpenAIAdaptor implements AiProvider {
 				args: string;
 			}
 		>();
+
+		let thoughtTextBuffer = '';
+		let outputTextBuffer = '';
+
 		try {
 			const { data: stream } = await this.client.chat.completions.create(config).withResponse();
 
@@ -153,11 +157,13 @@ export default class OpenAIAdaptor implements AiProvider {
 				const deltaText = delta?.content;
 
 				if (reasoningText) {
-					yield { type: EventType.THOUGHT, text: reasoningText };
+					thoughtTextBuffer += reasoningText;
+					yield { type: EventType.THOUGHT_DELTA, text: reasoningText };
 				}
 
 				if (deltaText) {
-					yield { type: EventType.OUTPUT, text: deltaText };
+					outputTextBuffer += deltaText;
+					yield { type: EventType.OUTPUT_DELTA, text: deltaText };
 				}
 
 				for (const tool of tools) {
@@ -183,6 +189,16 @@ export default class OpenAIAdaptor implements AiProvider {
 				}
 			}
 
+			// thought -> action -> output
+
+			if (!pendingToolCalls.size && !outputTextBuffer) {
+				yield { type: EventType.AGENT_STOP, cause: 'llm', message: 'LLM did not return an action or output.' };
+			}
+
+			if (thoughtTextBuffer) {
+				yield { type: EventType.THOUGHT, text: thoughtTextBuffer };
+			}
+
 			// 注意，工具调用要在当前这次 LLM 的输出迭代完毕后再 yield 出去，统一判断工具输出的完整性，最终确定有没有工具调用，没有那就是最终结束了
 			for (const call of pendingToolCalls.values()) {
 				yield {
@@ -192,6 +208,11 @@ export default class OpenAIAdaptor implements AiProvider {
 					args: call.args ? JSON.parse(call.args) : {},
 				};
 			}
+
+			if (outputTextBuffer) {
+				yield { type: EventType.OUTPUT, text: outputTextBuffer };
+			}
+
 			pendingToolCalls.clear();
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e);
