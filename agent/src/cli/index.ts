@@ -120,8 +120,7 @@ async function main() {
 
 			case 'action_result': {
 				if (event.isError) {
-					const detail =
-						typeof event.result === 'string' ? event.result : JSON.stringify(event.result);
+					const detail = typeof event.result === 'string' ? event.result : JSON.stringify(event.result);
 					process.stdout.write(
 						`${color.red}tool error: ${event.name}${color.reset} ${color.dim}${detail}${color.reset}\n`,
 					);

@@ -66,7 +66,6 @@ export type OutputEvent = {
 	meta?: Meta;
 };
 
-
 export type AgentStopCause = 'llm' | 'user' | 'runtime';
 
 export type AgentStop = {
@@ -76,7 +75,6 @@ export type AgentStop = {
 	meta?: Meta;
 };
 
-
 export type AgentEvent =
 	| InputEvent
 	| ThoughtEvent
@@ -85,4 +83,4 @@ export type AgentEvent =
 	| ObservationEvent
 	| OutputDeltaEvent
 	| OutputEvent
-	| AgentStop
+	| AgentStop;

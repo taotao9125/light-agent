@@ -7,7 +7,6 @@ import type { AgentLoopConfig, ContextBuildOuput, ToolDefinition } from './types
 
 type AgentEventListener = (event: AgentEvent) => void;
 
-
 type LoopDeps = {
 	abortSignal: AbortSignal;
 	pullContextSnap: () => ContextBuildOuput;
@@ -63,8 +62,8 @@ class AgentLoop implements AgentLoopInterface {
 	 * 2. stream 开始前
 	 * 3. tool 开始前
 	 * 4. tool 返回 isAborted
-	 * 
-	 * 退出 loop 的机制, 
+	 *
+	 * 退出 loop 的机制,
 	 * 1. stop 事件发生, 分三种, llm, runtime 限制, user 取消， 需要 emit agent_stop, 统一 return 退出
 	 * 2. 正常无 action, 有 output
 	 *
@@ -72,7 +71,6 @@ class AgentLoop implements AgentLoopInterface {
 
 	private async runAgentLoop(prompt: string, loopDeps: LoopDeps): Promise<void> {
 		const { abortSignal } = loopDeps;
-		
 
 		// 一个 input 到 output 为一个 roundId
 		const roundId = `round_id_${randomUUID()}`;
@@ -82,23 +80,20 @@ class AgentLoop implements AgentLoopInterface {
 		this.emit(inputEvent);
 
 		while (true) {
-
-
 			const emitAbort = () => {
 				this.emit({
 					type: EventType.AGENT_STOP,
 					cause: 'user',
 					// 注意 abortSignal.reason 要随时去读
 					message: String(abortSignal.reason ?? 'aborted'),
-					meta: { roundId, turn } 
+					meta: { roundId, turn },
 				});
-			}
+			};
 
 			if (abortSignal.aborted) {
 				emitAbort();
 				// 用户取消, 退出
 				return;
-				
 			}
 
 			turn++;
@@ -171,7 +166,7 @@ class AgentLoop implements AgentLoopInterface {
 			if (!turnActionEvents.length && !turnOutputTextBuffer) {
 				const message = 'LLM did not return an action or output.';
 				// 跟上面 stream 里 error 捕捉一样, LLM 层的错误 agent 无能为力
-				this.emit({ type: EventType.AGENT_STOP, cause: 'llm',  message, meta: { roundId, turn } });
+				this.emit({ type: EventType.AGENT_STOP, cause: 'llm', message, meta: { roundId, turn } });
 				return;
 			}
 
@@ -189,7 +184,6 @@ class AgentLoop implements AgentLoopInterface {
 
 			for (const action of turnActionEvents) {
 				if (abortSignal.aborted) {
-					
 					emitAbort();
 					return;
 				}
@@ -197,36 +191,53 @@ class AgentLoop implements AgentLoopInterface {
 				const { name, id, args } = action;
 				this.emit(action);
 				const toolCommand = toolsMap.get(name);
+				const observationBase = {
+					type: EventType.OBSERVATION,
+					id,
+					name,
+					meta: { roundId, turn },
+				};
 				// 外部环境不存在，回传给 ai， 它做下一步决策
 				if (!toolCommand) {
 					this.emit({
-						type: EventType.OBSERVATION,
+						...observationBase,
 						isError: true,
-						id,
-						name,
 						result: `Unknown tool: ${action.name}`,
-						meta: { roundId, turn },
 					});
 					continue;
 				}
 
-				const { content, isError, isAborted } = await toolCommand.execute(args, {
-					signal: abortSignal,
-				});
-				if (isAborted) {
-					emitAbort();
-					return;
-				}
+				try {
+					const { content, isError, isAborted } = await toolCommand.execute(args, {
+						signal: abortSignal,
+					});
 
-				// 外部执行错误也回传给 ai， 它做下一步决策
-				this.emit({
-					type: EventType.OBSERVATION,
-					id,
-					name,
-					isError,
-					result: content,
-					meta: { roundId, turn },
-				});
+					if (isAborted) {
+						emitAbort();
+						return;
+					}
+
+					// 外部执行错误也回传给 ai， 它做下一步决策
+					this.emit({
+						...observationBase,
+						isError,
+						result: content,
+					});
+				} catch (e) {
+				    // 兜底，防止 action 调用没按照标准格式，直接 throw error;
+
+					// 可能工具里面 abortSignal.throwIfAborted()
+					if (abortSignal.aborted) {
+						emitAbort();
+						return;
+					}
+
+					this.emit({
+						...observationBase,
+						isError: true,
+						result: String(e),
+					});
+				}
 			}
 
 			if (turnOutputTextBuffer) {
