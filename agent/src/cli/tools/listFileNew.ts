@@ -57,7 +57,7 @@ const listFilesNewTool: ToolDefinition<
 
 		try {
 			const { stdout } = await execFileAsync(rgPath, commandArgs, {
-				cwd: context.cwd,
+				cwd: process.cwd(),
 				signal: context.signal,
 				maxBuffer: 1024 * 1024,
 			});

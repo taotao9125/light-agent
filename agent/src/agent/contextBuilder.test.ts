@@ -7,9 +7,9 @@
  * - pipe 顺序：先按 round 窗口裁剪，再 truncate（避免对已丢弃 round 做无用截断）
  */
 import { describe, expect, it } from 'vitest';
-import { EventType, type AgentEvent, type ObservationEvent } from '../protocol/events';
-import type { ContextBuildStrategy } from './types';
+import { type AgentEvent, EventType, type ObservationEvent } from '../protocol/events';
 import contextBuilder from './contextBuilder';
+import type { ContextBuildStrategy } from './types';
 
 /** truncateText 插入的中间标记 */
 const TRUNCATED_MARKER = '...[truncated]...';

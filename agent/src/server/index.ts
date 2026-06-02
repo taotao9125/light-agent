@@ -4,9 +4,9 @@ import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import 'dotenv/config';
 
-import AgentLoop from '../agent/agentLoop';
 import type { SessionEvent } from '../agent/agent';
 import AgentSession from '../agent/agent';
+import AgentLoop from '../agent/agentLoop';
 import SessionStore from '../agent/store';
 import { createClient } from '../ai/index';
 import toolRegistry from '../tools';

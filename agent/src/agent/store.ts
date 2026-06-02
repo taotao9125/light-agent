@@ -29,15 +29,11 @@ export default class SessionStore implements SessionStoreInterface {
 	}
 
 	async load(sessionId: string): Promise<AgentEvent[]> {
-		try {
-			const content = await readFile(this.getFilePath(sessionId), 'utf-8');
-			return content
-				.split('\n')
-				.filter(Boolean)
-				.map((line) => JSON.parse(line) as AgentEvent);
-		} catch (e) {
-			throw e;
-		}
+		const content = await readFile(this.getFilePath(sessionId), 'utf-8');
+		return content
+			.split('\n')
+			.filter(Boolean)
+			.map((line) => JSON.parse(line) as AgentEvent);
 	}
 
 	async run() {

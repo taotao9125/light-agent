@@ -1,22 +1,19 @@
-
-import type { ToolDefinition, ToolMeta } from './types';
+import type { ToolDefinition } from './types';
 
 class ToolRegistry {
-  private tools = new Map<string, ToolDefinition<any, any>>();
+	private tools = new Map<string, ToolDefinition<any, any>>();
 
-  register(name: string, tool: ToolDefinition<any, any>): void {
-    this.tools.set(name, tool);
-  }
+	register(name: string, tool: ToolDefinition<any, any>): void {
+		this.tools.set(name, tool);
+	}
 
-  get(name: string): ToolDefinition<any, any> | undefined {
-    return this.tools.get(name);
-  }
+	get(name: string): ToolDefinition<any, any> | undefined {
+		return this.tools.get(name);
+	}
 
-  getTools() {
-    return [...this.tools.values()];
-  }
-
+	getTools() {
+		return [...this.tools.values()];
+	}
 }
 
 export default ToolRegistry;
-

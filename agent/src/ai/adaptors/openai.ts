@@ -112,8 +112,8 @@ export default class OpenAIAdaptor implements AiProvider {
 		if (requestConfig.systemPrompt) {
 			messages.unshift({
 				role: 'system',
-				content: requestConfig.systemPrompt
-			})
+				content: requestConfig.systemPrompt,
+			});
 		}
 		return {
 			model: requestConfig.model,

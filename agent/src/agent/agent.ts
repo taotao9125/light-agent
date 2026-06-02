@@ -1,41 +1,34 @@
-import { type AgentEvent, EventType, type Meta } from '../protocol/events';
-import type { AgentLoopInterface } from './agentLoop';
+import { type AgentEvent, EventType } from '../protocol/events';
+import type { AgentLoopInterface, PromptCallStatus } from './agentLoop';
 import AgentLoop from './agentLoop';
-import type { SessionStoreInterface } from './store';
 import contextBuilder from './contextBuilder';
-import toolRegistryClass from './toolRegistry';
-import type { Vender, ToolDefinition, ContextBuildInput } from './types';
-
 import type { AgentEventListener, SessionEvent } from './helpers';
-import { createAgentEventProjector } from './helpers';
-
+import { projectAgentEvents } from './helpers';
+import type { SessionStoreInterface } from './store';
+import toolRegistryClass from './toolRegistry';
+import type { ContextBuildInput, ToolDefinition, Vender } from './types';
 
 type Config = {
 	sessionId: string;
 	store?: SessionStoreInterface;
-	vender: Vender,
-	context: ContextBuildInput
+	vender: Vender;
+	context: ContextBuildInput;
 };
 
 export interface AgentInterface {
-	prompt: (prompt: string) => Promise<void>;
+	prompt: (prompt: string) => Promise<PromptCallStatus>;
 	on: (listener: AgentEventListener) => () => void;
 	registerTool: (name: string, tool: ToolDefinition<any, any>) => void;
 	interrupt: () => void;
 	getState: () => Record<string, any>;
 }
 
-
-
 type Job = {
 	prompt: string;
-	resolve: () => void;
+	resolve: (result: PromptCallStatus) => void;
 	reject: (reason?: unknown) => void;
 	abortController: AbortController;
 };
-
-
-
 
 const COMMITTED_EVENT_TYPES = new Set<string>([
 	EventType.INPUT,
@@ -47,13 +40,9 @@ const COMMITTED_EVENT_TYPES = new Set<string>([
 	EventType.AGENT_ERROR,
 ]);
 
-
-
 function isCommittedEvent(event: AgentEvent) {
 	return COMMITTED_EVENT_TYPES.has(event.type);
 }
-
-
 
 export default class Agent implements AgentInterface {
 	private sessionId: string;
@@ -63,12 +52,11 @@ export default class Agent implements AgentInterface {
 	private runRecords = {
 		queue: [] as Job[],
 		activeJob: null as Job | null,
-	}
+	};
 
 	private context: ContextBuildInput;
 	private canonicalEvents: AgentEvent[] = [];
 	private listeners: AgentEventListener[] = [];
-	private projectAgentEvents = createAgentEventProjector();
 	private toolRegistry = new toolRegistryClass();
 	constructor(config: Config) {
 		this.sessionId = config.sessionId;
@@ -84,7 +72,7 @@ export default class Agent implements AgentInterface {
 	}
 
 	private async handleAgentEvent(event: AgentEvent) {
-		for (const lifecycleEvent of this.projectAgentEvents(event)) {
+		for (const lifecycleEvent of projectAgentEvents(event)) {
 			this.emit(lifecycleEvent);
 		}
 
@@ -98,14 +86,11 @@ export default class Agent implements AgentInterface {
 		}
 	}
 
-
 	private emit(event: SessionEvent) {
 		for (const listener of this.listeners) {
 			listener(event);
 		}
 	}
-
-
 
 	private async processQueue() {
 		if (!this.runRecords.queue.length) return;
@@ -116,22 +101,24 @@ export default class Agent implements AgentInterface {
 
 		try {
 			this.runRecords.activeJob = currentJob;
-			await this.agentLoop.prompt(currentJob.prompt, {
+			const result = await this.agentLoop.prompt(currentJob.prompt, {
 				abortSignal: currentJob.abortController.signal,
 				pullContextSnap: () => contextBuilder({ events: this.canonicalEvents, ...this.context }),
-				pullToolsSnap: () => this.toolRegistry.getTools()
+				pullToolsSnap: () => this.toolRegistry.getTools(),
 			});
-			this.emit({ type: 'agent_done' });
-			currentJob.resolve();
+
+			switch (result.status) {
+				case 'success':
+				  this.emit({ type: 'agent_done' });
+				  break;
+				case 'aborted':
+				  this.emit({ type: 'agent_aborted', reason: result.reason });
+				  break;
+				// fail: AGENT_ERROR 已在 loop emit，不用 agent_done
+			  }
+
+			currentJob.resolve(result);
 		} catch (e) {
-			if (currentJob.abortController.signal.aborted) {
-				this.emit({
-					type: 'agent_aborted',
-					reason: currentJob.abortController.signal.reason,
-				});
-				currentJob.resolve();
-				return;
-			}
 			currentJob.reject(e);
 		} finally {
 			this.runRecords.activeJob = null;
@@ -139,9 +126,8 @@ export default class Agent implements AgentInterface {
 		}
 	}
 
-
 	prompt(prompt: string) {
-		const { promise, resolve, reject } = Promise.withResolvers<void>();
+		const { promise, resolve, reject } = Promise.withResolvers<PromptCallStatus>();
 		const abortController = new AbortController();
 		this.runRecords.queue.push({
 			prompt,
@@ -149,15 +135,12 @@ export default class Agent implements AgentInterface {
 			resolve,
 			reject,
 		});
-
 		this.processQueue();
-
 		return promise;
 	}
 
 	on(listener: AgentEventListener): () => void {
 		this.listeners.push(listener);
-
 		return () => {
 			this.listeners = this.listeners.filter((item) => item !== listener);
 		};
@@ -168,7 +151,7 @@ export default class Agent implements AgentInterface {
 	}
 
 	interrupt(reason = 'user interrupted') {
-		const avtiveJob = this.runRecords.activeJob
+		const avtiveJob = this.runRecords.activeJob;
 		if (!avtiveJob) return;
 		avtiveJob.abortController.abort(reason);
 	}
@@ -176,9 +159,7 @@ export default class Agent implements AgentInterface {
 	getState() {
 		return {
 			isRunning: !!this.runRecords.activeJob,
-			canonicalEvents: this.canonicalEvents
+			canonicalEvents: this.canonicalEvents,
 		};
 	}
-
-
 }
