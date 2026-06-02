@@ -143,24 +143,19 @@ async function main() {
 				process.stdout.write(event.text);
 				break;
 
-			case 'agent_error':
+			case 'agent_stop':
 				resetStreamState();
-				process.stderr.write(`\n${color.red}Agent error: ${event.message}${color.reset}\n`);
-				break;
-
-			case 'agent_aborted':
-				resetStreamState();
-				if (!interruptPrinted) {
-					interruptPrinted = true;
-					const reason =
-						typeof event.reason === 'string' && event.reason ? `: ${event.reason}` : '';
-					process.stdout.write(`\n${color.yellow}Agent interrupted${reason}${color.reset}\n`);
+				if (event.cause === 'user') {
+					if (!interruptPrinted) {
+						interruptPrinted = true;
+						const suffix = event.message && event.message !== 'aborted' ? `: ${event.message}` : '';
+						process.stdout.write(`\n${color.yellow}Agent interrupted${suffix}${color.reset}\n`);
+					}
+				} else {
+					process.stderr.write(
+						`\n${color.red}Agent stopped (${event.cause}): ${event.message}${color.reset}\n`,
+					);
 				}
-				break;
-
-			case 'agent_done':
-				resetStreamState();
-				process.stdout.write('\n');
 				break;
 
 			default:
@@ -204,7 +199,7 @@ async function main() {
 			});
 
 			const raceResult = await Promise.race([
-				promptPromise.then((status) => ({ kind: 'completed' as const, status })),
+				promptPromise.then(() => ({ kind: 'completed' as const })),
 				promptWaitPromise.then(() => ({ kind: 'interrupted' as const })),
 			]);
 
@@ -212,6 +207,9 @@ async function main() {
 				promptPromise.catch(() => {});
 				continue;
 			}
+
+			resetStreamState();
+			process.stdout.write('\n');
 		} catch (e) {
 			resetStreamState();
 			process.stderr.write(`\n${color.red}Internal error: ${String(e)}${color.reset}\n`);
