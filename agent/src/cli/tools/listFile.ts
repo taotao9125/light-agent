@@ -3,57 +3,52 @@ import path from 'path';
 import type { ToolDefinition } from '../../agent/types';
 
 const listFilesTool: ToolDefinition<
-  { path?: string },
-  Promise<{
-    isError: boolean;
-    content:
-      | string
-      | {
-          name: string;
-          type: 'file' | 'directory';
-        }[];
-  }>
+	{ path?: string },
+	Promise<{ isError: boolean; isAborted?: boolean; content: string }>
 > = {
-  name: 'list_files',
-  description: 'List files and directories directly under a directory.',
-  schema: {
-    type: 'object',
-    properties: {
-      path: {
-        type: 'string',
-        description: 'Directory path relative to the agent working directory. Defaults to current directory.',
-      },
-    },
-  },
-  async execute(p, context) {
-    // 工具执行并不能完全打断，逻辑是没执行的就不要执行了，已执行的不要返回结果了。
-    const targetPath = p.path ?? '.';
+	name: 'list_files',
+	description: 'List files and directories directly under a directory.',
+	schema: {
+		type: 'object',
+		properties: {
+			path: {
+				type: 'string',
+				description: 'Directory path relative to the agent working directory. Defaults to current directory.',
+			},
+		},
+	},
+	async execute(p, context) {
+		const targetPath = p.path ?? '.';
+		const realPath = path.resolve(process.cwd(), targetPath);
 
-    const realPath = path.resolve(context.cwd, targetPath);
-    // readdir 不支持 signal, 手动打
-    context.signal?.throwIfAborted();
-    try {
-      const entries = await fs.readdir(realPath, { withFileTypes: true });
-      context.signal?.throwIfAborted();
-      return {
-        isError: false,
-        content: entries.map((entry) => ({
-          name: entry.name,
-          type: entry.isFile() ? 'file' : 'directory',
-        })),
-      };
-    } catch (e) {
-      // 用户取消往上抛
-      if (context.signal?.aborted) {
-        throw e;
-      }
+		try {
+			// 没执行就打断
+			context.signal?.throwIfAborted();
+			const entries = await fs.readdir(realPath, { withFileTypes: true });
+			// 已经执行，就执行完再打断
+			context.signal?.throwIfAborted();
 
-      return {
-        content: e instanceof Error ? e.message : String(e),
-        isError: true,
-      };
-    }
-  },
+			return {
+				isError: false,
+				content: JSON.stringify(
+					entries.map((entry) => ({
+						name: entry.name,
+						type: entry.isFile() ? 'file' : 'directory',
+					})),
+				),
+			};
+		} catch (e) {
+			// abort 往上抛
+			if (context.signal?.aborted) {
+				return { isAborted: true, isError: false, content: '' };
+			}
+
+			return {
+				content: e instanceof Error ? e.message : String(e),
+				isError: true,
+			};
+		}
+	},
 };
 
 export default listFilesTool;

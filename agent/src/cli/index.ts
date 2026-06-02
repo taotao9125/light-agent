@@ -3,20 +3,16 @@ import { stdin, stdout } from 'node:process';
 import readline from 'node:readline/promises';
 import path from 'path';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
-
-import AgentLoop from '../agent/agentLoop';
 import Agent from '../agent/agent';
 import SessionStore from '../agent/store';
-import { createClient } from '../ai/index';
-
-
-import readFileTool from './tools/readFile';
-import listFilesTool from './tools/listFile';
+import loadRuleSources from './loadRuleSource';
 import listFilesToolNew from './tools/listFileNew';
-import loadRuleSources from './loadRuleSource'
+import readFileTool from './tools/readFile';
 import 'dotenv/config';
 
-setGlobalDispatcher(new ProxyAgent(process.env.HTTPS_PROXY as string));
+if (process.env.HTTPS_PROXY) {
+	setGlobalDispatcher(new ProxyAgent(process.env.HTTPS_PROXY));
+}
 
 const rl = readline.createInterface({
 	input: stdin,
@@ -35,11 +31,7 @@ function isReadlineAbortError(error: unknown) {
 	return error instanceof Error && 'code' in error && error.code === 'ABORT_ERR';
 }
 
-
-
 async function main() {
-	
-	
 	const sessionId = 'cli_session';
 
 	const sessionStore = new SessionStore({
@@ -48,14 +40,12 @@ async function main() {
 
 	const rulesSource = await loadRuleSources(process.cwd());
 
-
-	/*-------------------------------------------*/
 	const agent = new Agent({
 		vender: {
 			name: 'deepseek',
 			apiKey: process.env.AI_DEEP_SEEK_API_KEY as string,
 			baseURL: process.env.AI_DEEP_SEEK_API_HOST as string,
-			model: 'deepseek-v4-flash'
+			model: 'deepseek-v4-flash',
 		},
 		sessionId,
 		store: sessionStore,
@@ -65,17 +55,13 @@ async function main() {
 			},
 			contextBuildStrategy: {
 				maxSingleObservationToken: 3000,
-				keepRecentRounds: 5
-			}
-		}
+				keepRecentRounds: 5,
+			},
+		},
 	});
 
 	agent.registerTool(readFileTool.name, readFileTool);
 	agent.registerTool(listFilesToolNew.name, listFilesToolNew);
-
-
-
-	/*-------------------------------------------*/
 
 	let isThinking = false;
 	let isOutputting = false;
@@ -84,17 +70,19 @@ async function main() {
 	let resolvePromptWait: (() => void) | null = null;
 	let interruptPrinted = false;
 
+	function resetStreamState() {
+		if (isThinking) {
+			process.stdout.write(color.reset);
+		}
+		isThinking = false;
+		isOutputting = false;
+	}
+
 	process.on('SIGINT', () => {
 		if (isWaitingForPrompt) {
 			agent.interrupt();
 			resolvePromptWait?.();
 			resolvePromptWait = null;
-			isThinking = false;
-			isOutputting = false;
-			if (!interruptPrinted) {
-				interruptPrinted = true;
-				process.stdout.write(`\n${color.yellow}Agent interrupted${color.reset}\n`);
-			}
 			return;
 		}
 
@@ -108,27 +96,19 @@ async function main() {
 				process.stdout.write(`${color.green}开始执行 agent${color.reset}\n`);
 				break;
 
-			case 'thought_start':
+			case 'thought_delta':
 				if (isOutputting) {
 					process.stdout.write('\n');
 					isOutputting = false;
 				}
-				process.stdout.write(`${color.dim}thinking: `);
-				isThinking = true;
-				break;
-
-			case 'thought_delta':
+				if (!isThinking) {
+					process.stdout.write(`${color.dim}thinking: `);
+					isThinking = true;
+				}
 				process.stdout.write(event.text);
 				break;
 
-			case 'thought_done':
-				if (isThinking) {
-					process.stdout.write(`${color.reset}\n`);
-					isThinking = false;
-				}
-				break;
-
-			case 'action_start':
+			case 'action_call':
 				if (isThinking) {
 					process.stdout.write(`${color.reset}\n`);
 					isThinking = false;
@@ -138,46 +118,48 @@ async function main() {
 				);
 				break;
 
-			case 'action_done':
-				process.stdout.write(`${color.dim}tool done: ${event.name}${color.reset}\n`);
+			case 'action_result': {
+				if (event.isError) {
+					const detail =
+						typeof event.result === 'string' ? event.result : JSON.stringify(event.result);
+					process.stdout.write(
+						`${color.red}tool error: ${event.name}${color.reset} ${color.dim}${detail}${color.reset}\n`,
+					);
+				} else {
+					process.stdout.write(`${color.dim}tool done: ${event.name}${color.reset}\n`);
+				}
 				break;
+			}
 
-			case 'output_start':
+			case 'output_delta':
+				if (isThinking) {
+					process.stdout.write(`${color.reset}\n`);
+					isThinking = false;
+				}
 				if (!isOutputting) {
 					process.stdout.write(`${color.green}output:${color.reset}\n`);
 					isOutputting = true;
 				}
-				break;
-
-			case 'output_delta':
 				process.stdout.write(event.text);
 				break;
 
 			case 'agent_error':
+				resetStreamState();
 				process.stderr.write(`\n${color.red}Agent error: ${event.message}${color.reset}\n`);
 				break;
 
 			case 'agent_aborted':
-				isThinking = false;
-				isOutputting = false;
+				resetStreamState();
 				if (!interruptPrinted) {
 					interruptPrinted = true;
-					process.stdout.write(`\n${color.yellow}Agent interrupted${color.reset}\n`);
-				}
-				break;
-
-			case 'interrupt':
-				isThinking = false;
-				isOutputting = false;
-				if (!interruptPrinted) {
-					interruptPrinted = true;
-					process.stdout.write(`\n${color.yellow}Agent interrupted${color.reset}\n`);
+					const reason =
+						typeof event.reason === 'string' && event.reason ? `: ${event.reason}` : '';
+					process.stdout.write(`\n${color.yellow}Agent interrupted${reason}${color.reset}\n`);
 				}
 				break;
 
 			case 'agent_done':
-				isThinking = false;
-				isOutputting = false;
+				resetStreamState();
 				process.stdout.write('\n');
 				break;
 
@@ -213,17 +195,27 @@ async function main() {
 		try {
 			isWaitingForPrompt = true;
 			interruptPrinted = false;
+			isThinking = false;
+			isOutputting = false;
+
 			const promptPromise = agent.prompt(text);
 			const promptWaitPromise = new Promise<'interrupted'>((resolve) => {
 				resolvePromptWait = () => resolve('interrupted');
 			});
-			const result = await Promise.race([promptPromise.then(() => 'done' as const), promptWaitPromise]);
 
-			if (result === 'interrupted') {
+			const raceResult = await Promise.race([
+				promptPromise.then((status) => ({ kind: 'completed' as const, status })),
+				promptWaitPromise.then(() => ({ kind: 'interrupted' as const })),
+			]);
+
+			if (raceResult.kind === 'interrupted') {
 				promptPromise.catch(() => {});
 				continue;
 			}
 		} catch (e) {
+			resetStreamState();
+			process.stderr.write(`\n${color.red}Internal error: ${String(e)}${color.reset}\n`);
+
 			if (agent.getState().isRunning) {
 				continue;
 			}
