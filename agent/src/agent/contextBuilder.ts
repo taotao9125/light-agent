@@ -81,7 +81,7 @@ function cleanEvents(eventType: string) {
 // canonical events rebuild pipe line: window first, then truncate
 function rebuildEvents(contextBuildStrategy: ContextBuildStrategy) {
 	return pipe<AgentEvent[]>(
-		cleanEvents(EventType.AGENT_ERROR),
+		cleanEvents(EventType.AGENT_STOP),
 		keepRecentRounds(contextBuildStrategy.keepRecentRounds ?? Infinity),
 		truncateObservation(contextBuildStrategy.maxSingleObservationToken ?? Infinity),
 	);

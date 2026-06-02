@@ -195,7 +195,7 @@ export default class OpenAIAdaptor implements AiProvider {
 			pendingToolCalls.clear();
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e);
-			yield { type: EventType.AGENT_ERROR, message };
+			yield { type: EventType.AGENT_STOP, cause: 'llm',  message};
 		}
 	}
 }

@@ -10,8 +10,7 @@ export const EventType = {
 	OBSERVATION: 'observation',
 	OUTPUT: 'output',
 	OUTPUT_DELTA: 'output_delta',
-	INTERRUPT: 'interrupt',
-	AGENT_ERROR: 'agent_error',
+	AGENT_STOP: 'agent_stop',
 } as const;
 
 export type Meta = {
@@ -67,9 +66,16 @@ export type OutputEvent = {
 	meta?: Meta;
 };
 
-export type AgentError = { type: typeof EventType.AGENT_ERROR; message: string; meta?: Meta };
 
-export type INTERRUPT = { type: typeof EventType.INTERRUPT; reason: string; meta?: Meta };
+export type AgentStopCause = 'llm' | 'user' | 'runtime';
+
+export type AgentStop = {
+	type: typeof EventType.AGENT_STOP;
+	cause: AgentStopCause;
+	message: string;
+	meta?: Meta;
+};
+
 
 export type AgentEvent =
 	| InputEvent
@@ -77,7 +83,6 @@ export type AgentEvent =
 	| ThoughtDeltaEvent
 	| ActionEvent
 	| ObservationEvent
-	| OutputEvent
 	| OutputDeltaEvent
-	| AgentError
-	| INTERRUPT;
+	| OutputEvent
+	| AgentStop

@@ -7,10 +7,6 @@ import type { AgentLoopConfig, ContextBuildOuput, ToolDefinition } from './types
 
 type AgentEventListener = (event: AgentEvent) => void;
 
-export type PromptCallStatus = {
-	status: 'success' | 'fail' | 'aborted';
-	reason?: string;
-};
 
 type LoopDeps = {
 	abortSignal: AbortSignal;
@@ -19,7 +15,7 @@ type LoopDeps = {
 };
 
 export interface AgentLoopInterface {
-	prompt: (prompt: string, options: LoopDeps) => Promise<PromptCallStatus>;
+	prompt: (prompt: string, options: LoopDeps) => Promise<void>;
 	on: (listener: AgentEventListener) => void;
 }
 
@@ -77,10 +73,14 @@ class AgentLoop implements AgentLoopInterface {
 	 * 无 action, 有 output （注意，无 ouput 就是 fail, 如上LLM 脑子坏了）
 	 *
 	 * loop 其他出口, abort, fail
+	 * 
+	 * 退出 loop 的机制, 
+	 * 1. 需要 emit agent_stop, 比如 llm 层错误, user abort, runtime 限制，如 maxturn
+	 * 2. 正常无 action, 有 output
 	 *
 	 */
 
-	private async runAgentLoop(prompt: string, loopDeps: LoopDeps): Promise<PromptCallStatus> {
+	private async runAgentLoop(prompt: string, loopDeps: LoopDeps): Promise<void> {
 		const { abortSignal } = loopDeps;
 		
 
@@ -93,15 +93,22 @@ class AgentLoop implements AgentLoopInterface {
 
 		while (true) {
 
-			const abortReason = abortSignal.reason ?? 'aborted';
+
+			const emitAbort = () => {
+				this.emit({
+					type: EventType.AGENT_STOP,
+					cause: 'user',
+					// 注意 abortSignal.reason 要随时去读
+					message: String(abortSignal.reason ?? 'aborted'),
+					meta: { roundId, turn } 
+				});
+			}
 
 			if (abortSignal.aborted) {
-				this.emit({
-					type: EventType.INTERRUPT,
-					reason: abortReason ?? 'aborted',
-					meta: { roundId, turn },
-				});
-				return { status: 'aborted', reason: abortSignal.reason };
+				emitAbort();
+				// 用户取消, 退出
+				return;
+				
 			}
 
 			turn++;
@@ -119,14 +126,13 @@ class AgentLoop implements AgentLoopInterface {
 			const context = loopDeps.pullContextSnap();
 
 			if (turn > this.maxTurns) {
-				const message = `Agent stopped after reaching max turns: ${this.maxTurns}`;
 				this.emit({
-					type: EventType.AGENT_ERROR,
-					message,
+					type: EventType.AGENT_STOP,
+					cause: 'runtime',
+					message: `Agent stopped after reaching max turns: ${this.maxTurns}`,
 					meta: { roundId, turn },
 				});
-
-				return { status: 'fail', reason: message };
+				return;
 			}
 
 			const stream = this.AiClient.stream({
@@ -139,18 +145,14 @@ class AgentLoop implements AgentLoopInterface {
 			// 需要等把流迭代完了, 才能知道有没有指令来决定是否进行下一轮
 			for await (const chunk of stream) {
 				if (abortSignal.aborted) {
-					this.emit({
-						type: EventType.INTERRUPT,
-						reason: abortReason ?? 'aborted',
-						meta: { roundId, turn },
-					});
-					return { status: 'aborted', reason: abortSignal.reason };
+					emitAbort();
+					return;
 				}
 
-				if (chunk.type === EventType.AGENT_ERROR) {
+				if (chunk.type === EventType.AGENT_STOP) {
 					// LLM 厂商的错误, 我们无能为力, 但要进 canonicalEvents, 需要审计, 但不进下一轮的 prompt context ,对 LLM 来说没用。
 					this.emit({ ...chunk, meta: { roundId, turn } });
-					return { status: 'fail', reason: chunk.message };
+					return;
 				}
 
 				// 搜集 action 命令
@@ -179,8 +181,8 @@ class AgentLoop implements AgentLoopInterface {
 			if (!turnActionEvents.length && !turnOutputTextBuffer) {
 				const message = 'LLM did not return an action or output.';
 				// 跟上面 stream 里 error 捕捉一样, LLM 层的错误 agent 无能为力
-				this.emit({ type: EventType.AGENT_ERROR, message, meta: { roundId, turn } });
-				return { status: 'fail', reason: message };
+				this.emit({ type: EventType.AGENT_STOP, cause: 'llm',  message, meta: { roundId, turn } });
+				return;
 			}
 
 			// thought done
@@ -192,17 +194,14 @@ class AgentLoop implements AgentLoopInterface {
 				if (turnOutputTextBuffer) {
 					this.emit({ type: EventType.OUTPUT, text: turnOutputTextBuffer, meta: { roundId, turn } });
 				}
-				return { status: 'success' };
+				return;
 			}
 
 			for (const action of turnActionEvents) {
 				if (abortSignal.aborted) {
-					this.emit({
-						type: EventType.INTERRUPT,
-						reason: abortReason ?? 'aborted',
-						meta: { roundId, turn },
-					});
-					return { status: 'aborted', reason: abortSignal.reason };
+					
+					emitAbort();
+					return;
 				}
 
 				const { name, id, args } = action;
@@ -225,12 +224,8 @@ class AgentLoop implements AgentLoopInterface {
 					signal: abortSignal,
 				});
 				if (isAborted) {
-					this.emit({
-						type: EventType.INTERRUPT,
-						reason: abortReason ?? 'aborted',
-						meta: { roundId, turn },
-					});
-					return { status: 'aborted', reason: abortSignal.reason };
+					emitAbort();
+					return;
 				}
 
 				// 外部执行错误也回传给 ai， 它做下一步决策
@@ -250,7 +245,7 @@ class AgentLoop implements AgentLoopInterface {
 		}
 	}
 
-	async prompt(prompt: string, loopDeps: LoopDeps): Promise<PromptCallStatus> {
+	async prompt(prompt: string, loopDeps: LoopDeps): Promise<void> {
 		return await this.runAgentLoop(prompt, loopDeps);
 	}
 

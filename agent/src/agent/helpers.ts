@@ -1,4 +1,4 @@
-import type { AgentEvent, Meta } from '../protocol/events';
+import type { AgentEvent, AgentStopCause, Meta } from '../protocol/events';
 import { EventType } from '../protocol/events';
 
 export type SessionEvent =
@@ -7,9 +7,7 @@ export type SessionEvent =
 	| { type: 'output_delta'; text: string; meta?: Meta }
 	| { type: 'action_call'; id: string; name: string; args: Record<string, unknown>; meta?: Meta }
 	| { type: 'action_result'; id: string; name: string; result: unknown; isError: boolean; meta?: Meta }
-	| { type: 'agent_error'; message: string; meta?: Meta }
-	| { type: 'agent_done'; meta?: Meta }
-	| { type: 'agent_aborted'; reason?: unknown; meta?: Meta };
+	| { type: 'agent_stop'; cause: AgentStopCause; message: string; meta?: Meta };
 
 export type AgentEventListener = (event: SessionEvent) => void;
 
@@ -47,10 +45,11 @@ export function projectAgentEvents(event: AgentEvent): SessionEvent[] {
 				},
 			];
 
-		case EventType.AGENT_ERROR:
+		case EventType.AGENT_STOP:
 			return [
 				{
-					type: 'agent_error',
+					type: 'agent_stop',
+					cause: event.cause,
 					message: event.message,
 					meta: event.meta,
 				},

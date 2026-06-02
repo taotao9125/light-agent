@@ -170,7 +170,7 @@ export default class GoogleAdaptor implements AiProvider {
 			}
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e);
-			yield { type: EventType.AGENT_ERROR, message };
+			yield { type: EventType.AGENT_STOP, cause: 'llm', message };
 		}
 	}
 }
