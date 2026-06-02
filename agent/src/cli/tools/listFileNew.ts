@@ -15,13 +15,7 @@ type ListFilesArgs = {
 	limit?: number;
 };
 
-const listFilesNewTool: ToolDefinition<
-	ListFilesArgs,
-	Promise<{
-		isError: boolean;
-		content: string | string[];
-	}>
-> = {
+const listFilesNewTool: ToolDefinition<ListFilesArgs, Promise<string[]>> = {
 	name: 'list_files_new',
 	description: 'List project files recursively using ripgrep, respecting ignore rules such as .gitignore.',
 	schema: {
@@ -64,25 +58,14 @@ const listFilesNewTool: ToolDefinition<
 
 			context.signal?.throwIfAborted();
 
-			const files = stdout
+			return stdout
 				.split('\n')
 				.map((line) => line.trim())
 				.filter(Boolean)
 				.slice(0, limit);
-
-			return {
-				isError: false,
-				content: files,
-			};
 		} catch (e) {
-			if (context.signal?.aborted) {
-				throw e;
-			}
-
-			return {
-				isError: true,
-				content: e instanceof Error ? e.message : String(e),
-			};
+			context.signal?.throwIfAborted();
+			throw e instanceof Error ? e : new Error(String(e));
 		}
 	},
 };

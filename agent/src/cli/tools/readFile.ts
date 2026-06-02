@@ -2,14 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { ToolDefinition } from '../../agent/types';
 
-const readFileTool: ToolDefinition<
-	{ path: string },
-	Promise<{
-		content: string;
-		isError: boolean;
-		isAborted?: boolean;
-	}>
-> = {
+const readFileTool: ToolDefinition<{ path: string }, Promise<string>> = {
 	name: 'read_file',
 	description: 'Read the full contents of a specific file when the user asks to inspect, open, or read a file.',
 	schema: {
@@ -25,22 +18,14 @@ const readFileTool: ToolDefinition<
 	},
 
 	async execute(p, context) {
+		context.signal?.throwIfAborted();
+
 		const realPath = path.resolve(process.cwd(), p.path);
 		try {
-			return {
-				content: await fs.readFile(realPath, { encoding: 'utf8', signal: context.signal }),
-				isError: false,
-			};
+			return await fs.readFile(realPath, { encoding: 'utf8', signal: context.signal });
 		} catch (e) {
-			// 用户取消往上抛
-			if (context.signal?.aborted) {
-				return { isError: false, isAborted: true, content: '' };
-			}
-
-			return {
-				content: e instanceof Error ? e.message : String(e),
-				isError: true,
-			};
+			context.signal?.throwIfAborted();
+			throw e instanceof Error ? e : new Error(String(e));
 		}
 	},
 };
