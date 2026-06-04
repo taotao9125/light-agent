@@ -9,13 +9,7 @@ const execFileAsync = promisify(execFile);
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const rgPath = path.resolve(currentDir, 'bins/rg');
 
-type ListFilesArgs = {
-	path?: string;
-	glob?: string;
-	limit?: number;
-};
-
-const listFilesNewTool: ToolDefinition<ListFilesArgs, Promise<string[]>> = {
+const listFilesNewTool: ToolDefinition = {
 	name: 'list_files_new',
 	description: 'List project files recursively using ripgrep, respecting ignore rules such as .gitignore.',
 	schema: {
@@ -36,7 +30,7 @@ const listFilesNewTool: ToolDefinition<ListFilesArgs, Promise<string[]>> = {
 		},
 		additionalProperties: false,
 	},
-	async execute(args, context) {
+	async execute(args: { path: string; glob?: string; limit?: number }, context) {
 		context.signal?.throwIfAborted();
 
 		const targetPath = args.path ?? '.';
@@ -58,14 +52,31 @@ const listFilesNewTool: ToolDefinition<ListFilesArgs, Promise<string[]>> = {
 
 			context.signal?.throwIfAborted();
 
-			return stdout
-				.split('\n')
-				.map((line) => line.trim())
-				.filter(Boolean)
-				.slice(0, limit);
+			return {
+				isError: false,
+				content: [
+					{
+						type: 'text',
+						text: stdout
+							.split('\n')
+							.map((line) => line.trim())
+							.filter(Boolean)
+							.slice(0, limit)
+							.join('\n'),
+					},
+				],
+			};
 		} catch (e) {
 			context.signal?.throwIfAborted();
-			throw e instanceof Error ? e : new Error(String(e));
+			return {
+				isError: true,
+				content: [
+					{
+						type: 'text',
+						text: e instanceof Error ? e.message : String(e),
+					},
+				],
+			};
 		}
 	},
 };

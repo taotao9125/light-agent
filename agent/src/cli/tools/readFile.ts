@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { ToolDefinition } from '../../agent/types';
 
-const readFileTool: ToolDefinition<{ path: string }, Promise<string>> = {
+const readFileTool: ToolDefinition = {
 	name: 'read_file',
 	description: 'Read the full contents of a specific file when the user asks to inspect, open, or read a file.',
 	schema: {
@@ -17,15 +17,32 @@ const readFileTool: ToolDefinition<{ path: string }, Promise<string>> = {
 		additionalProperties: false,
 	},
 
-	async execute(p, context) {
+	async execute(p: { path: string }, context) {
 		context.signal?.throwIfAborted();
 
 		const realPath = path.resolve(process.cwd(), p.path);
 		try {
-			return await fs.readFile(realPath, { encoding: 'utf8', signal: context.signal });
+			const content = await fs.readFile(realPath, { encoding: 'utf8', signal: context.signal });
+			return {
+				isError: false,
+				content: [
+					{
+						type: 'text',
+						text: content,
+					},
+				],
+			};
 		} catch (e) {
 			context.signal?.throwIfAborted();
-			throw e instanceof Error ? e : new Error(String(e));
+			return {
+				isError: true,
+				content: [
+					{
+						type: 'text',
+						text: e instanceof Error ? e.message : String(e),
+					},
+				],
+			};
 		}
 	},
 };

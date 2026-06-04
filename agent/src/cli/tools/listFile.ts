@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { ToolDefinition } from '../../agent/types';
 
-const listFilesTool: ToolDefinition<{ path?: string }, Promise<string>> = {
+const listFilesTool: ToolDefinition = {
 	name: 'list_files',
 	description: 'List files and directories directly under a directory.',
 	schema: {
@@ -14,7 +14,7 @@ const listFilesTool: ToolDefinition<{ path?: string }, Promise<string>> = {
 			},
 		},
 	},
-	async execute(p, context) {
+	async execute(p: { path: string }, context) {
 		context.signal?.throwIfAborted();
 
 		const targetPath = p.path ?? '.';
@@ -24,15 +24,31 @@ const listFilesTool: ToolDefinition<{ path?: string }, Promise<string>> = {
 			const entries = await fs.readdir(realPath, { withFileTypes: true });
 			context.signal?.throwIfAborted();
 
-			return JSON.stringify(
-				entries.map((entry) => ({
-					name: entry.name,
-					type: entry.isFile() ? 'file' : 'directory',
-				})),
-			);
+			return {
+				isError: false,
+				content: [
+					{
+						type: 'text',
+						text: JSON.stringify(
+							entries.map((entry) => ({
+								name: entry.name,
+								type: entry.isFile() ? 'file' : 'directory',
+							})),
+						),
+					},
+				],
+			};
 		} catch (e) {
 			context.signal?.throwIfAborted();
-			throw e instanceof Error ? e : new Error(String(e));
+			return {
+				isError: true,
+				content: [
+					{
+						type: 'text',
+						text: e instanceof Error ? e.message : String(e),
+					},
+				],
+			};
 		}
 	},
 };

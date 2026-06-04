@@ -21,7 +21,7 @@ type Config = {
 export interface AgentInterface {
 	prompt: (prompt: string) => Promise<void>;
 	on: (listener: AgentEventListener) => () => void;
-	registerTool: (name: string, tool: ToolDefinition<any, any>) => void;
+	registerTool: (name: string, tool: ToolDefinition) => void;
 	interrupt: () => void;
 	getState: () => Record<string, any>;
 }
@@ -138,7 +138,7 @@ export default class Agent implements AgentInterface {
 		};
 	}
 
-	registerTool(name: string, tool: ToolDefinition<any, any>) {
+	registerTool(name: string, tool: ToolDefinition) {
 		this.toolRegistry.register(name, tool);
 	}
 

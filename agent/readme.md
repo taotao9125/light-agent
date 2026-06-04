@@ -55,7 +55,7 @@ decalare class Agent {
   constructor(config: AgentClassConfig);
   prompt(input: string): Promise<void>;
   on(listener: (event: RuntimeEvent) => void);
-  registerTool(name: string, tool: ToolDefinition<any, any>) => void;
+  registerTool(name: string, tool: ToolDefinition) => void;
   interrupt: () => void;
   
 }
@@ -78,7 +78,7 @@ interface AgentLoopClassConfig = {
 type Deps = {
     abortSignal: abortSignal;
     pullContextSnap: () => Context;
-    pullToolsSnap: () => ToolDefinition<any, any>[];
+    pullToolsSnap: () => ToolDefinition[];
     pullVenderConfigSnap: () => VenderConfig
 }
 

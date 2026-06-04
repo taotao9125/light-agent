@@ -11,7 +11,7 @@ type AgentEventListener = (event: AgentEvent) => void;
 type LoopDeps = {
 	abortSignal: AbortSignal;
 	pullContextSnap: () => ContextBuildOuput;
-	pullToolsSnap: () => ToolDefinition<any, any>[];
+	pullToolsSnap: () => ToolDefinition[];
 };
 
 export interface AgentLoopInterface {
@@ -19,15 +19,15 @@ export interface AgentLoopInterface {
 	on: (listener: AgentEventListener) => void;
 }
 
-function toToolsMap(tools: ToolDefinition<any, any>[]) {
-	const map = new Map<string, ToolDefinition<any, any>>();
+function toToolsMap(tools: ToolDefinition[]) {
+	const map = new Map<string, ToolDefinition>();
 	for (const tool of tools) {
 		map.set(tool.name, tool);
 	}
 	return map;
 }
 
-function toToolsMeta(tools: ToolDefinition<any, any>[]) {
+function toToolsMeta(tools: ToolDefinition[]) {
 	return tools.map((tool) => ({
 		name: tool.name,
 		description: tool.description,
@@ -198,14 +198,14 @@ class AgentLoop implements AgentLoopInterface {
 				}
 
 				try {
-					const content = await toolCommand.execute(args, {
+					const { isError, content } = await toolCommand.execute(args, {
 						signal: abortSignal,
 					});
 
 					// 外部执行错误也回传给 ai， 它做下一步决策
 					this.emit({
 						...observationBase,
-						isError: false,
+						isError,
 						result: stringify(content),
 					});
 				} catch (e) {
@@ -216,10 +216,16 @@ class AgentLoop implements AgentLoopInterface {
 						return;
 					}
 
+					// 防止没按照约定格式返回错误
 					this.emit({
 						...observationBase,
 						isError: true,
-						result: String(e),
+						result: JSON.stringify([
+							{
+								type: 'text',
+								text: e instanceof Error ? e.message : String(e),
+							},
+						]),
 					});
 				}
 			}

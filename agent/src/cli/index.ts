@@ -9,7 +9,7 @@ import SessionStore from '../agent/store';
 import loadRuleSources from './loadRuleSource';
 import listFilesToolNew from './tools/listFileNew';
 import readFileTool from './tools/readFile';
-import searchDoc from './tools/searchdoc'
+import searchDoc from './tools/searchdoc';
 import 'dotenv/config';
 
 if (process.env.HTTPS_PROXY) {

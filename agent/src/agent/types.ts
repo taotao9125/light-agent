@@ -21,8 +21,16 @@ export type ToolContext = {
 	signal?: AbortSignal;
 };
 
-export interface ToolDefinition<T, U> extends ToolMeta {
-	execute(p: T, context: ToolContext): U;
+export type ToolResult = {
+	isError: boolean;
+	content: {
+		type: 'text';
+		text: string;
+	}[];
+};
+
+export interface ToolDefinition extends ToolMeta {
+	execute(p: Record<string, any>, context: ToolContext): Promise<ToolResult>;
 }
 
 export type Vender = {
