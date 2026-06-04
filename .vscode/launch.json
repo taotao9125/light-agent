@@ -19,6 +19,23 @@
       ]
     },
     {
+      "name": "rag",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "${env:HOME}/.nvm/versions/node/v24.16.0/bin/node",
+      "runtimeArgs": [
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/agent/src/rag/index.ts",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/agent",
+      "skipFiles": [
+        "<node_internals>/**",
+       "node_modules/**"
+      ]
+    },
+    {
       "name": "SESSION",
       "type": "node",
       "request": "launch",
