@@ -1,5 +1,36 @@
 import type { ToolDefinition } from '../../agent/types';
 import ragSearch from '../../rag/index';
+import { errorText, textResult } from './toolResult';
+
+type SearchDocResult = {
+	rank: number;
+	score: number;
+	text: string;
+	source?: string;
+	metadata?: Record<string, unknown>;
+};
+
+function formatSearchResults(query: string, topK: number, results: SearchDocResult[]) {
+	if (!results.length) {
+		return ['No matching private documents found.', `Query: ${query}`, `Top K: ${topK}`].join('\n');
+	}
+
+	return [
+		'Search results for private documents',
+		`Query: ${query}`,
+		`Top K: ${topK}`,
+		'',
+		...results.map((item) =>
+			[
+				`[${item.rank}]`,
+				`source: ${item.source ?? 'unknown'}`,
+				`score: ${Number(item.score).toFixed(4)}`,
+				'content:',
+				item.text.trim(),
+			].join('\n'),
+		),
+	].join('\n\n');
+}
 
 const searchDoc: ToolDefinition = {
 	name: 'search_docs',
@@ -25,27 +56,12 @@ const searchDoc: ToolDefinition = {
 	async execute(p: { query: string; topK?: number }, context) {
 		context.signal?.throwIfAborted();
 		try {
-			const results = await ragSearch(p.query, p.topK);
-			return {
-				isError: false,
-				content: [
-					{
-						type: 'text',
-						text: JSON.stringify(results),
-					},
-				],
-			};
+			const topK = p.topK ?? 3;
+			const results = await ragSearch(p.query, topK);
+			return textResult(formatSearchResults(p.query, topK, results));
 		} catch (e) {
 			context.signal?.throwIfAborted();
-			return {
-				isError: true,
-				content: [
-					{
-						type: 'text',
-						text: e instanceof Error ? e.message : String(e),
-					},
-				],
-			};
+			return textResult(['Failed to search private documents.', `Query: ${p.query}`, `Reason: ${errorText(e)}`].join('\n'), true);
 		}
 	},
 };

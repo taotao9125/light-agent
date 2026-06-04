@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { ToolDefinition } from '../../agent/types';
+import { errorText, textResult } from './toolResult';
 
 const execFileAsync = promisify(execFile);
 
@@ -52,31 +53,36 @@ const listFilesNewTool: ToolDefinition = {
 
 			context.signal?.throwIfAborted();
 
-			return {
-				isError: false,
-				content: [
-					{
-						type: 'text',
-						text: stdout
-							.split('\n')
-							.map((line) => line.trim())
-							.filter(Boolean)
-							.slice(0, limit)
-							.join('\n'),
-					},
-				],
-			};
+			const files = stdout
+				.split('\n')
+				.map((line) => line.trim())
+				.filter(Boolean)
+				.slice(0, limit);
+
+			return textResult(
+				[
+					`Files under: ${targetPath}`,
+					args.glob ? `Glob: ${args.glob}` : undefined,
+					`Limit: ${limit}`,
+					'',
+					files.length ? files.join('\n') : 'No files found.',
+				]
+					.filter((line) => line !== undefined)
+					.join('\n'),
+			);
 		} catch (e) {
 			context.signal?.throwIfAborted();
-			return {
-				isError: true,
-				content: [
-					{
-						type: 'text',
-						text: e instanceof Error ? e.message : String(e),
-					},
-				],
-			};
+			return textResult(
+				[
+					'Failed to list files.',
+					`Path: ${targetPath}`,
+					args.glob ? `Glob: ${args.glob}` : undefined,
+					`Reason: ${errorText(e)}`,
+				]
+					.filter((line) => line !== undefined)
+					.join('\n'),
+				true,
+			);
 		}
 	},
 };

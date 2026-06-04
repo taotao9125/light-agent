@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import type { ToolDefinition } from '../../agent/types';
+import { errorText, textResult } from './toolResult';
 
 const readFileTool: ToolDefinition = {
 	name: 'read_file',
@@ -23,26 +24,10 @@ const readFileTool: ToolDefinition = {
 		const realPath = path.resolve(process.cwd(), p.path);
 		try {
 			const content = await fs.readFile(realPath, { encoding: 'utf8', signal: context.signal });
-			return {
-				isError: false,
-				content: [
-					{
-						type: 'text',
-						text: content,
-					},
-				],
-			};
+			return textResult(['File read successfully.', `Path: ${p.path}`, '', content].join('\n'));
 		} catch (e) {
 			context.signal?.throwIfAborted();
-			return {
-				isError: true,
-				content: [
-					{
-						type: 'text',
-						text: e instanceof Error ? e.message : String(e),
-					},
-				],
-			};
+			return textResult(['Failed to read file.', `Path: ${p.path}`, `Reason: ${errorText(e)}`].join('\n'), true);
 		}
 	},
 };

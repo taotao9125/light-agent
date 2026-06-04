@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import type { ToolDefinition } from '../../agent/types';
+import { errorText, textResult } from './toolResult';
 
 const listFilesTool: ToolDefinition = {
 	name: 'list_files',
@@ -24,31 +25,18 @@ const listFilesTool: ToolDefinition = {
 			const entries = await fs.readdir(realPath, { withFileTypes: true });
 			context.signal?.throwIfAborted();
 
-			return {
-				isError: false,
-				content: [
-					{
-						type: 'text',
-						text: JSON.stringify(
-							entries.map((entry) => ({
-								name: entry.name,
-								type: entry.isFile() ? 'file' : 'directory',
-							})),
-						),
-					},
-				],
-			};
+			const lines = entries.map((entry) => {
+				const type = entry.isFile() ? 'file' : 'directory';
+				return `- ${entry.name} [${type}]`;
+			});
+
+			return textResult([`Directory: ${targetPath}`, '', ...lines].join('\n'));
 		} catch (e) {
 			context.signal?.throwIfAborted();
-			return {
-				isError: true,
-				content: [
-					{
-						type: 'text',
-						text: e instanceof Error ? e.message : String(e),
-					},
-				],
-			};
+			return textResult(
+				[`Failed to list directory.`, `Directory: ${targetPath}`, `Reason: ${errorText(e)}`].join('\n'),
+				true,
+			);
 		}
 	},
 };
