@@ -9,7 +9,7 @@ import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const pdfPath = path.join(__dirname, '20251028084627E.pdf');
+const pdfPath = path.join(__dirname, 'agent.pdf');
 
 const loader = new PDFLoader(pdfPath, { splitPages: false });
 

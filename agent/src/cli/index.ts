@@ -5,10 +5,11 @@ import path from 'path';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import Agent from '../agent/agent';
 import SessionStore from '../agent/store';
-import ragSearch from '../rag/index';
+
 import loadRuleSources from './loadRuleSource';
 import listFilesToolNew from './tools/listFileNew';
 import readFileTool from './tools/readFile';
+import searchDoc from './tools/searchdoc'
 import 'dotenv/config';
 
 if (process.env.HTTPS_PROXY) {
@@ -63,28 +64,7 @@ async function main() {
 
 	agent.registerTool(readFileTool.name, readFileTool);
 	agent.registerTool(listFilesToolNew.name, listFilesToolNew);
-	agent.registerTool('search_docs', {
-		name: 'search_docs',
-		description:
-			'Search private project documents when the answer requires project-specific knowledge not already present in the conversation.',
-		schema: {
-			type: 'object',
-			properties: {
-				query: {
-					type: 'string',
-					description:
-						"A focused retrieval query. Rewrite the user's question into keywords, file names, concepts, APIs, or implementation terms that are likely to appear in the private documents. Do not simply copy the full user message if a shorter search query would be more precise.",
-				},
-				topK: {
-					type: 'number',
-					description:
-						'The maximum number of document chunks to return. Use 3 for normal questions, 5 when the question needs broader context, and 8 only for complex cross-file questions.',
-				},
-			},
-			required: ['query'],
-		},
-		execute: async ({ query, topK }) => ragSearch(query, topK),
-	});
+	agent.registerTool(searchDoc.name, searchDoc);
 
 	let isThinking = false;
 	let isOutputting = false;
