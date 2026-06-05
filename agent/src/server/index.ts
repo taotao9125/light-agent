@@ -8,8 +8,7 @@ import type { SessionEvent } from '../agent/agent';
 import AgentSession from '../agent/agent';
 import AgentLoop from '../agent/agentLoop';
 import SessionStore from '../agent/store';
-import { createClient } from '../ai/index';
-import toolRegistry from '../tools';
+import toolRegistry from '../agent/toolRegistry';
 
 const PORT = Number(process.env.AGENT_WS_PORT ?? 8799);
 
@@ -79,16 +78,15 @@ function getPromptText(message: PromptClientMessage): string {
 }
 
 function createSession(sessionId: string) {
-	const provider = createClient({
-		vendorName: 'deepseek',
+	const vender = {
+		name: 'deepseek',
 		apiKey: process.env.AI_DEEP_SEEK_API_KEY as string,
 		baseURL: process.env.AI_DEEP_SEEK_API_HOST as string,
-	});
+		model: 'deepseek-v4-flash',
+	};
 
 	const agentLoop = new AgentLoop({
-		provider,
-		model: 'deepseek-v4-flash',
-		tools: toolRegistry.getToolShapes(),
+		vender,
 	});
 
 	const store = new SessionStore({
@@ -96,9 +94,13 @@ function createSession(sessionId: string) {
 	});
 
 	return new AgentSession({
-		agentLoop,
 		sessionId,
 		store,
+		vender,
+		context: {
+			source: {},
+			contextBuildStrategy: {},
+		},
 	});
 }
 

@@ -10,7 +10,7 @@ type SearchDocResult = {
 	metadata?: Record<string, unknown>;
 };
 
-function formatSearchResults(query: string, topK: number, results: SearchDocResult[]) {
+export function formatSearchResults(query: string, topK: number, results: SearchDocResult[]) {
 	if (!results.length) {
 		return ['No matching private documents found.', `Query: ${query}`, `Top K: ${topK}`].join('\n');
 	}
