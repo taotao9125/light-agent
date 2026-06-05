@@ -5,8 +5,7 @@ env:
   DEPLOY_DIR: /root/booking
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:

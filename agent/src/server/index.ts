@@ -5,10 +5,8 @@ import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import 'dotenv/config';
 
 import type { SessionEvent } from '../agent/agent';
-import AgentSession from '../agent/agent';
-import AgentLoop from '../agent/agentLoop';
+import Agent from '../agent/agent';
 import SessionStore from '../agent/store';
-import toolRegistry from '../agent/toolRegistry';
 
 const PORT = Number(process.env.AGENT_WS_PORT ?? 8799);
 
@@ -77,7 +75,7 @@ function getPromptText(message: PromptClientMessage): string {
 	return text.trim();
 }
 
-function createSession(sessionId: string) {
+async function createAgent(sessionId: string) {
 	const vender = {
 		name: 'deepseek',
 		apiKey: process.env.AI_DEEP_SEEK_API_KEY as string,
@@ -85,15 +83,11 @@ function createSession(sessionId: string) {
 		model: 'deepseek-v4-flash',
 	};
 
-	const agentLoop = new AgentLoop({
-		vender,
-	});
-
 	const store = new SessionStore({
 		rootDir: path.resolve(process.cwd(), '.agent/sessions'),
 	});
 
-	return new AgentSession({
+	const agent = new Agent({
 		sessionId,
 		store,
 		vender,
@@ -102,15 +96,17 @@ function createSession(sessionId: string) {
 			contextBuildStrategy: {},
 		},
 	});
+
+	return agent;
 }
 
 const wss = new WebSocketServer({ port: PORT });
 
-wss.on('connection', (ws) => {
+wss.on('connection', async (ws) => {
 	const sessionId = `session_${randomUUID()}`;
-	const session = createSession(sessionId);
+	const agent = await createAgent(sessionId);
 
-	session.on((event) => {
+	agent.on((event) => {
 		send(ws, {
 			type: 'agent_event',
 			sessionId,
@@ -147,7 +143,7 @@ wss.on('connection', (ws) => {
 		}
 
 		if (message.type === 'interrupt') {
-			session.interrupt();
+			agent.interrupt();
 			return;
 		}
 
@@ -167,7 +163,7 @@ wss.on('connection', (ws) => {
 		});
 
 		try {
-			await session.prompt(prompt);
+			await agent.prompt(prompt);
 			send(ws, {
 				type: 'prompt_done',
 				sessionId,

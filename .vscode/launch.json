@@ -36,23 +36,6 @@
       ]
     },
     {
-      "name": "SESSION",
-      "type": "node",
-      "request": "launch",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "--import",
-        "tsx"
-      ],
-      "program": "${workspaceFolder}/agent/src/server/index.ts",
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}/agent",
-      "skipFiles": [
-        "<node_internals>/**",
-       "node_modules/**"
-      ]
-    },
-    {
       "type": "node",
       "request": "attach",
       "name": "debug express",
