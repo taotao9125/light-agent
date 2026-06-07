@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import type { Tool } from '../../agent/toolRegistry';
+import type { Tool } from '../../agent/tool';
 import { errorText, textResult } from './toolResult';
 
 const listFilesTool: Tool.Definition = {

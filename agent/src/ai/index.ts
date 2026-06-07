@@ -1,5 +1,5 @@
 import type { AgentEvent } from '../protocol/events';
-import type { Tool } from '../protocol/tool';
+import type { Tool } from '../agent/tool';
 import GoogleAdaptor from './adaptors/google';
 import OpenAIAdaptor from './adaptors/openai';
 

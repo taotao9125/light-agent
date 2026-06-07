@@ -5,7 +5,7 @@ import type { ActionEvent, AgentEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
 import type { Context } from './contextBuilder';
 import { stringify } from './helpers';
-import type { Tool } from './toolRegistry';
+import type { Tool } from './tool';
 
 /** Agent loop runtime configuration. */
 export namespace Loop {

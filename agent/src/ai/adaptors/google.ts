@@ -1,12 +1,12 @@
 import type { Content, FunctionCall, FunctionDeclaration, GenerateContentParameters } from '@google/genai';
 import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
 import { type AgentEvent, EventType } from '../../protocol/events';
-import { parseTurnEventGroup, splitEventsToRoundGroups } from '../../protocol/eventGroups';
+import { EventRound } from '../../agent/groupEventRounds';
 import { stringifyContent } from '../helpers';
 import type { Vender } from '../index';
 
 const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
-	const roundGroups = splitEventsToRoundGroups(events);
+	const roundGroups = EventRound.splitIntoRounds(events);
 
 	return roundGroups.flatMap((roundGroup): Content[] => {
 		const { input, turns } = roundGroup;
@@ -20,7 +20,7 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 		}
 
 		for (const turnEvents of turns) {
-			const { thought, actions, observations, output } = parseTurnEventGroup(turnEvents);
+			const { thought, actions, observations, output } = EventRound.parseTurn(turnEvents);
 
 			const thoughtText = thought?.type === EventType.THOUGHT && thought.text ? thought.text : null;
 			const outputText = output?.type === EventType.OUTPUT && output.text ? output.text : null;

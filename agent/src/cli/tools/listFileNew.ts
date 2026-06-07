@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import type { Tool } from '../../agent/toolRegistry';
+import type { Tool } from '../../agent/tool';
 import { errorText, textResult } from './toolResult';
 
 const execFileAsync = promisify(execFile);

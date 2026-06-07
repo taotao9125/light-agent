@@ -1,4 +1,4 @@
-import { toRoundMap } from '../protocol/eventGroups';
+import { EventRound } from './groupEventRounds';
 import type { AgentEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
 import { pipe, stringify, truncateText } from './helpers';
@@ -56,7 +56,7 @@ function formatRulesToPrompt(rules: Context.Rule[]): string {
 /** keep latest x rounds, not turns */
 function keepRecentRounds(maxRecentRounds: number) {
 	return (events: AgentEvent[]): AgentEvent[] => {
-		const eventRounds = [...toRoundMap(events).values()];
+		const eventRounds = [...EventRound.groupByRoundId(events).values()];
 		if (eventRounds.length <= maxRecentRounds) return eventRounds.flat();
 		return eventRounds.slice(-maxRecentRounds).flat();
 	};

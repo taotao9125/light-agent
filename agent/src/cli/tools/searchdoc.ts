@@ -1,4 +1,4 @@
-import type { Tool } from '../../agent/toolRegistry';
+import type { Tool } from '../../agent/tool';
 import ragSearch from '../../rag/index';
 import { errorText, textResult } from './toolResult';
 

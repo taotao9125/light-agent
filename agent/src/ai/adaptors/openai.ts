@@ -5,7 +5,7 @@ import type {
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions';
 import { type AgentEvent, EventType } from '../../protocol/events';
-import { parseTurnEventGroup, splitEventsToRoundGroups } from '../../protocol/eventGroups';
+import { EventRound } from '../../agent/groupEventRounds';
 import { stringifyContent } from '../helpers';
 import type { Vender } from '../index';
 
@@ -38,7 +38,7 @@ import type { Vender } from '../index';
 
 // 注意这是 deepseek 要求的结构, 回传时, 都塞进一个 assistant message 里
 const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMessageParam[] => {
-	const roundGroups = splitEventsToRoundGroups(events);
+	const roundGroups = EventRound.splitIntoRounds(events);
 
 	const messages = roundGroups.flatMap((roundGroup): ChatCompletionMessageParam[] => {
 		const groupMessages: ChatCompletionMessageParam[] = [];
@@ -52,7 +52,7 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 		}
 
 		for (const turnEvents of turns) {
-			const { thought, actions, observations, output } = parseTurnEventGroup(turnEvents);
+			const { thought, actions, observations, output } = EventRound.parseTurn(turnEvents);
 
 			const thoughtText = thought?.type === EventType.THOUGHT && thought.text ? thought.text : null;
 			const outputText = output?.type === EventType.OUTPUT && output.text ? output.text : null;

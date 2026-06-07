@@ -9,7 +9,7 @@ export type { SessionEvent } from './helpers';
 
 import { projectAgentEvents } from './helpers';
 import type { SessionStoreInterface } from './store';
-import toolRegistryClass, { type Tool } from './toolRegistry';
+import ToolRegistry, { type Tool } from './tool';
 
 type Config = {
 	sessionId: string;
@@ -59,7 +59,7 @@ export default class Agent implements AgentInterface {
 	private context: Context.BuildInput;
 	private canonicalEvents: AgentEvent[] = [];
 	private listeners: AgentEventListener[] = [];
-	private toolRegistry = new toolRegistryClass();
+	private toolRegistry = new ToolRegistry();
 
 	constructor(config: Config) {
 		this.sessionId = config.sessionId;
