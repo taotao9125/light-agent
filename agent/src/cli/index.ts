@@ -3,7 +3,6 @@ import { stdin, stdout } from 'node:process';
 import readline from 'node:readline/promises';
 import path from 'path';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
-
 import Agent from '../agent/agent';
 import SessionStore from '../agent/store';
 import { cliPrompts } from './prompts';
@@ -33,13 +32,32 @@ function isReadlineAbortError(error: unknown) {
 	return error instanceof Error && 'code' in error && error.code === 'ABORT_ERR';
 }
 
+function formatToolLabel(name: string, args: Record<string, unknown>) {
+	if (typeof args.path === 'string') {
+		return `${name}  ${args.path}`;
+	}
+	if (typeof args.query === 'string') {
+		return `${name}  ${args.query}`;
+	}
+	return `${name}  ${JSON.stringify(args)}`;
+}
+
+function cursorUp(lines: number) {
+	if (lines > 0) {
+		process.stdout.write(`\x1b[${lines}A`);
+	}
+}
+
+function rewriteLine(text: string) {
+	process.stdout.write(`\x1b[2K\r${text}\n`);
+}
+
 async function main() {
 	const sessionId = 'cli_session';
 
 	const sessionStore = new SessionStore({
 		rootDir: path.resolve(process.cwd(), '.agent/sessions'),
 	});
-
 
 	// -------------------------------------------
 
@@ -72,6 +90,9 @@ async function main() {
 	let isWaitingForPrompt = false;
 	let resolvePromptWait: (() => void) | null = null;
 	let interruptPrinted = false;
+	let toolBatchStartedAt = 0;
+	let pendingActions = new Map<string, { name: string; args: Record<string, unknown> }>();
+	let parallelToolLineCount = 0;
 
 	function resetStreamState() {
 		if (isThinking) {
@@ -111,25 +132,73 @@ async function main() {
 				process.stdout.write(event.text);
 				break;
 
-			case 'action_call':
+			case 'actions': {
 				if (isThinking) {
 					process.stdout.write(`${color.reset}\n`);
 					isThinking = false;
 				}
-				process.stdout.write(
-					`${color.yellow}tool: ${event.name} ${JSON.stringify(event.args)}${color.reset}\n`,
-				);
-				break;
 
-			case 'action_result': {
-				if (event.isError) {
-					const detail = typeof event.result === 'string' ? event.result : JSON.stringify(event.result);
+				toolBatchStartedAt = Date.now();
+				pendingActions = new Map(
+					event.actions.map((action) => [action.id, { name: action.name, args: action.args }]),
+				);
+
+				if (event.actions.length === 1) {
+					const action = event.actions[0];
 					process.stdout.write(
-						`${color.red}tool error: ${event.name}${color.reset} ${color.dim}${detail}${color.reset}\n`,
+						`${color.yellow}tool: ${formatToolLabel(action.name, action.args)}${color.reset}\n`,
 					);
-				} else {
-					process.stdout.write(`${color.dim}tool done: ${event.name}${color.reset}\n`);
+					break;
 				}
+
+				process.stdout.write(`${color.yellow}parallel tools (${event.actions.length}):${color.reset}\n`);
+				parallelToolLineCount = event.actions.length;
+				for (const action of event.actions) {
+					process.stdout.write(
+						`  ${color.dim}⟳${color.reset} ${formatToolLabel(action.name, action.args)}\n`,
+					);
+				}
+				break;
+			}
+
+			case 'observations': {
+				const elapsedMs = Date.now() - toolBatchStartedAt;
+				const isParallel = event.observations.length > 1;
+
+				if (!isParallel) {
+					const observation = event.observations[0];
+					const action = pendingActions.get(observation.id);
+					const label = action ? formatToolLabel(action.name, action.args) : observation.name;
+
+					if (observation.isError) {
+						process.stdout.write(
+							`${color.red}tool error: ${label}${color.reset} ${color.dim}${observation.result}${color.reset}\n`,
+						);
+					} else {
+						process.stdout.write(`${color.dim}tool done: ${label}${color.reset}\n`);
+					}
+					pendingActions.clear();
+					break;
+				}
+
+				cursorUp(parallelToolLineCount);
+
+				for (const observation of event.observations) {
+					const action = pendingActions.get(observation.id);
+					const label = action ? formatToolLabel(action.name, action.args) : observation.name;
+
+					if (observation.isError) {
+						rewriteLine(
+							`  ${color.red}✗${color.reset} ${label} ${color.dim}${observation.result}${color.reset}`,
+						);
+					} else {
+						rewriteLine(`  ${color.green}✓${color.reset} ${label}`);
+					}
+				}
+
+				process.stdout.write(`${color.dim}  completed in ${elapsedMs}ms (parallel)${color.reset}\n`);
+				pendingActions.clear();
+				parallelToolLineCount = 0;
 				break;
 			}
 

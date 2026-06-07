@@ -1,8 +1,9 @@
-import { type AgentEvent, EventType } from '../protocol/events';
+import { EventType } from '../protocol/events';
 import AgentLoop from './agentLoop';
 import contextBuilder, { type Context } from './context/contextBuilder';
 
 import type { Vender } from '../ai/index';
+import type { AgentEvent } from '../protocol/events';
 import type { AgentLoopInterface } from './agentLoop';
 import type { AgentEventListener, SessionEvent } from './helpers';
 
@@ -38,8 +39,8 @@ type Job = {
 const COMMITTED_EVENT_TYPES = new Set<string>([
 	EventType.INPUT,
 	EventType.THOUGHT,
-	EventType.ACTION,
-	EventType.OBSERVATION,
+	EventType.ACTIONS,
+	EventType.OBSERVATIONS,
 	EventType.OUTPUT,
 	EventType.AGENT_STOP,
 ]);

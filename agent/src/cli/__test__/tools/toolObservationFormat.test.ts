@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-
 import { formatSearchResults } from '../../tools/searchdoc';
 
 function approximateTokens(text: string) {

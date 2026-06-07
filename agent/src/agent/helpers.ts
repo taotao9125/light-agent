@@ -1,13 +1,13 @@
 import { EventType } from '../protocol/events';
 
-import type { AgentEvent, AgentStopCause, Meta } from '../protocol/events';
+import type { ActionsEvent, AgentEvent, AgentStopCause, Meta, ObservationsEvent } from '../protocol/events';
 
 export type SessionEvent =
 	| { type: 'agent_start'; meta?: Meta }
 	| { type: 'thought_delta'; text: string; meta?: Meta }
 	| { type: 'output_delta'; text: string; meta?: Meta }
-	| { type: 'action_call'; id: string; name: string; args: Record<string, unknown>; meta?: Meta }
-	| { type: 'action_result'; id: string; name: string; result: unknown; isError: boolean; meta?: Meta }
+	| { type: 'actions'; actions: ActionsEvent['actions']; meta?: Meta }
+	| { type: 'observations'; observations: ObservationsEvent['observations']; meta?: Meta }
 	| { type: 'agent_stop'; cause: AgentStopCause; message: string; meta?: Meta };
 
 export type AgentEventListener = (event: SessionEvent) => void;
@@ -23,28 +23,11 @@ export function projectAgentEvents(event: AgentEvent): SessionEvent[] {
 		case EventType.OUTPUT_DELTA:
 			return [{ type: 'output_delta', text: event.text, meta: event.meta }];
 
-		case EventType.ACTION:
-			return [
-				{
-					type: 'action_call',
-					id: event.id,
-					name: event.name,
-					args: event.args,
-					meta: event.meta,
-				},
-			];
+		case EventType.ACTIONS:
+			return [{ type: 'actions', actions: event.actions, meta: event.meta }];
 
-		case EventType.OBSERVATION:
-			return [
-				{
-					type: 'action_result',
-					id: event.id,
-					name: event.name,
-					result: event.result,
-					isError: event.isError,
-					meta: event.meta,
-				},
-			];
+		case EventType.OBSERVATIONS:
+			return [{ type: 'observations', observations: event.observations, meta: event.meta }];
 
 		case EventType.AGENT_STOP:
 			return [

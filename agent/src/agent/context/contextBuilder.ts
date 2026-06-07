@@ -1,6 +1,6 @@
 import { EventType } from '../../protocol/events';
 import { EventRound } from '../groupEventRounds';
-import { pipe, stringify, truncateText } from '../helpers';
+import { pipe, truncateText } from '../helpers';
 import { buildPromptContext } from './promptContextBuilder';
 
 import type { AgentEvent } from '../../protocol/events';
@@ -39,15 +39,18 @@ function keepRecentRounds(maxRecentRounds: number) {
 }
 
 function truncateObservation(maxSingleObservationToken: number) {
+	const maxLength = maxSingleObservationToken * CHAR_LENGTH_PER_TOKEN;
+
 	return (events: AgentEvent[]): AgentEvent[] => {
 		return events.map((event) => {
-			if (event.type !== EventType.OBSERVATION) return event;
-
-			const result = typeof event.result === 'string' ? event.result : stringify(event.result);
+			if (event.type !== EventType.OBSERVATIONS) return event;
 
 			return {
 				...event,
-				result: truncateText(result, maxSingleObservationToken * CHAR_LENGTH_PER_TOKEN),
+				observations: event.observations.map((observation) => ({
+					...observation,
+					result: truncateText(observation.result, maxLength),
+				})),
 			};
 		});
 	};

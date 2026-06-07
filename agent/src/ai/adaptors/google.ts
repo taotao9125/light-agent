@@ -1,11 +1,10 @@
 import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
-
 import { EventRound } from '../../agent/groupEventRounds';
-import { type AgentEvent, EventType } from '../../protocol/events';
+import { EventType } from '../../protocol/events';
 import { stringifyContent } from '../helpers';
 
 import type { Content, FunctionCall, FunctionDeclaration, GenerateContentParameters } from '@google/genai';
-
+import type { AgentEvent } from '../../protocol/events';
 import type { Vender } from '../index';
 
 const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
@@ -160,15 +159,20 @@ export default class GoogleAdaptor implements Vender.Adaptor {
 				yield { type: EventType.THOUGHT, text: thoughtTextBuffer };
 			}
 
-			for (const [index, call] of functionCalls.entries()) {
-				if (!call.name) continue;
+			const actions = functionCalls.flatMap((call, index) => {
+				if (!call.name) return [];
 
-				yield {
-					type: EventType.ACTION,
-					id: call.id ?? `google_call_${index}_${call.name}`,
-					name: call.name,
-					args: call.args ?? {},
-				};
+				return [
+					{
+						id: call.id ?? `google_call_${index}_${call.name}`,
+						name: call.name,
+						args: call.args ?? {},
+					},
+				];
+			});
+
+			if (actions.length) {
+				yield { type: EventType.ACTIONS, actions };
 			}
 
 			if (outputTextBuffer) {

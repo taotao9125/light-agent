@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-
 import { buildPromptContext } from '../../context/promptContextBuilder';
 
 describe('buildPromptContext', () => {
@@ -72,9 +71,7 @@ describe('buildPromptContext', () => {
 			],
 		});
 
-		expect(prompt.indexOf('<skillIndexInstructions>')).toBeLessThan(
-			prompt.indexOf('<skillUsageInstructions>'),
-		);
+		expect(prompt.indexOf('<skillIndexInstructions>')).toBeLessThan(prompt.indexOf('<skillUsageInstructions>'));
 	});
 
 	it('无 skillIndex 时不应出现 skill instructions', () => {

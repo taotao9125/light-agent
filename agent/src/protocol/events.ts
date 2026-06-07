@@ -1,13 +1,11 @@
-// 推理重复循环 {InputEvent → ThoughtEvent → ActionEvent → ObservationEvent }
-//                   ↓
-//              OutputEvent（最终输出）
+// 推理重复循环 {Input → Thought → Actions → Observations → Output}
 
 export const EventType = {
 	INPUT: 'input',
 	THOUGHT: 'thought',
 	THOUGHT_DELTA: 'thought_delta',
-	ACTION: 'action',
-	OBSERVATION: 'observation',
+	ACTIONS: 'actions',
+	OBSERVATIONS: 'observations',
 	OUTPUT: 'output',
 	OUTPUT_DELTA: 'output_delta',
 	AGENT_STOP: 'agent_stop',
@@ -37,20 +35,24 @@ export type ThoughtDeltaEvent = {
 	meta?: Meta;
 };
 
-export type ActionEvent = {
-	type: typeof EventType.ACTION;
-	id: string;
-	name: string;
-	args: Record<string, any>;
+export type ActionsEvent = {
+	type: typeof EventType.ACTIONS;
+	actions: {
+		id: string;
+		name: string;
+		args: Record<string, any>;
+	}[];
 	meta?: Meta;
 };
 
-export type ObservationEvent = {
-	type: typeof EventType.OBSERVATION;
-	id: string;
-	name: string;
-	result: any;
-	isError: boolean;
+export type ObservationsEvent = {
+	type: typeof EventType.OBSERVATIONS;
+	observations: {
+		id: string;
+		name: string;
+		result: string;
+		isError: boolean;
+	}[];
 	meta?: Meta;
 };
 
@@ -78,9 +80,9 @@ export type AgentStop = {
 export type AgentEvent =
 	| InputEvent
 	| ThoughtEvent
-	| ThoughtDeltaEvent
-	| ActionEvent
-	| ObservationEvent
-	| OutputDeltaEvent
+	| ActionsEvent
+	| ObservationsEvent
 	| OutputEvent
-	| AgentStop;
+	| AgentStop
+	| ThoughtDeltaEvent
+	| OutputDeltaEvent;

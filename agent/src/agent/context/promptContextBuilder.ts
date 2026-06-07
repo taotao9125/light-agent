@@ -81,8 +81,7 @@ export function buildPromptContext(prompts: Prompts.Source): string {
 		return wrapTag(entry.tag, entry.content);
 	});
 	const runtime = RUNTIME_PROMPT_BLOCKS.map((block) => wrapTag(block.tag, block.content));
-	const skillIndex =
-		skillIndexEntries.length > 0 ? formatSkillIndexInstructions(skillIndexEntries) : undefined;
+	const skillIndex = skillIndexEntries.length > 0 ? formatSkillIndexInstructions(skillIndexEntries) : undefined;
 	const skillUsage =
 		skillIndexEntries.length > 0 ? wrapTag('skillUsageInstructions', SKILL_USAGE_INSTRUCTIONS) : undefined;
 

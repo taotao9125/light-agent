@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
-import { type RawData, WebSocket, WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
+
+import type { RawData } from 'ws';
 import 'dotenv/config';
 
 import Agent from '../agent/agent';

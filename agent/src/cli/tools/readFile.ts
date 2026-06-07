@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import path from 'path';
-
 import { errorText, textResult } from './toolResult';
 
 import type { Tool } from '../../agent/tool';

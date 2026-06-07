@@ -2,13 +2,14 @@
  * contextBuilder 集成测试
  */
 import { describe, expect, it } from 'vitest';
-
-import { type AgentEvent, EventType, type ObservationEvent } from '../../../protocol/events';
+import { EventType } from '../../../protocol/events';
 import contextBuilder, { type Context } from '../../context/contextBuilder';
+
+import type { AgentEvent, ObservationsEvent } from '../../../protocol/events';
 
 const TRUNCATED_MARKER = '...[truncated]...';
 
-function roundEvents(roundId: string, index: number, observationResult: unknown = `result-${index}`): AgentEvent[] {
+function roundEvents(roundId: string, index: number, observationResult: string = `result-${index}`): AgentEvent[] {
 	return [
 		{
 			type: EventType.INPUT,
@@ -22,18 +23,26 @@ function roundEvents(roundId: string, index: number, observationResult: unknown 
 			meta: { roundId, turn: 1 },
 		},
 		{
-			type: EventType.ACTION,
-			id: 'action',
-			name: 'read_file',
-			args: { path: `file-${index}.ts` },
+			type: EventType.ACTIONS,
+			actions: [
+				{
+					id: 'action',
+					name: 'read_file',
+					args: { path: `file-${index}.ts` },
+				},
+			],
 			meta: { roundId, turn: 1 },
 		},
 		{
-			type: EventType.OBSERVATION,
-			id: 'obs',
-			name: 'read_file',
-			result: observationResult,
-			isError: false,
+			type: EventType.OBSERVATIONS,
+			observations: [
+				{
+					id: 'obs',
+					name: 'read_file',
+					result: observationResult,
+					isError: false,
+				},
+			],
 			meta: { roundId, turn: 1 },
 		},
 		{
@@ -77,45 +86,61 @@ describe('contextBuilder', () => {
 		expect(context.systemPrompt).toContain('<contextWindowInstructions>');
 	});
 
-	it('应截断超长的 string 类型 observation', () => {
+	it('应截断超长的 observation result', () => {
 		const longText = 'x'.repeat(500);
 		const events: AgentEvent[] = [
 			{
-				type: EventType.OBSERVATION,
-				id: 'obs-1',
-				name: 'read_file',
-				result: longText,
-				isError: false,
+				type: EventType.OBSERVATIONS,
+				observations: [
+					{
+						id: 'obs-1',
+						name: 'read_file',
+						result: longText,
+						isError: false,
+					},
+				],
 				meta: { roundId: 'round-0', turn: 1 },
 			},
 		];
 
 		const context = defaultInput(events, { maxSingleObservationToken: 10 });
-		const result = (context.events[0] as ObservationEvent).result;
+		const observationsEvent = context.events[0] as ObservationsEvent;
+		const result = observationsEvent.observations[0].result;
 
 		expect(result.length).toBeLessThan(longText.length);
 		expect(result).toContain(TRUNCATED_MARKER);
 	});
 
-	it('应对非 string 的 observation 先 stringify 再截断', () => {
-		const files = Array.from({ length: 50 }, (_, index) => `file-${index}.ts`);
+	it('应对 batch 内多条 observation 分别截断', () => {
+		const longText = 'x'.repeat(500);
 		const events: AgentEvent[] = [
 			{
-				type: EventType.OBSERVATION,
-				id: 'obs-1',
-				name: 'list_files',
-				result: { content: files, isError: false },
-				isError: false,
+				type: EventType.OBSERVATIONS,
+				observations: [
+					{
+						id: 'obs-1',
+						name: 'read_file',
+						result: longText,
+						isError: false,
+					},
+					{
+						id: 'obs-2',
+						name: 'list_files',
+						result: longText,
+						isError: false,
+					},
+				],
 				meta: { roundId: 'round-0', turn: 1 },
 			},
 		];
 
-		const context = defaultInput(events, { maxSingleObservationToken: 20 });
-		const result = (context.events[0] as ObservationEvent).result;
+		const context = defaultInput(events, { maxSingleObservationToken: 10 });
+		const observationsEvent = context.events[0] as ObservationsEvent;
 
-		expect(typeof result).toBe('string');
-		expect(result).toContain(TRUNCATED_MARKER);
-		expect(result).toContain('file-0.ts');
+		for (const observation of observationsEvent.observations) {
+			expect(observation.result.length).toBeLessThan(longText.length);
+			expect(observation.result).toContain(TRUNCATED_MARKER);
+		}
 	});
 
 	it('应只保留最近 N 个 round', () => {
@@ -136,7 +161,9 @@ describe('contextBuilder', () => {
 		});
 
 		expect(pickRounds(context.events)).toEqual(['round-1']);
-		const observation = context.events.find((event) => event.type === EventType.OBSERVATION);
-		expect(observation?.result).toContain(TRUNCATED_MARKER);
+		const observationsEvent = context.events.find((event) => event.type === EventType.OBSERVATIONS) as
+			| ObservationsEvent
+			| undefined;
+		expect(observationsEvent?.observations[0].result).toContain(TRUNCATED_MARKER);
 	});
 });

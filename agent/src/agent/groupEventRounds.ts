@@ -1,11 +1,6 @@
-import {
-	type ActionEvent,
-	type AgentEvent,
-	EventType,
-	type ObservationEvent,
-	type OutputEvent,
-	type ThoughtEvent,
-} from '../protocol/events';
+import { EventType } from '../protocol/events';
+
+import type { ActionsEvent, AgentEvent, ObservationsEvent, OutputEvent, ThoughtEvent } from '../protocol/events';
 
 /** 按 round / turn 分组 canonical events，供 context 裁剪与 adaptor 消息投影。 */
 export namespace EventRound {
@@ -17,8 +12,8 @@ export namespace EventRound {
 	export type TurnParts = {
 		thought?: ThoughtEvent;
 		output?: OutputEvent;
-		actions: ActionEvent[];
-		observations: ObservationEvent[];
+		actions: ActionsEvent['actions'];
+		observations: ObservationsEvent['observations'];
 	};
 
 	export function groupByRoundId(events: AgentEvent[]): Map<string, AgentEvent[]> {
@@ -59,11 +54,16 @@ export namespace EventRound {
 	}
 
 	export function parseTurn(turnEvents: AgentEvent[]): TurnParts {
+		const actionsEvent = turnEvents.find((event): event is ActionsEvent => event.type === EventType.ACTIONS);
+		const observationsEvent = turnEvents.find(
+			(event): event is ObservationsEvent => event.type === EventType.OBSERVATIONS,
+		);
+
 		return {
 			thought: turnEvents.find((event): event is ThoughtEvent => event.type === EventType.THOUGHT),
 			output: turnEvents.find((event): event is OutputEvent => event.type === EventType.OUTPUT),
-			actions: turnEvents.filter((event): event is ActionEvent => event.type === EventType.ACTION),
-			observations: turnEvents.filter((event): event is ObservationEvent => event.type === EventType.OBSERVATION),
+			actions: actionsEvent?.actions ?? [],
+			observations: observationsEvent?.observations ?? [],
 		};
 	}
 }

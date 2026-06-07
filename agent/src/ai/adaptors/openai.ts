@@ -1,7 +1,6 @@
 import OpenAI from 'openai';
-
 import { EventRound } from '../../agent/groupEventRounds';
-import { type AgentEvent, EventType } from '../../protocol/events';
+import { EventType } from '../../protocol/events';
 import { stringifyContent } from '../helpers';
 
 import type {
@@ -9,7 +8,7 @@ import type {
 	ChatCompletionCreateParamsStreaming,
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions';
-
+import type { AgentEvent } from '../../protocol/events';
 import type { Vender } from '../index';
 
 /** deepseek 的每一轮思考模式 message 结构
@@ -206,14 +205,14 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 				yield { type: EventType.THOUGHT, text: thoughtTextBuffer };
 			}
 
-			// 注意，工具调用要在当前这次 LLM 的输出迭代完毕后再 yield 出去，统一判断工具输出的完整性，最终确定有没有工具调用，没有那就是最终结束了
-			for (const call of pendingToolCalls.values()) {
-				yield {
-					type: EventType.ACTION,
-					id: call.id,
-					name: call.name,
-					args: call.args ? JSON.parse(call.args) : {},
-				};
+			const actions = [...pendingToolCalls.values()].map((call) => ({
+				id: call.id,
+				name: call.name,
+				args: call.args ? JSON.parse(call.args) : {},
+			}));
+
+			if (actions.length) {
+				yield { type: EventType.ACTIONS, actions };
 			}
 
 			if (outputTextBuffer) {

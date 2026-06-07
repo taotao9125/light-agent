@@ -1,11 +1,9 @@
-import { randomUUID } from 'node:crypto';
-
 import { createClient } from '../ai/index';
 import { EventType } from '../protocol/events';
 import { stringify } from './helpers';
 
 import type { CreateClient, Vender } from '../ai/index';
-import type { ActionEvent, AgentEvent } from '../protocol/events';
+import type { ActionsEvent, AgentEvent, ObservationsEvent } from '../protocol/events';
 import type { Context } from './context/contextBuilder';
 import type { Tool } from './tool';
 
@@ -30,6 +28,10 @@ type LoopDeps = {
 export interface AgentLoopInterface {
 	prompt: (prompt: string, options: LoopDeps) => Promise<void>;
 	on: (listener: AgentEventListener) => void;
+}
+
+function randomId() {
+	return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function toToolsMap(tools: Tool.Definition[]) {
@@ -64,13 +66,55 @@ class AgentLoop implements AgentLoopInterface {
 		});
 	}
 
+	private async runToolAction(
+		action: ActionsEvent['actions'][number],
+		toolsMap: Map<string, Tool.Definition>,
+		abortSignal: AbortSignal,
+	): Promise<ObservationsEvent['observations'][number]> {
+		const { name, id, args } = action;
+		const toolCommand = toolsMap.get(name);
+
+		if (!toolCommand) {
+			return {
+				id,
+				name,
+				isError: true,
+				result: `Unknown tool: ${name}`,
+			};
+		}
+
+		try {
+			const { isError, content } = await toolCommand.execute(args, {
+				signal: abortSignal,
+			});
+
+			return {
+				id,
+				name,
+				isError,
+				result: stringify(content),
+			};
+		} catch (e) {
+			return {
+				id,
+				name,
+				isError: true,
+				result: JSON.stringify([
+					{
+						type: 'text',
+						text: e instanceof Error ? e.message : String(e),
+					},
+				]),
+			};
+		}
+	}
+
 	/**
 	 *
 	 * abort 时机
 	 * 1. turn 开始前
 	 * 2. stream 开始前
-	 * 3. tool 开始前
-	 * 4. tool 执行后
+	 * 3. tool 并行执行后
 	 *
 	 * 退出 loop 的机制,
 	 * 1. stop 事件发生, 分三种, llm, runtime 限制, user 取消， 需要 emit agent_stop, 统一 return 退出
@@ -82,7 +126,7 @@ class AgentLoop implements AgentLoopInterface {
 		const { abortSignal } = loopDeps;
 
 		// 一个 input 到 output 为一个 roundId
-		const roundId = `round_id_${randomUUID()}`;
+		const roundId = `round_id_${randomId()}`;
 		let turn = 0;
 
 		const emitAbort = () => {
@@ -107,7 +151,7 @@ class AgentLoop implements AgentLoopInterface {
 
 			turn++;
 
-			const turnActionEvents: ActionEvent[] = [];
+			let turnActions: ActionsEvent['actions'] = [];
 			// 这就支持了动态注册工具的能力
 			const tools = loopDeps.pullToolsSnap();
 			const toolsMap = toToolsMap(tools);
@@ -152,15 +196,8 @@ class AgentLoop implements AgentLoopInterface {
 						this.emit({ type: EventType.THOUGHT, text: chunk.text, meta: { roundId, turn } });
 						break;
 
-					// 搜集 action 命令，需要等把流迭代完了, 才能知道有没有指令来决定是否进行下一轮
-					case EventType.ACTION:
-						turnActionEvents.push({
-							...chunk,
-							meta: {
-								roundId,
-								turn,
-							},
-						});
+					case EventType.ACTIONS:
+						turnActions = chunk.actions;
 						break;
 
 					case EventType.OUTPUT_DELTA:
@@ -175,67 +212,47 @@ class AgentLoop implements AgentLoopInterface {
 				}
 			}
 
-			if (!turnActionEvents.length) {
+			if (!turnActions.length) {
 				return;
 			}
 
-			for (const action of turnActionEvents) {
-				if (abortSignal.aborted) {
-					emitAbort();
-					return;
-				}
+			const meta = { roundId, turn };
 
-				const { name, id, args } = action;
-				this.emit(action);
-				const toolCommand = toolsMap.get(name);
-				const observationBase = {
-					type: EventType.OBSERVATION,
-					id,
-					name,
-					meta: { roundId, turn },
-				};
-				// 外部环境不存在，回传给 ai， 它做下一步决策
-				if (!toolCommand) {
-					this.emit({
-						...observationBase,
-						isError: true,
-						result: `Unknown tool: ${action.name}`,
-					});
-					continue;
-				}
+			this.emit({
+				type: EventType.ACTIONS,
+				actions: turnActions,
+				meta,
+			});
 
-				try {
-					const { isError, content } = await toolCommand.execute(args, {
-						signal: abortSignal,
-					});
+			const settled = await Promise.allSettled(
+				turnActions.map((action) => this.runToolAction(action, toolsMap, abortSignal)),
+			);
 
-					// 外部执行错误也回传给 ai， 它做下一步决策
-					this.emit({
-						...observationBase,
-						isError,
-						result: stringify(content),
-					});
-				} catch (e) {
-					// 兜底
-					// 可能工具里面 abortSignal.throwIfAborted()
-					if (abortSignal.aborted) {
-						emitAbort();
-						return;
-					}
-
-					// 防止没按照约定格式返回错误
-					this.emit({
-						...observationBase,
-						isError: true,
-						result: JSON.stringify([
-							{
-								type: 'text',
-								text: e instanceof Error ? e.message : String(e),
-							},
-						]),
-					});
-				}
+			if (abortSignal.aborted) {
+				emitAbort();
+				return;
 			}
+
+			const observations = settled.map((result, index) => {
+				if (result.status === 'fulfilled') {
+					return result.value;
+				}
+
+				const action = turnActions[index];
+				const rejectReason = result.reason;
+				return {
+					id: action.id,
+					name: action.name,
+					isError: true,
+					result: rejectReason instanceof Error ? rejectReason.message : String(result.reason),
+				};
+			});
+
+			this.emit({
+				type: EventType.OBSERVATIONS,
+				observations,
+				meta,
+			});
 		}
 	}
 

@@ -21,8 +21,9 @@ CLI / Server
 | `agent/context/runtimePrompt.constants.ts` | `RUNTIME_PROMPT_BLOCKS` 常量 |
 | `agent/context/promptContextBuilder.ts` | `buildPromptContext(prompts)` |
 | `agent/context/contextBuilder.ts` | `Context.*` 入口：events 裁剪 + 调 promptContextBuilder |
-| `agent/agentLoop.ts` | `Loop.*`：LLM ↔ tool 循环 |
+| `agent/agentLoop.ts` | `Loop.*`：LLM ↔ tool 循环（并行 execute） |
 | `agent/agent.ts` | 会话编排、事件持久化、tool 调度 |
+| `agent/helpers.ts` | `SessionEvent` 投影、`projectAgentEvents`、字符串工具 |
 | `agent/store.ts` | `Session.*`：JSONL 持久化 |
 | `ai/` | `Vender.*` + adaptor 工厂 |
 | `cli/prompts.ts` | CLI `identity` + 可选 `instructions` |
@@ -200,8 +201,16 @@ type LoopDeps = {
 // 每轮 LLM 调用：
 const { systemPrompt, events } = pullContextSnap();
 const tools = pullToolsSnap().map(/* → Tool.Meta */);
-for await (const event of venderAdaptor.stream({ input: events, tools, systemPrompt })) { ... }
+for await (const chunk of venderAdaptor.stream({ input: events, tools, systemPrompt })) {
+  // thought_delta / output_delta 流式 emit
+  // stream 结束后 adaptor yield ActionsEvent（整批 tool calls）
+}
+// 有 actions → 并行 execute → emit ObservationsEvent
 ```
+
+- adaptor 在 **stream 迭代完毕** 后 yield 单个 `ActionsEvent`，不在 delta 阶段逐条 yield action
+- tool 执行用 `Promise.allSettled`；abort 在全部 settled 后检查，取消时不 emit `observations`
+- `roundId` 用进程内 `randomId()` 生成，不依赖 Node `crypto`
 
 ## 职责划分
 
@@ -216,7 +225,7 @@ AgentLoop
   pulls context snapshot（contextBuilder）
   pulls tool snapshot
   runs Vender.Adaptor stream
-  executes Tool.Definition → ObservationEvent
+  emit actions → Promise.allSettled 并行 execute → emit observations
 
 ContextBuilder
   buildPromptContext(prompts) + events 裁剪
@@ -224,6 +233,9 @@ ContextBuilder
 EventRound（groupEventRounds.ts）
   groupByRoundId / splitIntoRounds / parseTurn
   供 contextBuilder 与 adaptor 使用，不属于 protocol
+
+helpers.projectAgentEvents
+  canonical AgentEvent → SessionEvent（接入层 UI / WS）
 ```
 
 ## Event Log
@@ -233,26 +245,74 @@ EventRound（groupEventRounds.ts）
 ```text
 InputEvent
 ThoughtEvent | ThoughtDeltaEvent
-ActionEvent*
-ObservationEvent*
+ActionsEvent          ← 一轮 tool 调用 batch（0..n 条 action）
+ObservationsEvent     ← 对应 observations batch（与 actions 同序、同 id）
 OutputEvent | OutputDeltaEvent
 AgentStop
 ```
 
-`ActionEvent` 触发 tool 执行并追加 `ObservationEvent`；无 action 时当前 user turn 结束。
+单轮 tool 流程：
+
+```text
+LLM stream 结束
+  → adaptor yield ActionsEvent（actions[]）
+  → AgentLoop emit actions（commit）
+  → Promise.allSettled 并行 execute
+  → AgentLoop emit observations（commit）
+  → 进入下一轮 stream
+```
+
+无 `actions` 时有 `output` 则当前 round 结束。
+
+### ActionsEvent / ObservationsEvent
+
+```typescript
+type ActionsEvent = {
+  type: 'actions';
+  actions: { id: string; name: string; args: Record<string, unknown> }[];
+  meta?: Meta;
+};
+
+type ObservationsEvent = {
+  type: 'observations';
+  observations: { id: string; name: string; result: string; isError: boolean }[];
+  meta?: Meta;
+};
+```
+
+- `observations[i]` 与 `actions[i]` 按 **index + id** 对齐
+- `result` 为 **string**（tool 返回值经 `stringify` 序列化）
+- committed 事件：`input`、`thought`、`actions`、`observations`、`output`、`agent_stop`（不含 delta）
+
+### SessionEvent 投影
+
+`Agent.on()` 回调的是 **SessionEvent**（`helpers.ts`），不是 raw `AgentEvent`：
+
+```typescript
+type SessionEvent =
+  | { type: 'agent_start'; meta?: Meta }           // ← input
+  | { type: 'thought_delta'; text: string; meta?: Meta }
+  | { type: 'output_delta'; text: string; meta?: Meta }
+  | { type: 'actions'; actions: ActionsEvent['actions']; meta?: Meta }
+  | { type: 'observations'; observations: ObservationsEvent['observations']; meta?: Meta }
+  | { type: 'agent_stop'; cause; message; meta?: Meta };
+```
+
+字段名与 canonical 协议一致；仅 `agent_start` 等为 UI 衍生命名。CLI 对多个 action 展示 `parallel tools (N):` 进度。
 
 ## Vender Adaptor
 
 Adaptor 把 canonical events 投影为厂商 API 格式；DeepSeek/OpenAI/Google 差异封装在 `ai/adaptors/` 内。
 
 - 输入：`Vender.StreamInput`（events + tools + systemPrompt）
-- 输出：`AsyncIterable<AgentEvent>`
+- 输出：`AsyncIterable<AgentEvent>`（流式 delta + stream 结束后的 `thought` / `actions` / `output`）
+- 读 history：`EventRound.parseTurn` 从 turn 内取出 `actions[]`、`observations[]` 再投影为厂商 message
 
 ## Tools
 
 - 类型与注册：`agent/tool.ts`（`Tool.Meta`、`Tool.Definition`、`ToolRegistry`）
 - 实现：`cli/tools/*`，通过 `Agent.registerTool()` 注册
-- 模型返回 action → registry 查找 → `execute()` → observation
+- 模型返回 actions batch → registry 并行 lookup + `execute()` → observations batch
 
 ## Session 设计对比
 
