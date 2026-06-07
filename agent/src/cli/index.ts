@@ -7,6 +7,7 @@ import Agent from '../agent/agent';
 import SessionStore from '../agent/store';
 
 import loadRuleSources from './loadRuleSource';
+import { productRules } from './prompts';
 import listFilesToolNew from './tools/listFileNew';
 import readFileTool from './tools/readFile';
 import searchDoc from './tools/searchdoc';
@@ -40,7 +41,7 @@ async function main() {
 		rootDir: path.resolve(process.cwd(), '.agent/sessions'),
 	});
 
-	const rulesSource = await loadRuleSources(process.cwd());
+	// const rulesSource = await loadRuleSources(process.cwd());
 
 	const agent = new Agent({
 		vender: {
@@ -53,7 +54,7 @@ async function main() {
 		store: sessionStore,
 		context: {
 			source: {
-				rules: rulesSource,
+				rules: [...productRules],
 			},
 			contextBuildStrategy: {
 				maxSingleObservationToken: 3000,
@@ -65,6 +66,12 @@ async function main() {
 	agent.registerTool(readFileTool.name, readFileTool);
 	agent.registerTool(listFilesToolNew.name, listFilesToolNew);
 	agent.registerTool(searchDoc.name, searchDoc);
+
+
+
+
+
+
 
 	let isThinking = false;
 	let isOutputting = false;

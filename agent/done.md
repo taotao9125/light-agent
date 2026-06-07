@@ -1,16 +1,16 @@
-### provider, use Adapter Pattern to <span style="color:#d73a49">normalize</span> vendor-specific APIs <span style="color:#d73a49">to</span> AiProvider
+### vender adaptor, use Adapter Pattern to <span style="color:#d73a49">normalize</span> vendor-specific APIs <span style="color:#d73a49">to</span> Vender.Adaptor
 
-  #### The provider layer normalizes vendor-specific model APIs to one internal AiProvider interface.
+  #### The vender adaptor layer normalizes vendor-specific model APIs to one internal Vender.Adaptor interface.
 
   #### Explanation:
   <span style="color:#d73a49">Normalize</span> OpenAI SDK calls <span style="color:#d73a49">to</span>
-  AiProvider.chat.
+  Vender.Adaptor.stream.
   <span style="color:#d73a49">to</span> AgentEvent.
-  <span style="color:#d73a49">to</span> the same OpenAI adapter.
+  <span style="color:#d73a49">to</span> the same OpenAI adaptor.
 
-  ### provider factory, use Factory Pattern to <span style="color:#d73a49">map</span> provider name <span style="color:#d73a49">to</span> provider instance
+  ### vender factory, use Factory Pattern to <span style="color:#d73a49">map</span> vender name <span style="color:#d73a49">to</span> adaptor instance
 
-  #### The provider factory maps a provider name to the correct provider instance.
+  #### The vender factory maps a vender name to the correct adaptor instance.
 
   #### Explanation:
   <span style="color:#d73a49">Map</span> openai <span style="color:#d73a49">to</span> OpenAIAdaptor.
@@ -47,7 +47,7 @@
 
   ### message, use DTO to <span style="color:#d73a49">represent</span> model context <span style="color:#d73a49">as</span> typed records
 
-  #### Messages represent model context as typed records exchanged with the provider.
+  #### Messages represent model context as typed records exchanged with the vender adaptor.
 
   #### Explanation:
   <span style="color:#d73a49">Represent</span> user input <span style="color:#d73a49">as</span> UserMessage.
@@ -64,9 +64,9 @@
   tool_call.
   tool_result.
 
-  ### OpenAI adapter, use Anti-Corruption Layer to <span style="color:#d73a49">translate</span> OpenAI schema <span style="color:#d73a49">to</span> runtime schema
+  ### OpenAI adaptor, use Anti-Corruption Layer to <span style="color:#d73a49">translate</span> OpenAI schema <span style="color:#d73a49">to</span> runtime schema
 
-  #### The OpenAI adapter translates OpenAI-specific schema to internal runtime schema.
+  #### The OpenAI adaptor translates OpenAI-specific schema to internal runtime schema.
 
   #### Explanation:
   <span style="color:#d73a49">Translate</span> tool_calls <span style="color:#d73a49">to</span> toolCalls.

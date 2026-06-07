@@ -2,9 +2,9 @@ import { readFile } from 'node:fs/promises';
 import fg from 'fast-glob';
 import path from 'path';
 
-export default async function loadRuleSources(
-	cwd: string,
-): Promise<{ name?: string; path?: string; content: string }[]> {
+import type { Context } from '../agent/contextBuilder';
+
+export default async function loadRuleSources(cwd: string): Promise<Context.Rule[]> {
 	const entries = await fg(
 		// todo: remove path
 		['src/cli/.agent/rules/**/*.md'],
@@ -19,6 +19,7 @@ export default async function loadRuleSources(
 			const filePath = path.resolve(cwd, entry);
 			const content = await readFile(filePath, 'utf-8');
 			return {
+				layer: 'project' as const,
 				name: path.basename(entry),
 				path: entry,
 				content: content.trim(),

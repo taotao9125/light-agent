@@ -1,9 +1,9 @@
 import fs from 'fs/promises';
 import path from 'path';
-import type { ToolDefinition } from '../../agent/types';
+import type { Tool } from '../../agent/toolRegistry';
 import { errorText, textResult } from './toolResult';
 
-const listFilesTool: ToolDefinition = {
+const listFilesTool: Tool.Definition = {
 	name: 'list_files',
 	description: 'List files and directories directly under a directory.',
 	schema: {

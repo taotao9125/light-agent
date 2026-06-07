@@ -1,50 +1,56 @@
+import { toRoundMap } from '../protocol/eventGroups';
 import type { AgentEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
-import { pipe, stringify, toRoundMap, truncateText } from './helpers';
-import type { ContextBuildInput, ContextBuildOuput, ContextBuildStrategy, Rule } from './types';
+import { pipe, stringify, truncateText } from './helpers';
 
-const BASE_RULES: Rule[] = [
-	{
-		name: 'Base Agent Runtime Rules',
-		content: [
-			'## Identity',
-			'- You are an agent running inside an event-driven runtime.',
-			'- You help the user complete tasks by reasoning, using tools, observing results, and producing final output.',
-			'',
-			'## Event Protocol',
-			'- Your work follows this semantic loop: input -> thought -> action -> observation -> output.',
-			'- input is the user or system request.',
-			'- thought is your reasoning about the next step.',
-			'- action is a tool call.',
-			'- observation is the result of a tool call.',
-			'- output is your response to the user.',
-			'',
-			'## Tool Use',
-			'- Use actions when you need external information or external effects.',
-			'- After each action, wait for its observation before deciding the next step.',
-			'- If an observation reports an error, use it to adjust your next step.',
-			'- Do not claim that an action succeeded unless the observation confirms it.',
-			'',
-			'## Completion',
-			'- Continue the loop until the task is complete, blocked, or requires user input.',
-			'- When no more action is needed, produce output.',
-			'- If the task is blocked, explain the blocker clearly.',
-		].join('\n'),
-	},
-];
+/** Context compiler: feed rules/skills in, model-visible view out. */
+export namespace Context {
+	export type RuleLayer = 'runtime' | 'product' | 'project';
+
+	export type Rule = {
+		layer: RuleLayer;
+		content: string;
+		name: string;
+		path?: string;
+	};
+
+	export type SkillIndex = {
+		name: string;
+		description: string;
+		path: string;
+	};
+
+	export type BuildStrategy = {
+		maxSingleObservationToken?: number;
+		keepRecentRounds?: number;
+	};
+
+	export type Source = {
+		rules?: Rule[];
+		skills?: SkillIndex[];
+	};
+
+	export type BuildInput = {
+		source: Source;
+		contextBuildStrategy: BuildStrategy;
+	};
+
+	export type BuildResult = {
+		events: AgentEvent[];
+		systemPrompt: string;
+	};
+}
 
 const CHAR_LENGTH_PER_TOKEN = 4;
 
-function formatRulesToPrompt(ruleTitle: string, rules: Rule[]): string {
+function formatRulesToPrompt(rules: Context.Rule[]): string {
 	if (!rules.length) return '';
-	const rulePrompts = [
-		`# ${ruleTitle}`,
-		rules.map((rule) => {
-			return [rule.name ? `## Rule: ${rule.name}` : '', rule.content].filter(Boolean).join('\n\n');
-		}),
-	].join('\n\n');
 
-	return rulePrompts;
+	return rules
+		.map((rule) => {
+			return [rule.name ? `## Rule: ${rule.name}` : '', rule.content].filter(Boolean).join('\n\n');
+		})
+		.join('\n\n');
 }
 
 /** keep latest x rounds, not turns */
@@ -79,7 +85,7 @@ function cleanEvents(eventType: string) {
 }
 
 // canonical events rebuild pipe line: window first, then truncate
-function rebuildEvents(contextBuildStrategy: ContextBuildStrategy) {
+function rebuildEvents(contextBuildStrategy: Context.BuildStrategy) {
 	return pipe<AgentEvent[]>(
 		cleanEvents(EventType.AGENT_STOP),
 		keepRecentRounds(contextBuildStrategy.keepRecentRounds ?? Infinity),
@@ -87,18 +93,15 @@ function rebuildEvents(contextBuildStrategy: ContextBuildStrategy) {
 	);
 }
 
-function rebuildSystemPrompt(rules: Rule[]) {
-	return [
-		formatRulesToPrompt('BASE AGENT RUNTIME RULES', BASE_RULES),
-		formatRulesToPrompt('PROJECT RULES', rules),
-	].join('\n\n');
+function rebuildSystemPrompt(rules: Context.Rule[] = []) {
+	return formatRulesToPrompt(rules);
 }
 
-export default function contextBuilder(input: ContextBuildInput & { events: AgentEvent[] }): ContextBuildOuput {
+export default function contextBuilder(input: Context.BuildInput & { events: AgentEvent[] }): Context.BuildResult {
 	const { source, contextBuildStrategy, events } = input;
 
 	return {
-		systemPrompt: rebuildSystemPrompt(source.rules ?? []),
+		systemPrompt: rebuildSystemPrompt(source.rules),
 		events: rebuildEvents(contextBuildStrategy)(events),
 	};
 }

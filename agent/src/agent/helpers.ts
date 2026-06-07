@@ -69,20 +69,6 @@ export function pipe<T>(...tasks: Task<T>[]) {
 	};
 }
 
-export function toRoundMap(events: AgentEvent[]) {
-	const map = new Map<string, AgentEvent[]>();
-	for (const event of events) {
-		const roundId = event.meta?.roundId;
-		if (!roundId) continue;
-
-		if (!map.has(roundId)) {
-			map.set(roundId, []);
-		}
-		map.get(roundId)?.push(event);
-	}
-	return map;
-}
-
 export function truncateText(text: string, maxLength: number) {
 	if (text.length <= maxLength) return text;
 	const placeHolder = '\n\n...[truncated]...\n\n';

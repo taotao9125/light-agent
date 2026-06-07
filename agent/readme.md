@@ -8,7 +8,7 @@ CLI
         └── new AgentLoop({ vender })
             └── AgentLoop.constructor({ vender })
                 └── createClient(vender)
-                    └── AiProvider / VendorAdaptor
+                    └── Vender.Adaptor
 ```
 
 ## agent interface
@@ -83,9 +83,9 @@ type Deps = {
 }
 
 decalare class AgentLoop {
-  privite venderClient: AiProvider
+  private venderAdaptor: Vender.Adaptor
   constructor(config: AgentLoopClassConfig) {
-    this.venderClient = createClient(AgentLoopClassConfig.vender);
+    this.venderAdaptor = createClient(AgentLoopClassConfig.vender);
     // this.deps = config.deps;
     // this.venderClient.stream()
   },
@@ -102,7 +102,7 @@ const {
 
 const toolsMeta =  toToolsMeta(this.deps.pullToolsSnap());
 
-this.venderClient.stream({
+this.venderAdaptor.stream({
   model: this.model,
   input: events,
   systemPrompt: systemPrompt
@@ -139,7 +139,7 @@ user
   AgentLoop
     pulls latest context snapshot
     pulls latest tool snapshot
-    runs provider stream
+    runs vender adaptor stream
 
   ContextBuilder
     builds systemPrompt + events
@@ -164,9 +164,9 @@ OutputEvent
 
 `Agent.prompt()` appends user input to the event log, streams model events, executes requested tools, appends observations, and emits events for the CLI or future UI layers.
 
-## Provider
+## Vender Adaptor
 
-Provider adapters translate the clean event log into vendor-specific messages. DeepSeek/OpenAI message details stay inside the adapter.
+Vender adaptors translate the clean event log into vendor-specific messages. DeepSeek/OpenAI message details stay inside the adaptor.
 
 ## Tools
 

@@ -1,8 +1,9 @@
 import type { Content, FunctionCall, FunctionDeclaration, GenerateContentParameters } from '@google/genai';
 import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
 import { type AgentEvent, EventType } from '../../protocol/events';
-import { parseTurnEventGroup, splitEventsToRoundGroups, stringifyContent } from '../helpers';
-import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
+import { parseTurnEventGroup, splitEventsToRoundGroups } from '../../protocol/eventGroups';
+import { stringifyContent } from '../helpers';
+import type { Vender } from '../index';
 
 const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 	const roundGroups = splitEventsToRoundGroups(events);
@@ -73,26 +74,28 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 	});
 };
 
-export default class GoogleAdaptor implements AiProvider {
+export default class GoogleAdaptor implements Vender.Adaptor {
 	private client: GoogleGenAI;
+	private vender: Vender.Config;
 
-	constructor(config: clientConfig) {
-		this.client = new GoogleGenAI({ apiKey: config.apiKey });
+	constructor(vender: Vender.Config) {
+		this.vender = vender;
+		this.client = new GoogleGenAI({ apiKey: vender.apiKey });
 	}
 
-	protected normalizeRequestConfig(requestConfig: AiRequestConfig): GenerateContentParameters {
+	protected normalizeRequestConfig(input: Vender.StreamInput): GenerateContentParameters {
 		const functionDeclarations: FunctionDeclaration[] =
-			requestConfig.tools?.map((tool) => ({
+			input.tools?.map((tool) => ({
 				name: tool.name,
 				description: tool.description,
 				parametersJsonSchema: tool.schema,
 			})) ?? [];
 
 		return {
-			model: requestConfig.model,
-			contents: normalizeGoogleContents(requestConfig.input),
+			model: this.vender.model,
+			contents: normalizeGoogleContents(input.input),
 			config: {
-				systemInstruction: requestConfig.systemPrompt,
+				systemInstruction: input.systemPrompt,
 				thinkingConfig: {
 					includeThoughts: true,
 				},
@@ -108,8 +111,8 @@ export default class GoogleAdaptor implements AiProvider {
 		};
 	}
 
-	async *stream(requestConfig: AiRequestConfig): ReturnType<AiProvider['stream']> {
-		const config = this.normalizeRequestConfig(requestConfig);
+	async *stream(input: Vender.StreamInput): ReturnType<Vender.Adaptor['stream']> {
+		const config = this.normalizeRequestConfig(input);
 		const functionCalls: FunctionCall[] = [];
 		let thoughtTextBuffer = '';
 		let outputTextBuffer = '';

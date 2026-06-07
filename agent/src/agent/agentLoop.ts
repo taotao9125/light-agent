@@ -1,17 +1,28 @@
 import { randomUUID } from 'node:crypto';
-import type { CreateClient } from '../ai/index';
+import type { CreateClient, Vender } from '../ai/index';
 import { createClient } from '../ai/index';
 import type { ActionEvent, AgentEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
+import type { Context } from './contextBuilder';
 import { stringify } from './helpers';
-import type { AgentLoopConfig, ContextBuildOuput, ToolDefinition } from './types';
+import type { Tool } from './toolRegistry';
+
+/** Agent loop runtime configuration. */
+export namespace Loop {
+	export type Config = {
+		vender: Vender.Config;
+		strategy?: {
+			maxTurns?: number;
+		};
+	};
+}
 
 type AgentEventListener = (event: AgentEvent) => void;
 
 type LoopDeps = {
 	abortSignal: AbortSignal;
-	pullContextSnap: () => ContextBuildOuput;
-	pullToolsSnap: () => ToolDefinition[];
+	pullContextSnap: () => Context.BuildResult;
+	pullToolsSnap: () => Tool.Definition[];
 };
 
 export interface AgentLoopInterface {
@@ -19,15 +30,15 @@ export interface AgentLoopInterface {
 	on: (listener: AgentEventListener) => void;
 }
 
-function toToolsMap(tools: ToolDefinition[]) {
-	const map = new Map<string, ToolDefinition>();
+function toToolsMap(tools: Tool.Definition[]) {
+	const map = new Map<string, Tool.Definition>();
 	for (const tool of tools) {
 		map.set(tool.name, tool);
 	}
 	return map;
 }
 
-function toToolsMeta(tools: ToolDefinition[]) {
+function toToolsMeta(tools: Tool.Definition[]) {
 	return tools.map((tool) => ({
 		name: tool.name,
 		description: tool.description,
@@ -36,18 +47,13 @@ function toToolsMeta(tools: ToolDefinition[]) {
 }
 
 class AgentLoop implements AgentLoopInterface {
-	private AiClient: ReturnType<CreateClient>;
+	private venderAdaptor: ReturnType<CreateClient>;
 	private listeners: AgentEventListener[] = [];
-	private model: string;
 	private maxTurns: number;
-	constructor(config: AgentLoopConfig) {
-		this.model = config.vender.model;
-		this.maxTurns = 20;
-		this.AiClient = createClient({
-			venderName: config.vender.name,
-			apiKey: config.vender.apiKey,
-			baseURL: config.vender.baseURL,
-		});
+
+	constructor(config: Loop.Config) {
+		this.maxTurns = config.strategy?.maxTurns ?? 20;
+		this.venderAdaptor = createClient(config.vender);
 	}
 
 	private emit(event: AgentEvent): void {
@@ -118,8 +124,7 @@ class AgentLoop implements AgentLoopInterface {
 				return;
 			}
 
-			const stream = this.AiClient.stream({
-				model: this.model,
+			const stream = this.venderAdaptor.stream({
 				input: context.events,
 				systemPrompt: context.systemPrompt,
 				tools: toolsMeta,

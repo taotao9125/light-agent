@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '../../agent/types';
+import type { Tool } from '../../agent/toolRegistry';
 import ragSearch from '../../rag/index';
 import { errorText, textResult } from './toolResult';
 
@@ -32,7 +32,7 @@ export function formatSearchResults(query: string, topK: number, results: Search
 	].join('\n\n');
 }
 
-const searchDoc: ToolDefinition = {
+const searchDoc: Tool.Definition = {
 	name: 'search_docs',
 	description:
 		'Search private project documents when the answer requires project-specific knowledge not already present in the conversation.',

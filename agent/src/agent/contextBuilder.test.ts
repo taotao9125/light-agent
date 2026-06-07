@@ -8,8 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { type AgentEvent, EventType, type ObservationEvent } from '../protocol/events';
-import contextBuilder from './contextBuilder';
-import type { ContextBuildStrategy } from './types';
+import contextBuilder, { type Context } from './contextBuilder';
 
 /** truncateText 插入的中间标记 */
 const TRUNCATED_MARKER = '...[truncated]...';
@@ -59,7 +58,7 @@ function buildManyRounds(count: number): AgentEvent[] {
 }
 
 /** 默认走公开 API；strategy 为空时 pipe 内用 Infinity，相当于不裁剪 */
-function defaultInput(events: AgentEvent[], strategy: ContextBuildStrategy = {}) {
+function defaultInput(events: AgentEvent[], strategy: Context.BuildStrategy = {}) {
 	return contextBuilder({
 		events,
 		source: {},
@@ -72,25 +71,35 @@ function pickRounds(events: AgentEvent[]): string[] {
 }
 
 describe('contextBuilder', () => {
-	it('systemPrompt 应包含 base rules 与 project rules', () => {
+	it('systemPrompt 应包含 product 与 project rules', () => {
 		const context = defaultInput([], {
 			maxSingleObservationToken: Infinity,
 			keepRecentRounds: Infinity,
 		});
 
-		expect(context.systemPrompt).toContain('# BASE AGENT RUNTIME RULES');
-		expect(context.systemPrompt).toContain('Event Protocol');
+		expect(context.systemPrompt).toBe('');
 
 		const withProjectRules = contextBuilder({
 			events: [],
 			source: {
-				rules: [{ name: 'Demo Rule', content: 'Always use tools when needed.' }],
+				rules: [{ layer: 'project', name: 'Demo Rule', content: 'Always use tools when needed.' }],
 			},
 			contextBuildStrategy: {},
 		});
 
-		expect(withProjectRules.systemPrompt).toContain('# PROJECT RULES');
+		expect(withProjectRules.systemPrompt).toContain('## Rule: Demo Rule');
 		expect(withProjectRules.systemPrompt).toContain('Always use tools when needed.');
+
+		const withProductRules = contextBuilder({
+			events: [],
+			source: {
+				rules: [{ layer: 'product', name: 'Tool Policy', content: 'Prefer read_file before citing code.' }],
+			},
+			contextBuildStrategy: {},
+		});
+
+		expect(withProductRules.systemPrompt).toContain('## Rule: Tool Policy');
+		expect(withProductRules.systemPrompt).toContain('Prefer read_file before citing code.');
 	});
 
 	it('应截断超长的 string 类型 observation', () => {

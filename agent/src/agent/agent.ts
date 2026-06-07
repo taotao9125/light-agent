@@ -1,27 +1,27 @@
+import type { Vender } from '../ai/index';
 import { type AgentEvent, EventType } from '../protocol/events';
 import type { AgentLoopInterface } from './agentLoop';
 import AgentLoop from './agentLoop';
-import contextBuilder from './contextBuilder';
+import contextBuilder, { type Context } from './contextBuilder';
 import type { AgentEventListener, SessionEvent } from './helpers';
 
 export type { SessionEvent } from './helpers';
 
 import { projectAgentEvents } from './helpers';
 import type { SessionStoreInterface } from './store';
-import toolRegistryClass from './toolRegistry';
-import type { ContextBuildInput, ToolDefinition, Vender } from './types';
+import toolRegistryClass, { type Tool } from './toolRegistry';
 
 type Config = {
 	sessionId: string;
 	store?: SessionStoreInterface;
-	vender: Vender;
-	context: ContextBuildInput;
+	vender: Vender.Config;
+	context: Context.BuildInput;
 };
 
 export interface AgentInterface {
 	prompt: (prompt: string) => Promise<void>;
 	on: (listener: AgentEventListener) => () => void;
-	registerTool: (name: string, tool: ToolDefinition) => void;
+	registerTool: (name: string, tool: Tool.Definition) => void;
 	interrupt: () => void;
 	getState: () => Record<string, any>;
 }
@@ -56,7 +56,7 @@ export default class Agent implements AgentInterface {
 		activeJob: null as Job | null,
 	};
 
-	private context: ContextBuildInput;
+	private context: Context.BuildInput;
 	private canonicalEvents: AgentEvent[] = [];
 	private listeners: AgentEventListener[] = [];
 	private toolRegistry = new toolRegistryClass();
@@ -138,7 +138,7 @@ export default class Agent implements AgentInterface {
 		};
 	}
 
-	registerTool(name: string, tool: ToolDefinition) {
+	registerTool(name: string, tool: Tool.Definition) {
 		this.toolRegistry.register(name, tool);
 	}
 

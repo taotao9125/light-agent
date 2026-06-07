@@ -5,8 +5,9 @@ import type {
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions';
 import { type AgentEvent, EventType } from '../../protocol/events';
-import { parseTurnEventGroup, splitEventsToRoundGroups, stringifyContent } from '../helpers';
-import type { AiProvider, AiRequestConfig, clientConfig } from '../index';
+import { parseTurnEventGroup, splitEventsToRoundGroups } from '../../protocol/eventGroups';
+import { stringifyContent } from '../helpers';
+import type { Vender } from '../index';
 
 /** deepseek 的每一轮思考模式 message 结构
  * const messages: Messages = [
@@ -97,28 +98,31 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 	return messages;
 };
 
-export default class OpenAIAdaptor implements AiProvider {
+export default class OpenAIAdaptor implements Vender.Adaptor {
 	private client: OpenAI;
-	constructor(config: clientConfig) {
+	private vender: Vender.Config;
+
+	constructor(vender: Vender.Config) {
+		this.vender = vender;
 		this.client = new OpenAI({
-			apiKey: config.apiKey,
-			baseURL: config.baseURL,
+			apiKey: vender.apiKey,
+			baseURL: vender.baseURL,
 			// logLevel: 'debug',
 		});
 	}
 
-	protected normalizeRequestConfig(requestConfig: AiRequestConfig): ChatCompletionCreateParamsStreaming {
-		const messages = normalizeDeepSeekInputMessage(requestConfig.input);
-		if (requestConfig.systemPrompt) {
+	protected normalizeRequestConfig(input: Vender.StreamInput): ChatCompletionCreateParamsStreaming {
+		const messages = normalizeDeepSeekInputMessage(input.input);
+		if (input.systemPrompt) {
 			messages.unshift({
 				role: 'system',
-				content: requestConfig.systemPrompt,
+				content: input.systemPrompt,
 			});
 		}
 		return {
-			model: requestConfig.model,
+			model: this.vender.model,
 			messages,
-			tools: requestConfig.tools?.map((tool) => ({
+			tools: input.tools?.map((tool) => ({
 				type: 'function',
 				function: {
 					name: tool.name,
@@ -131,8 +135,8 @@ export default class OpenAIAdaptor implements AiProvider {
 		};
 	}
 
-	async *stream(requestConfig: AiRequestConfig): ReturnType<AiProvider['stream']> {
-		const config = this.normalizeRequestConfig(requestConfig);
+	async *stream(input: Vender.StreamInput): ReturnType<Vender.Adaptor['stream']> {
+		const config = this.normalizeRequestConfig(input);
 		const pendingToolCalls = new Map<
 			number,
 			{

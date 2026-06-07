@@ -2,14 +2,17 @@ import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AgentEvent } from '../protocol/events';
 
+/** Session persistence. */
+export namespace Session {
+	export type StoreConfig = {
+		rootDir: string;
+	};
+}
+
 export interface SessionStoreInterface {
 	load: (sessionId: string) => Promise<AgentEvent[]>;
 	append: (sessionId: string, event: AgentEvent) => Promise<void>;
 }
-
-export type Config = {
-	rootDir: string;
-};
 
 export default class SessionStore implements SessionStoreInterface {
 	private rootDir: string;
@@ -20,7 +23,8 @@ export default class SessionStore implements SessionStoreInterface {
 		resolve: () => void;
 		reject: (reason?: unknown) => void;
 	}[] = [];
-	constructor(config: Config) {
+
+	constructor(config: Session.StoreConfig) {
 		this.rootDir = config.rootDir;
 	}
 

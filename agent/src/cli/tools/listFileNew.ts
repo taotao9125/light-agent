@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import type { ToolDefinition } from '../../agent/types';
+import type { Tool } from '../../agent/toolRegistry';
 import { errorText, textResult } from './toolResult';
 
 const execFileAsync = promisify(execFile);
@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const rgPath = path.resolve(currentDir, 'bins/rg');
 
-const listFilesNewTool: ToolDefinition = {
+const listFilesNewTool: Tool.Definition = {
 	name: 'list_files_new',
 	description: 'List project files recursively using ripgrep, respecting ignore rules such as .gitignore.',
 	schema: {

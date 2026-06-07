@@ -1,9 +1,9 @@
 import fs from 'fs/promises';
 import path from 'path';
-import type { ToolDefinition } from '../../agent/types';
+import type { Tool } from '../../agent/toolRegistry';
 import { errorText, textResult } from './toolResult';
 
-const readFileTool: ToolDefinition = {
+const readFileTool: Tool.Definition = {
 	name: 'read_file',
 	description: 'Read the full contents of a specific file when the user asks to inspect, open, or read a file.',
 	schema: {
