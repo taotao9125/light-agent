@@ -5,11 +5,11 @@ import contextBuilder, { type Context } from './context/contextBuilder';
 import type { Vender } from '../ai/index';
 import type { AgentEvent } from '../protocol/events';
 import type { AgentLoopInterface } from './agentLoop';
-import type { AgentEventListener, SessionEvent } from './helpers';
+import type { AgentViewEvent, AgentViewListener } from './helpers';
 
-export type { SessionEvent } from './helpers';
+export type { AgentViewEvent, AgentViewListener } from './helpers';
 
-import { projectAgentEvents } from './helpers';
+import { projectAgentView } from './helpers';
 import ToolRegistry, { type Tool } from './tool';
 
 import type { SessionStoreInterface } from './store';
@@ -23,7 +23,7 @@ type Config = {
 
 export interface AgentInterface {
 	prompt: (prompt: string) => Promise<void>;
-	on: (listener: AgentEventListener) => () => void;
+	on: (listener: AgentViewListener) => () => void;
 	registerTool: (name: string, tool: Tool.Definition) => void;
 	interrupt: () => void;
 	getState: () => Record<string, any>;
@@ -61,7 +61,7 @@ export default class Agent implements AgentInterface {
 
 	private context: Context.Config;
 	private canonicalEvents: AgentEvent[] = [];
-	private listeners: AgentEventListener[] = [];
+	private listeners: AgentViewListener[] = [];
 	private toolRegistry = new ToolRegistry();
 
 	constructor(config: Config) {
@@ -78,8 +78,8 @@ export default class Agent implements AgentInterface {
 	}
 
 	private async handleAgentEvent(event: AgentEvent) {
-		for (const lifecycleEvent of projectAgentEvents(event)) {
-			this.emit(lifecycleEvent);
+		for (const viewEvent of projectAgentView(event)) {
+			this.emit(viewEvent);
 		}
 
 		await this.commitEvent(event);
@@ -92,7 +92,7 @@ export default class Agent implements AgentInterface {
 		}
 	}
 
-	private emit(event: SessionEvent) {
+	private emit(event: AgentViewEvent) {
 		for (const listener of this.listeners) {
 			listener(event);
 		}
@@ -134,7 +134,7 @@ export default class Agent implements AgentInterface {
 		return promise;
 	}
 
-	on(listener: AgentEventListener): () => void {
+	on(listener: AgentViewListener): () => void {
 		this.listeners.push(listener);
 		return () => {
 			this.listeners = this.listeners.filter((item) => item !== listener);

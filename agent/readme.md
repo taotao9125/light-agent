@@ -23,7 +23,7 @@ CLI / Server
 | `agent/context/contextBuilder.ts` | `Context.*` 入口：events 裁剪 + 调 promptContextBuilder |
 | `agent/agentLoop.ts` | `Loop.*`：LLM ↔ tool 循环（并行 execute） |
 | `agent/agent.ts` | 会话编排、事件持久化、tool 调度 |
-| `agent/helpers.ts` | `SessionEvent` 投影、`projectAgentEvents`、字符串工具 |
+| `agent/helpers.ts` | `AgentViewEvent` 投影、`projectAgentView`、字符串工具 |
 | `agent/store.ts` | `Session.*`：JSONL 持久化 |
 | `ai/` | `Vender.*` + adaptor 工厂 |
 | `cli/prompts.ts` | CLI `identity` + 可选 `instructions` |
@@ -45,7 +45,7 @@ interface AgentConfig {
 
 interface AgentInterface {
   prompt(input: string): Promise<void>;
-  on(listener: (event: SessionEvent) => void): () => void;
+  on(listener: (event: AgentViewEvent) => void): () => void;
   registerTool(name: string, tool: Tool.Definition): void;
   interrupt(): void;
 }
@@ -234,8 +234,8 @@ EventRound（groupEventRounds.ts）
   groupByRoundId / splitIntoRounds / parseTurn
   供 contextBuilder 与 adaptor 使用，不属于 protocol
 
-helpers.projectAgentEvents
-  canonical AgentEvent → SessionEvent（接入层 UI / WS）
+helpers.projectAgentView
+  canonical AgentEvent → AgentViewEvent（接入层 UI / WS 订阅面，非事实源）
 ```
 
 ## Event Log
@@ -284,12 +284,12 @@ type ObservationsEvent = {
 - `result` 为 **string**（tool 返回值经 `stringify` 序列化）
 - committed 事件：`input`、`thought`、`actions`、`observations`、`output`、`agent_stop`（不含 delta）
 
-### SessionEvent 投影
+### AgentViewEvent 投影
 
-`Agent.on()` 回调的是 **SessionEvent**（`helpers.ts`），不是 raw `AgentEvent`：
+`Agent.on()` 回调的是 **AgentViewEvent**（`helpers.ts`），不是 canonical `AgentEvent`：
 
 ```typescript
-type SessionEvent =
+type AgentViewEvent =
   | { type: 'agent_start'; meta?: Meta }           // ← input
   | { type: 'thought_delta'; text: string; meta?: Meta }
   | { type: 'output_delta'; text: string; meta?: Meta }

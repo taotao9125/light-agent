@@ -2,7 +2,7 @@ import { EventType } from '../protocol/events';
 
 import type { ActionsEvent, AgentEvent, AgentStopCause, Meta, ObservationsEvent } from '../protocol/events';
 
-export type SessionEvent =
+export type AgentViewEvent =
 	| { type: 'agent_start'; meta?: Meta }
 	| { type: 'thought_delta'; text: string; meta?: Meta }
 	| { type: 'output_delta'; text: string; meta?: Meta }
@@ -10,9 +10,9 @@ export type SessionEvent =
 	| { type: 'observations'; observations: ObservationsEvent['observations']; meta?: Meta }
 	| { type: 'agent_stop'; cause: AgentStopCause; message: string; meta?: Meta };
 
-export type AgentEventListener = (event: SessionEvent) => void;
+export type AgentViewListener = (event: AgentViewEvent) => void;
 
-export function projectAgentEvents(event: AgentEvent): SessionEvent[] {
+export function projectAgentView(event: AgentEvent): AgentViewEvent[] {
 	switch (event.type) {
 		case EventType.INPUT:
 			return [{ type: 'agent_start', meta: event.meta }];

@@ -10,7 +10,7 @@ import Agent from '../agent/agent';
 import SessionStore from '../agent/store';
 import { cliPrompts } from '../cli/prompts';
 
-import type { SessionEvent } from '../agent/agent';
+import type { AgentViewEvent } from '../agent/agent';
 
 const PORT = Number(process.env.AGENT_WS_PORT ?? 8799);
 
@@ -40,7 +40,7 @@ type ServerEvent =
 	| { type: 'session_started'; sessionId: string }
 	| { type: 'prompt_accepted'; sessionId: string }
 	| { type: 'prompt_done'; sessionId: string }
-	| { type: 'agent_event'; sessionId: string; event: SessionEvent }
+	| { type: 'agent_event'; sessionId: string; event: AgentViewEvent }
 	| { type: 'pong'; sessionId: string }
 	| { type: 'server_error'; sessionId?: string; message: string };
 
