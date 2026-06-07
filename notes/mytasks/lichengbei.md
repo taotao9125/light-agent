@@ -1,6 +1,6 @@
 # 4 月 17 日到 5 月 4 日学习与项目里程碑
 
-> 来源：`mytasks/k.json` 中 39 个 ChatGPT 导出会话、`mytasks/log.md`、`mytasks/4.28_5.04_4.30done.md`、`mytasks/4.30_5.06.md` 等阶段记录，以及 2026-04-17 至 2026-05-04 的 Git commit log。  
+> 来源：`notes/mytasks/k.json` 中 39 个 ChatGPT 导出会话、`notes/mytasks/log.md`、`notes/mytasks/4.28_5.04_4.30done.md`、`notes/mytasks/4.30_5.06.md` 等阶段记录，以及 2026-04-17 至 2026-05-04 的 Git commit log。  
 > 时间范围：2026-04-17 到 2026-05-04。  
 > 主线目标：从 Node/Express/MySQL 基础，推进到一个可运行、可部署、具备工程化能力展示的会议室预约后端系统，并逐步对齐 Agent 工程师所需的系统能力。
 
