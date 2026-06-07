@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { formatSearchResults } from './searchdoc';
+
+import { formatSearchResults } from '../../tools/searchdoc';
 
 function approximateTokens(text: string) {
 	return Math.ceil(text.length / 4);
@@ -21,9 +22,7 @@ function percentReduction(before: number, after: number) {
 describe('工具观察结果格式化', () => {
 	it('相比嵌套 JSON，search_docs 的观察结果更短', () => {
 		const chunkText =
-			'Agent loop 会运行模型、工具和观察结果循环。当没有工具动作或达到运行时限制时，它会停止。'.repeat(
-				8,
-			);
+			'Agent loop 会运行模型、工具和观察结果循环。当没有工具动作或达到运行时限制时，它会停止。'.repeat(8);
 
 		const results = [1, 2, 3].map((rank) => ({
 			rank,

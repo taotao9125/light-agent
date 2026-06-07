@@ -1,5 +1,6 @@
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
+
 import type { AgentEvent } from '../protocol/events';
 
 /** Session persistence. */

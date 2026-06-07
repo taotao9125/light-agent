@@ -1,8 +1,11 @@
-import type { Content, FunctionCall, FunctionDeclaration, GenerateContentParameters } from '@google/genai';
 import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
-import { type AgentEvent, EventType } from '../../protocol/events';
+
 import { EventRound } from '../../agent/groupEventRounds';
+import { type AgentEvent, EventType } from '../../protocol/events';
 import { stringifyContent } from '../helpers';
+
+import type { Content, FunctionCall, FunctionDeclaration, GenerateContentParameters } from '@google/genai';
+
 import type { Vender } from '../index';
 
 const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {

@@ -1,5 +1,6 @@
-import type { AgentEvent, AgentStopCause, Meta } from '../protocol/events';
 import { EventType } from '../protocol/events';
+
+import type { AgentEvent, AgentStopCause, Meta } from '../protocol/events';
 
 export type SessionEvent =
 	| { type: 'agent_start'; meta?: Meta }

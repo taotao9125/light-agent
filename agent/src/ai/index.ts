@@ -1,7 +1,8 @@
-import type { AgentEvent } from '../protocol/events';
-import type { Tool } from '../agent/tool';
 import GoogleAdaptor from './adaptors/google';
 import OpenAIAdaptor from './adaptors/openai';
+
+import type { Tool } from '../agent/tool';
+import type { AgentEvent } from '../protocol/events';
 
 export namespace Vender {
 	export type Config = {

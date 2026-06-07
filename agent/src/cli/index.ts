@@ -3,11 +3,10 @@ import { stdin, stdout } from 'node:process';
 import readline from 'node:readline/promises';
 import path from 'path';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
+
 import Agent from '../agent/agent';
 import SessionStore from '../agent/store';
-
-import loadRuleSources from './loadRuleSource';
-import { productRules } from './prompts';
+import { cliPrompts } from './prompts';
 import listFilesToolNew from './tools/listFileNew';
 import readFileTool from './tools/readFile';
 import searchDoc from './tools/searchdoc';
@@ -41,7 +40,8 @@ async function main() {
 		rootDir: path.resolve(process.cwd(), '.agent/sessions'),
 	});
 
-	// const rulesSource = await loadRuleSources(process.cwd());
+
+	// -------------------------------------------
 
 	const agent = new Agent({
 		vender: {
@@ -53,10 +53,8 @@ async function main() {
 		sessionId,
 		store: sessionStore,
 		context: {
-			source: {
-				rules: [...productRules],
-			},
-			contextBuildStrategy: {
+			prompts: cliPrompts,
+			strategy: {
 				maxSingleObservationToken: 3000,
 				keepRecentRounds: 5,
 			},
@@ -67,12 +65,7 @@ async function main() {
 	agent.registerTool(listFilesToolNew.name, listFilesToolNew);
 	agent.registerTool(searchDoc.name, searchDoc);
 
-
-
-
-
-
-
+	// -------------------------------------------
 	let isThinking = false;
 	let isOutputting = false;
 	let isExiting = false;

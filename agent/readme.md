@@ -4,7 +4,7 @@
 CLI / Server
 └── new Agent(config)
     ├── canonicalEvents + ToolRegistry
-    ├── contextBuilder(source, strategy) → { systemPrompt, events }
+    ├── contextBuilder(prompts, strategy) → { systemPrompt, events }
     └── AgentLoop.prompt()
         └── Vender.Adaptor.stream({ input, tools, systemPrompt })
             └── EventRound.splitIntoRounds / parseTurn（消息投影）
@@ -17,26 +17,29 @@ CLI / Server
 | `protocol/events.ts` | 事件协议：`AgentEvent`、`EventType`（protocol 层仅此文件） |
 | `agent/tool.ts` | `Tool.*` 类型定义 + `ToolRegistry` 注册与执行 |
 | `agent/groupEventRounds.ts` | `EventRound.*`：按 round/turn 分组 events（context 裁剪、adaptor 投影） |
-| `agent/contextBuilder.ts` | `Context.*`：rules/skills → systemPrompt，events 窗口裁剪 |
+| `agent/context/prompts.types.ts` | `Prompts.*` 类型：identity、instructions、skillIndex |
+| `agent/context/runtimePrompt.constants.ts` | `RUNTIME_PROMPT_BLOCKS` 常量 |
+| `agent/context/promptContextBuilder.ts` | `buildPromptContext(prompts)` |
+| `agent/context/contextBuilder.ts` | `Context.*` 入口：events 裁剪 + 调 promptContextBuilder |
 | `agent/agentLoop.ts` | `Loop.*`：LLM ↔ tool 循环 |
 | `agent/agent.ts` | 会话编排、事件持久化、tool 调度 |
 | `agent/store.ts` | `Session.*`：JSONL 持久化 |
 | `ai/` | `Vender.*` + adaptor 工厂 |
-| `cli/` | product rules、工具实现、入口 |
+| `cli/prompts.ts` | CLI `identity` + 可选 `instructions` |
 
-类型约定：各模块用 **namespace** 导出（`Context`、`Tool`、`Vender`、`Loop`、`Session`、`EventRound`）。
+类型约定：各模块用 **namespace** 导出（`Prompts`、`Context`、`Tool`、`Vender`、`Loop`、`Session`、`EventRound`）。
 
 ## Agent 配置
 
 ```typescript
 // Vender.Config — ai/index.ts
-// Context.BuildInput — agent/contextBuilder.ts
+// Context.Config — agent/context/contextBuilder.ts
 
 interface AgentConfig {
   sessionId: string;
   store?: SessionStoreInterface;
   vender: Vender.Config;
-  context: Context.BuildInput;
+  context: Context.Config;
 }
 
 interface AgentInterface {
@@ -47,31 +50,135 @@ interface AgentInterface {
 }
 ```
 
-`Context.BuildInput`：
+`Context.Config`：
 
 ```typescript
-namespace Context {
-  type Rule = {
-    layer: 'runtime' | 'product' | 'project';
-    name: string;
-    content: string;
-    path?: string;
+namespace Prompts {
+  type Source = {
+    identity: string;           // 必填，<identity>
+    instructions?: { tag: string; content: string }[];
+    skillIndex?: SkillIndexEntry[];  // 索引，非 SKILL.md 正文
   };
+}
 
-  type BuildInput = {
-    source: {
-      rules?: Rule[];
-      skills?: SkillIndex[];
-    };
-    contextBuildStrategy: {
-      /** 单条 observation token 预算，超出 head 70% + tail 30% 截断 */
+namespace Context {
+  type Config = {
+    prompts: Prompts.Source;
+    strategy: {
       maxSingleObservationToken?: number;
-      /** 保留最近 N 个 round（按 meta.roundId） */
       keepRecentRounds?: number;
     };
   };
 }
 ```
+
+System prompt 编译见下文 [Prompt 构建策略](#prompt-构建策略)。
+
+## Prompt 构建策略
+
+`buildPromptContext`（`agent/context/promptContextBuilder.ts`）把接入层提供的 `Prompts.Source` 编译成一条 system prompt 字符串。events 裁剪由 `contextBuilder` 的 `strategy` 单独处理，二者在 `Context.Config` 里并列：
+
+```typescript
+context: {
+  prompts: Prompts.Source,   // 编译 system prompt 的原料
+  strategy: Context.Strategy // events 窗口 / observation 截断
+}
+```
+
+### 职责边界
+
+| 归属 | 内容 | 谁提供 |
+|------|------|--------|
+| `prompts` | identity、product instructions、skill 索引 | CLI / Server 接入层 |
+| `strategy` | `keepRecentRounds`、`maxSingleObservationToken` | 接入层可配 |
+| runtime 块 | `contextWindowInstructions`、`parallelToolUseInstructions` | agent 自动注入（`runtimePrompt.constants.ts`），接入层不可见、不可覆盖 |
+| 编译顺序 | 各段组装顺序 | agent 内置（`promptContextBuilder.ts`） |
+| SKILL 正文 | `SKILL.md` 全文 | 不进 prompt；模型按索引 `read_file` 按需加载 |
+
+tools 注册、session 持久化不在 `prompts` 里。
+
+### 角色 vs 指导手册
+
+- **`<identity>`**：角色——我是谁、怎么表现、输出习惯（唯一不用 `Instructions` 后缀的 tag）
+- **`*Instructions`**：指导手册——怎么做、环境约束、skill 索引与用法
+
+除 identity 外，规则类块统一 `*Instructions` 后缀；product 侧 tag 由接入层自定前缀（如 `terminalInstructions`），compile 时校验必须以 `Instructions` 结尾。
+
+### 组装顺序
+
+段与段之间 `\n\n` 分隔，**平铺、无外层包裹**：
+
+```text
+1. <identity>                         ← prompts.identity（必填）
+2. <{product}Instructions>            ← prompts.instructions[]（0..n）
+3. <contextWindowInstructions>        ← RUNTIME_PROMPT_BLOCKS[0]
+4. <parallelToolUseInstructions>      ← RUNTIME_PROMPT_BLOCKS[1]
+5. <skillIndexInstructions>           ← 仅 prompts.skillIndex 非空
+6. <skillUsageInstructions>           ← 同上，紧跟 index 之后，不额外包裹
+```
+
+`skillIndexInstructions` 与 `skillUsageInstructions` 保持平铺相邻，不再套 `<skills>` 或 `<instructions>` 外层。
+
+### Prompts.Source
+
+```typescript
+namespace Prompts {
+  type Instruction = { tag: string; content: string };
+  type SkillIndexEntry = { name: string; description: string; path: string };
+  type Source = {
+    identity: string;
+    instructions?: Instruction[];
+    skillIndex?: SkillIndexEntry[];  // 索引，非 SKILL 正文
+  };
+}
+```
+
+### 数据流
+
+```text
+接入层组装 Prompts.Source（cli/prompts.ts → cliPrompts）
+        ↓
+buildPromptContext(prompts)
+  ├── wrapTag(identity)
+  ├── map instructions → *Instructions blocks
+  ├── merge RUNTIME_PROMPT_BLOCKS
+  └── optional skillIndex + skillUsage blocks
+        ↓
+systemPrompt 字符串
+        ↓
+contextBuilder({ prompts, strategy, events })
+  └── rebuildEvents(strategy) → events[]
+        ↓
+{ systemPrompt, events }  →  Vender.Adaptor.stream(...)
+```
+
+### CLI 最小输出示意
+
+无 `instructions`、无 `skillIndex` 时：
+
+```text
+<identity>
+你是运行在 CLI 中的编程助手…
+</identity>
+
+<contextWindowInstructions>
+## 上下文窗口
+…
+</contextWindowInstructions>
+
+<parallelToolUseInstructions>
+…
+</parallelToolUseInstructions>
+```
+
+### 文件
+
+| 文件 | 职责 |
+|------|------|
+| `prompts.types.ts` | `Prompts.*` 类型 |
+| `runtimePrompt.constants.ts` | `RUNTIME_PROMPT_BLOCKS` 常量 |
+| `promptContextBuilder.ts` | `buildPromptContext()` 编译逻辑 |
+| `contextBuilder.ts` | 入口：`prompts` + `strategy` + events → model view |
 
 ## AgentLoop
 
@@ -102,7 +209,7 @@ for await (const event of venderAdaptor.stream({ input: events, tools, systemPro
 Agent
   owns canonicalEvents
   owns ToolRegistry（agent/tool.ts）
-  owns Context.BuildInput
+  owns Context.Config（prompts + strategy）
   schedules AgentLoop
 
 AgentLoop
@@ -112,8 +219,7 @@ AgentLoop
   executes Tool.Definition → ObservationEvent
 
 ContextBuilder
-  source.rules → systemPrompt
-  events → 窗口裁剪 / observation 截断
+  buildPromptContext(prompts) + events 裁剪
 
 EventRound（groupEventRounds.ts）
   groupByRoundId / splitIntoRounds / parseTurn

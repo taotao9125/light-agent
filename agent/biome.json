@@ -1,4 +1,28 @@
 {
+	"assist": {
+		"actions": {
+			"source": {
+				"organizeImports": {
+					"level": "on",
+					"options": {
+						"groups": [
+							[{ "type": false, "source": ":NODE:" }],
+							[{ "type": false, "source": ":PACKAGE:" }],
+							":BLANK_LINE:",
+							[{ "type": false, "source": "../**" }],
+							[{ "type": false, "source": "./**" }],
+							":BLANK_LINE:",
+							[{ "type": true, "source": ":NODE:" }],
+							[{ "type": true, "source": ":PACKAGE:" }],
+							":BLANK_LINE:",
+							[{ "type": true, "source": "../**" }],
+							[{ "type": true, "source": "./**" }]
+						]
+					}
+				}
+			}
+		}
+	},
 	"linter": {
 		"enabled": true,
 		"rules": {

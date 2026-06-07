@@ -1,21 +1,23 @@
-import type { Vender } from '../ai/index';
 import { type AgentEvent, EventType } from '../protocol/events';
-import type { AgentLoopInterface } from './agentLoop';
 import AgentLoop from './agentLoop';
-import contextBuilder, { type Context } from './contextBuilder';
+import contextBuilder, { type Context } from './context/contextBuilder';
+
+import type { Vender } from '../ai/index';
+import type { AgentLoopInterface } from './agentLoop';
 import type { AgentEventListener, SessionEvent } from './helpers';
 
 export type { SessionEvent } from './helpers';
 
 import { projectAgentEvents } from './helpers';
-import type { SessionStoreInterface } from './store';
 import ToolRegistry, { type Tool } from './tool';
+
+import type { SessionStoreInterface } from './store';
 
 type Config = {
 	sessionId: string;
 	store?: SessionStoreInterface;
 	vender: Vender.Config;
-	context: Context.BuildInput;
+	context: Context.Config;
 };
 
 export interface AgentInterface {
@@ -56,7 +58,7 @@ export default class Agent implements AgentInterface {
 		activeJob: null as Job | null,
 	};
 
-	private context: Context.BuildInput;
+	private context: Context.Config;
 	private canonicalEvents: AgentEvent[] = [];
 	private listeners: AgentEventListener[] = [];
 	private toolRegistry = new ToolRegistry();

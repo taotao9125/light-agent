@@ -4,9 +4,11 @@ import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import 'dotenv/config';
 
-import type { SessionEvent } from '../agent/agent';
 import Agent from '../agent/agent';
 import SessionStore from '../agent/store';
+import { cliPrompts } from '../cli/prompts';
+
+import type { SessionEvent } from '../agent/agent';
 
 const PORT = Number(process.env.AGENT_WS_PORT ?? 8799);
 
@@ -92,8 +94,8 @@ async function createAgent(sessionId: string) {
 		store,
 		vender,
 		context: {
-			source: {},
-			contextBuildStrategy: {},
+			prompts: cliPrompts,
+			strategy: {},
 		},
 	});
 

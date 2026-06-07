@@ -1,6 +1,7 @@
-import type { Tool } from '../../agent/tool';
 import ragSearch from '../../rag/index';
 import { errorText, textResult } from './toolResult';
+
+import type { Tool } from '../../agent/tool';
 
 type SearchDocResult = {
 	rank: number;
@@ -61,7 +62,10 @@ const searchDoc: Tool.Definition = {
 			return textResult(formatSearchResults(p.query, topK, results));
 		} catch (e) {
 			context.signal?.throwIfAborted();
-			return textResult(['Failed to search private documents.', `Query: ${p.query}`, `Reason: ${errorText(e)}`].join('\n'), true);
+			return textResult(
+				['Failed to search private documents.', `Query: ${p.query}`, `Reason: ${errorText(e)}`].join('\n'),
+				true,
+			);
 		}
 	},
 };

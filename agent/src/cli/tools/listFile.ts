@@ -1,7 +1,9 @@
 import fs from 'fs/promises';
 import path from 'path';
-import type { Tool } from '../../agent/tool';
+
 import { errorText, textResult } from './toolResult';
+
+import type { Tool } from '../../agent/tool';
 
 const listFilesTool: Tool.Definition = {
 	name: 'list_files',

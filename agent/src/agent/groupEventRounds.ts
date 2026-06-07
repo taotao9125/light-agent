@@ -1,4 +1,11 @@
-import { type ActionEvent, type AgentEvent, type ObservationEvent, type OutputEvent, EventType, type ThoughtEvent } from '../protocol/events';
+import {
+	type ActionEvent,
+	type AgentEvent,
+	EventType,
+	type ObservationEvent,
+	type OutputEvent,
+	type ThoughtEvent,
+} from '../protocol/events';
 
 /** 按 round / turn 分组 canonical events，供 context 裁剪与 adaptor 消息投影。 */
 export namespace EventRound {

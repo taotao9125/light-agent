@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import type { CreateClient, Vender } from '../ai/index';
+
 import { createClient } from '../ai/index';
-import type { ActionEvent, AgentEvent } from '../protocol/events';
 import { EventType } from '../protocol/events';
-import type { Context } from './contextBuilder';
 import { stringify } from './helpers';
+
+import type { CreateClient, Vender } from '../ai/index';
+import type { ActionEvent, AgentEvent } from '../protocol/events';
+import type { Context } from './context/contextBuilder';
 import type { Tool } from './tool';
 
 /** Agent loop runtime configuration. */

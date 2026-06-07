@@ -13,4 +13,3 @@ export function textResult(text: string, isError = false) {
 export function errorText(error: unknown) {
 	return error instanceof Error ? error.message : String(error);
 }
-

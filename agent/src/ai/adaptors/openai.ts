@@ -1,12 +1,15 @@
 import OpenAI from 'openai';
+
+import { EventRound } from '../../agent/groupEventRounds';
+import { type AgentEvent, EventType } from '../../protocol/events';
+import { stringifyContent } from '../helpers';
+
 import type {
 	ChatCompletionAssistantMessageParam,
 	ChatCompletionCreateParamsStreaming,
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions';
-import { type AgentEvent, EventType } from '../../protocol/events';
-import { EventRound } from '../../agent/groupEventRounds';
-import { stringifyContent } from '../helpers';
+
 import type { Vender } from '../index';
 
 /** deepseek 的每一轮思考模式 message 结构
