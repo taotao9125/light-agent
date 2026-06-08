@@ -7,7 +7,7 @@ CLI / Server
     ├── contextBuilder(prompts, strategy) → { systemPrompt, events }
     └── AgentLoop.prompt()
         └── Vender.Adaptor.stream({ input, tools, systemPrompt })
-            └── EventRound.splitIntoRounds / parseTurn（消息投影）
+            └── parseEventsIntoRoundMap → turn 内 find → vendor message 投影
 ```
 
 ## 模块分层
@@ -16,7 +16,7 @@ CLI / Server
 |------|------|
 | `protocol/events.ts` | 事件协议：`AgentEvent`、`EventType`（protocol 层仅此文件） |
 | `agent/tool.ts` | `Tool.*` 类型定义 + `ToolRegistry` 注册与执行 |
-| `agent/groupEventRounds.ts` | `EventRound.*`：按 round/turn 分组 events（context 裁剪、adaptor 投影） |
+| `ai/helpers.ts` | `parseEventsIntoRoundMap`（adaptor 读 history）、`stringifyContent` |
 | `agent/context/prompts.types.ts` | `Prompts.*` 类型：identity、instructions、skillIndex |
 | `agent/context/runtimePrompt.constants.ts` | `RUNTIME_PROMPT_BLOCKS` 常量 |
 | `agent/context/promptContextBuilder.ts` | `buildPromptContext(prompts)` |
@@ -25,10 +25,10 @@ CLI / Server
 | `agent/agent.ts` | 会话编排、事件持久化、tool 调度 |
 | `agent/helpers.ts` | `AgentViewEvent` 投影、`projectAgentView`、字符串工具 |
 | `agent/store.ts` | `Session.*`：JSONL 持久化 |
-| `ai/` | `Vender.*` + adaptor 工厂 |
+| `ai/` | `Vender.*` + adaptor 工厂（`openai.ts`、`google.ts`） |
 | `cli/prompts.ts` | CLI `identity` + 可选 `instructions` |
 
-类型约定：各模块用 **namespace** 导出（`Prompts`、`Context`、`Tool`、`Vender`、`Loop`、`Session`、`EventRound`）。
+类型约定：各模块用 **namespace** 导出（`Prompts`、`Context`、`Tool`、`Vender`、`Loop`、`Session`）。
 
 ## Agent 配置
 
@@ -229,12 +229,12 @@ AgentLoop
 
 ContextBuilder
   buildPromptContext(prompts) + events 裁剪
+  keepRecentRounds：unique roundId 保序 → slice 最近 N 个 → filter（flat，不建 turn 结构）
 
-EventRound（groupEventRounds.ts）
-  groupByRoundId / splitIntoRounds / parseTurn
-  供 contextBuilder 与 adaptor 使用，不属于 protocol
+ai/helpers.parseEventsIntoRoundMap
+  adaptor 读 history：单次遍历；首个 INPUT 建 round；无 round 的 turn event 跳过
 
-helpers.projectAgentView
+agent/helpers.projectAgentView
   canonical AgentEvent → AgentViewEvent（接入层 UI / WS 订阅面，非事实源）
 ```
 
@@ -286,7 +286,7 @@ type ObservationsEvent = {
 
 ### AgentViewEvent 投影
 
-`Agent.on()` 回调的是 **AgentViewEvent**（`helpers.ts`），不是 canonical `AgentEvent`：
+`Agent.on()` 回调的是 **AgentViewEvent**（`agent/helpers.ts`），不是 canonical `AgentEvent`：
 
 ```typescript
 type AgentViewEvent =
@@ -306,7 +306,10 @@ Adaptor 把 canonical events 投影为厂商 API 格式；DeepSeek/OpenAI/Google
 
 - 输入：`Vender.StreamInput`（events + tools + systemPrompt）
 - 输出：`AsyncIterable<AgentEvent>`（流式 delta + stream 结束后的 `thought` / `actions` / `output`）
-- 读 history：`EventRound.parseTurn` 从 turn 内取出 `actions[]`、`observations[]` 再投影为厂商 message
+- 读 history：
+  1. `parseEventsIntoRoundMap(events)` → `Map<roundId, { input, turns }>`（首个 `INPUT` 建 round，重复 `INPUT` 忽略）
+  2. 每个 round 遍历 turn bucket，inline `find` 取出 `thought` / `actions` / `observations` / `output`
+  3. 投影为厂商 message（OpenAI：`reasoning_content` + tool；Google：`functionResponse` batch）
 
 ## Tools
 

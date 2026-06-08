@@ -1,5 +1,4 @@
 import { EventType } from '../../protocol/events';
-import { EventRound } from '../groupEventRounds';
 import { pipe, truncateText } from '../helpers';
 import { buildPromptContext } from './promptContextBuilder';
 
@@ -32,9 +31,10 @@ const CHAR_LENGTH_PER_TOKEN = 4;
 
 function keepRecentRounds(maxRecentRounds: number) {
 	return (events: AgentEvent[]): AgentEvent[] => {
-		const eventRounds = [...EventRound.groupByRoundId(events).values()];
-		if (eventRounds.length <= maxRecentRounds) return eventRounds.flat();
-		return eventRounds.slice(-maxRecentRounds).flat();
+		const roundIds = events.map((event) => event.meta?.roundId).filter(Boolean);
+		const uniqueRoundIds = [...new Set(roundIds)];
+		const keepRecentIds = uniqueRoundIds.slice(-maxRecentRounds);
+		return events.filter((event) => keepRecentIds.includes(event.meta?.roundId));
 	};
 }
 

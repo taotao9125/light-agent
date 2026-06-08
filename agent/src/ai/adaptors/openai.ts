@@ -1,7 +1,6 @@
 import OpenAI from 'openai';
-import { EventRound } from '../../agent/groupEventRounds';
 import { EventType } from '../../protocol/events';
-import { stringifyContent } from '../helpers';
+import { parseEventsIntoRoundMap, stringifyContent } from '../helpers';
 
 import type {
 	ChatCompletionAssistantMessageParam,
@@ -34,37 +33,43 @@ import type { Vender } from '../index';
 		role: 'tool',
 		tool_call_id: 'call_00_xxx',
 		content: '{"name": "agent", "version": "1.0.0"}'
-	}
+	},
+	{
+		role: 'assistant'
+	},
+	{
+	   role: 'tool'
+	},
+	...
 ];
  */
 
 // 注意这是 deepseek 要求的结构, 回传时, 都塞进一个 assistant message 里
 const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMessageParam[] => {
-	const roundGroups = EventRound.splitIntoRounds(events);
+	const roundsMap = parseEventsIntoRoundMap(events);
+	const roundsList = [...roundsMap.values()];
+	const roundsMessages = roundsList.map((round) => {
+		const roundMessage: ChatCompletionMessageParam[] = [];
+		const { input, turns } = round;
 
-	const messages = roundGroups.flatMap((roundGroup): ChatCompletionMessageParam[] => {
-		const groupMessages: ChatCompletionMessageParam[] = [];
-		const { input, turns } = roundGroup;
+		roundMessage.push({
+			role: input.source ?? 'user',
+			content: input.text,
+		});
 
-		if (input?.type === EventType.INPUT) {
-			groupMessages.push({
-				role: input.source ?? 'user',
-				content: input.text,
-			});
-		}
+		const turnsList = [...turns.values()];
+		for (const oneTurnEvents of turnsList) {
+			const thoughtEvent = oneTurnEvents.find((event) => event.type === EventType.THOUGHT);
+			const actionsEvent = oneTurnEvents.find((event) => event.type === EventType.ACTIONS);
+			const observationsEvent = oneTurnEvents.find((event) => event.type === EventType.OBSERVATIONS);
+			const outputEvent = oneTurnEvents.find((event) => event.type === EventType.OUTPUT);
 
-		for (const turnEvents of turns) {
-			const { thought, actions, observations, output } = EventRound.parseTurn(turnEvents);
-
-			const thoughtText = thought?.type === EventType.THOUGHT && thought.text ? thought.text : null;
-			const outputText = output?.type === EventType.OUTPUT && output.text ? output.text : null;
-
-			if (actions.length) {
-				groupMessages.push({
+			if (actionsEvent?.actions.length) {
+				roundMessage.push({
 					role: 'assistant',
-					content: outputText,
-					reasoning_content: thoughtText,
-					tool_calls: actions.map((action) => ({
+					content: outputEvent?.text ?? '',
+					reasoning_content: thoughtEvent?.text ?? '',
+					tool_calls: actionsEvent.actions.map((action) => ({
 						id: action.id,
 						type: 'function',
 						function: {
@@ -74,30 +79,28 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 					})),
 				} as ChatCompletionAssistantMessageParam);
 
-				for (const observation of observations) {
-					groupMessages.push({
+				for (const observation of observationsEvent?.observations ?? []) {
+					roundMessage.push({
 						role: 'tool',
 						tool_call_id: observation.id,
 						content: stringifyContent(observation.result),
 					});
 				}
-
-				continue;
-			}
-
-			if (thoughtText || outputText) {
-				groupMessages.push({
-					role: 'assistant',
-					content: outputText,
-					reasoning_content: thoughtText,
-				} as ChatCompletionAssistantMessageParam);
+			} else {
+				if (outputEvent || thoughtEvent) {
+					roundMessage.push({
+						role: 'assistant',
+						content: outputEvent?.text,
+						reasoning_content: thoughtEvent?.text,
+					} as ChatCompletionAssistantMessageParam);
+				}
 			}
 		}
 
-		return groupMessages;
+		return roundMessage;
 	});
 
-	return messages;
+	return roundsMessages.flat();
 };
 
 export default class OpenAIAdaptor implements Vender.Adaptor {

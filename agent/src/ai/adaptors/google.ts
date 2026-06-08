@@ -1,39 +1,37 @@
 import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
-import { EventRound } from '../../agent/groupEventRounds';
 import { EventType } from '../../protocol/events';
-import { stringifyContent } from '../helpers';
+import { parseEventsIntoRoundMap, stringifyContent } from '../helpers';
 
 import type { Content, FunctionCall, FunctionDeclaration, GenerateContentParameters } from '@google/genai';
 import type { AgentEvent } from '../../protocol/events';
 import type { Vender } from '../index';
 
 const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
-	const roundGroups = EventRound.splitIntoRounds(events);
+	const roundsMap = parseEventsIntoRoundMap(events);
+	const roundsList = [...roundsMap.values()];
+	const roundsContents = roundsList.map((round) => {
+		const roundContents: Content[] = [];
+		const { input, turns } = round;
 
-	return roundGroups.flatMap((roundGroup): Content[] => {
-		const { input, turns } = roundGroup;
-		const contents: Content[] = [];
+		roundContents.push({
+			role: 'user',
+			parts: [{ text: input.text }],
+		});
 
-		if (input?.type === EventType.INPUT) {
-			contents.push({
-				role: 'user',
-				parts: [{ text: input.text }],
-			});
-		}
+		const turnsList = [...turns.values()];
+		for (const oneTurnEvents of turnsList) {
+			const thoughtEvent = oneTurnEvents.find((event) => event.type === EventType.THOUGHT);
+			const actionsEvent = oneTurnEvents.find((event) => event.type === EventType.ACTIONS);
+			const observationsEvent = oneTurnEvents.find((event) => event.type === EventType.OBSERVATIONS);
+			const outputEvent = oneTurnEvents.find((event) => event.type === EventType.OUTPUT);
 
-		for (const turnEvents of turns) {
-			const { thought, actions, observations, output } = EventRound.parseTurn(turnEvents);
-
-			const thoughtText = thought?.type === EventType.THOUGHT && thought.text ? thought.text : null;
-			const outputText = output?.type === EventType.OUTPUT && output.text ? output.text : null;
-
-			if (actions.length) {
-				contents.push({
+			if (actionsEvent?.actions.length) {
+				roundContents.push({
 					role: 'model',
 					parts: [
-						...(thoughtText ? [{ text: thoughtText, thought: true }] : []),
-						...(outputText ? [{ text: outputText }] : []),
-						...actions.map((action) => ({
+						...(thoughtEvent?.text ? [{ text: thoughtEvent.text, thought: true }] : []),
+						...(outputEvent?.text ? [{ text: outputEvent.text }] : []),
+						...actionsEvent.actions.map((action) => ({
 							functionCall: {
 								id: action.id,
 								name: action.name,
@@ -43,10 +41,10 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 					],
 				});
 
-				if (observations.length) {
-					contents.push({
+				if (observationsEvent?.observations.length) {
+					roundContents.push({
 						role: 'user',
-						parts: observations.map((observation) => ({
+						parts: observationsEvent.observations.map((observation) => ({
 							functionResponse: {
 								id: observation.id,
 								name: observation.name,
@@ -57,23 +55,21 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 						})),
 					});
 				}
-
-				continue;
-			}
-
-			if (thoughtText || outputText) {
-				contents.push({
+			} else if (outputEvent || thoughtEvent) {
+				roundContents.push({
 					role: 'model',
 					parts: [
-						...(thoughtText ? [{ text: thoughtText, thought: true }] : []),
-						...(outputText ? [{ text: outputText }] : []),
+						...(thoughtEvent?.text ? [{ text: thoughtEvent.text, thought: true }] : []),
+						...(outputEvent?.text ? [{ text: outputEvent.text }] : []),
 					],
 				});
 			}
 		}
 
-		return contents;
+		return roundContents;
 	});
+
+	return roundsContents.flat();
 };
 
 export default class GoogleAdaptor implements Vender.Adaptor {
