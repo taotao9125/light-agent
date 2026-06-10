@@ -153,11 +153,29 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 
 		let thoughtTextBuffer = '';
 		let outputTextBuffer = '';
+		const usage = {
+			inputTokens: 0,
+			outputTokens: 0,
+			totalTokens: 0,
+		};
+		const startAt = Date.now();
 
 		try {
 			const { data: stream } = await this.client.chat.completions.create(config).withResponse();
 
 			for await (const chunk of stream) {
+				if (chunk.usage) {
+					if (chunk.usage.prompt_tokens) {
+						usage.inputTokens = chunk.usage.prompt_tokens;
+					}
+					if (chunk.usage.completion_tokens) {
+						usage.outputTokens = chunk.usage.completion_tokens;
+					}
+					if (chunk.usage.total_tokens) {
+						usage.totalTokens = chunk.usage.total_tokens;
+					}
+				}
+
 				const delta = chunk.choices[0]?.delta;
 				const tools = delta?.tool_calls ?? [];
 
@@ -226,6 +244,15 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e);
 			yield { type: EventType.AGENT_STOP, cause: 'llm', message };
+		} finally {
+			yield {
+				type: EventType.AGENT_TRACE,
+				kind: 'llm_usage',
+				startAt,
+				endAt: Date.now(),
+				model: config.model,
+				usage,
+			};
 		}
 	}
 }

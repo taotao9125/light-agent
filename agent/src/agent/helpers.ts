@@ -53,20 +53,6 @@ export function pipe<T>(...tasks: Task<T>[]) {
 	};
 }
 
-export function truncateText(text: string, maxLength: number) {
-	if (text.length <= maxLength) return text;
-	const placeHolder = '\n\n...[truncated]...\n\n';
-
-	if (maxLength <= placeHolder.length) return text.slice(0, maxLength);
-
-	const budgetLength = maxLength - placeHolder.length;
-
-	const headLength = Math.floor(budgetLength * 0.7);
-	const tailLength = budgetLength - headLength;
-
-	return text.slice(0, headLength) + placeHolder + text.slice(-tailLength);
-}
-
 export function stringify(value: unknown): string {
 	if (typeof value === 'string') return value;
 	try {

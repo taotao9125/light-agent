@@ -3,7 +3,7 @@ import AgentLoop from './agentLoop';
 import contextBuilder, { type Context } from './context/contextBuilder';
 
 import type { Vender } from '../ai/index';
-import type { AgentEvent } from '../protocol/events';
+import type { AgentEvent, SSOTEvent, TraceEvent } from '../protocol/events';
 import type { AgentLoopInterface } from './agentLoop';
 import type { AgentViewEvent, AgentViewListener } from './helpers';
 
@@ -36,19 +36,6 @@ type Job = {
 	abortController: AbortController;
 };
 
-const COMMITTED_EVENT_TYPES = new Set<string>([
-	EventType.INPUT,
-	EventType.THOUGHT,
-	EventType.ACTIONS,
-	EventType.OBSERVATIONS,
-	EventType.OUTPUT,
-	EventType.AGENT_STOP,
-]);
-
-function isCommittedEvent(event: AgentEvent) {
-	return COMMITTED_EVENT_TYPES.has(event.type);
-}
-
 export default class Agent implements AgentInterface {
 	private sessionId: string;
 	private store?: SessionStoreInterface;
@@ -60,7 +47,8 @@ export default class Agent implements AgentInterface {
 	};
 
 	private context: Context.Config;
-	private canonicalEvents: AgentEvent[] = [];
+	private canonicalEvents: SSOTEvent[] = [];
+	private traceEvents: TraceEvent[] = [];
 	private listeners: AgentViewListener[] = [];
 	private toolRegistry = new ToolRegistry();
 
@@ -82,14 +70,24 @@ export default class Agent implements AgentInterface {
 			this.emit(viewEvent);
 		}
 
-		await this.commitEvent(event);
+		this.commitEvent(event);
 	}
 
-	private async commitEvent(event: AgentEvent) {
-		if (isCommittedEvent(event)) {
-			this.canonicalEvents.push(event);
-			await this.store?.append(this.sessionId, event);
+	private commitEvent(event: AgentEvent) {
+		switch (event.type) {
+			case EventType.INPUT:
+			case EventType.THOUGHT:
+			case EventType.ACTIONS:
+			case EventType.OBSERVATIONS:
+			case EventType.OUTPUT:
+				this.canonicalEvents.push(event);
+				break;
+			case EventType.AGENT_TRACE:
+				this.traceEvents.push(event);
+				break;
 		}
+
+		// await this.store?.append(this.sessionId, event);
 	}
 
 	private emit(event: AgentViewEvent) {
@@ -109,7 +107,12 @@ export default class Agent implements AgentInterface {
 			this.runRecords.activeJob = currentJob;
 			await this.agentLoop.prompt(currentJob.prompt, {
 				abortSignal: currentJob.abortController.signal,
-				pullContextSnap: () => contextBuilder({ events: this.canonicalEvents, ...this.context }),
+				pullContextSnap: () =>
+					contextBuilder({
+						events: this.canonicalEvents,
+						traces: this.traceEvents,
+						...this.context,
+					}),
 				pullToolsSnap: () => this.toolRegistry.getTools(),
 			});
 			currentJob.resolve();

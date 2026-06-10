@@ -189,11 +189,11 @@ class AgentLoop implements AgentLoopInterface {
 						return;
 
 					case EventType.THOUGHT_DELTA:
-						this.emit({ type: EventType.THOUGHT_DELTA, text: chunk.text, meta: { roundId, turn } });
+						this.emit({ ...chunk, meta: { roundId, turn } });
 						break;
 
 					case EventType.THOUGHT:
-						this.emit({ type: EventType.THOUGHT, text: chunk.text, meta: { roundId, turn } });
+						this.emit({ ...chunk, meta: { roundId, turn } });
 						break;
 
 					case EventType.ACTIONS:
@@ -201,11 +201,15 @@ class AgentLoop implements AgentLoopInterface {
 						break;
 
 					case EventType.OUTPUT_DELTA:
-						this.emit({ type: EventType.OUTPUT_DELTA, text: chunk.text, meta: { roundId, turn } });
+						this.emit({ ...chunk, meta: { roundId, turn } });
 						break;
 
 					case EventType.OUTPUT:
-						this.emit({ type: EventType.OUTPUT, text: chunk.text, meta: { roundId, turn } });
+						this.emit({ ...chunk, meta: { roundId, turn } });
+						break;
+
+					case EventType.AGENT_TRACE:
+						this.emit({ ...chunk, meta: { roundId, turn } });
 						break;
 					default:
 						break;
