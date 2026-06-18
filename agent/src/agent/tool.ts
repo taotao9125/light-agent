@@ -44,6 +44,16 @@ export default class ToolRegistry implements ToolRegistryInterface {
 	private tools = new Map<string, Tool.Definition>();
 
 	register(name: string, tool: Tool.Definition): void {
+		Object.assign(tool.schema.properties, {
+			_intent: {
+				type: 'string',
+				description: '简要说明你为什么调用这个工具，以及你期望从结果中获得什么具体信息。该字段会用于为工具结果建立历史索引；相关时请写明具体文件、符号、错误、问题或决策。'
+			}
+		})
+
+		tool.schema.required = tool.schema.required || [];
+		tool.schema.required.push('_intent');
+
 		this.tools.set(name, tool);
 	}
 

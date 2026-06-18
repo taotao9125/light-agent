@@ -9,6 +9,8 @@ export const EventType = {
 	OUTPUT: 'output',
 	OUTPUT_DELTA: 'output_delta',
 	AGENT_STOP: 'agent_stop',
+
+	AGENT_TRACE: 'agent_trace'
 } as const;
 
 export type Meta = {
@@ -41,6 +43,7 @@ export type ActionsEvent = {
 		id: string;
 		name: string;
 		args: Record<string, any>;
+		intent: string;
 	}[];
 	meta?: Meta;
 };
@@ -77,6 +80,20 @@ export type AgentStop = {
 	meta?: Meta;
 };
 
+
+export type TraceEvent = {
+	type: typeof EventType.AGENT_TRACE,
+	costs: {
+		inputTokens: number;
+		outputTokens: number;
+		totalTokens: number;
+	},
+	startAt: number;
+	endAt: number;
+	model: string;
+	meta?: Meta;
+}
+
 export type AgentEvent =
 	| InputEvent
 	| ThoughtEvent
@@ -85,4 +102,14 @@ export type AgentEvent =
 	| OutputEvent
 	| AgentStop
 	| ThoughtDeltaEvent
-	| OutputDeltaEvent;
+	| OutputDeltaEvent
+	| TraceEvent
+
+
+
+export type SSOTEvent = 
+	| InputEvent
+	| ThoughtEvent
+	| ActionsEvent
+	| ObservationsEvent
+	| OutputEvent

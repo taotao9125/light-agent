@@ -47,22 +47,25 @@ import type { Vender } from '../index';
 // 注意这是 deepseek 要求的结构, 回传时, 都塞进一个 assistant message 里
 const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMessageParam[] => {
 	const roundsMap = parseEventsIntoRoundMap(events);
-	const roundsList = [...roundsMap.values()];
-	const roundsMessages = roundsList.map((round) => {
+
+	const messages: ChatCompletionMessageParam[] = [];
+
+	for (const [_, round] of roundsMap) {
 		const roundMessage: ChatCompletionMessageParam[] = [];
-		const { input, turns } = round;
+		for (const [_, turn] of round) {
+			const inputEvent = turn.find(event => event.type === EventType.INPUT);
+			
+			if (inputEvent) {
+				roundMessage.push({
+					role: inputEvent.source ?? 'user',
+					content: inputEvent.text
+				})
+			}
 
-		roundMessage.push({
-			role: input.source ?? 'user',
-			content: input.text,
-		});
-
-		const turnsList = [...turns.values()];
-		for (const oneTurnEvents of turnsList) {
-			const thoughtEvent = oneTurnEvents.find((event) => event.type === EventType.THOUGHT);
-			const actionsEvent = oneTurnEvents.find((event) => event.type === EventType.ACTIONS);
-			const observationsEvent = oneTurnEvents.find((event) => event.type === EventType.OBSERVATIONS);
-			const outputEvent = oneTurnEvents.find((event) => event.type === EventType.OUTPUT);
+			const thoughtEvent = turn.find((event) => event.type === EventType.THOUGHT);
+			const actionsEvent = turn.find((event) => event.type === EventType.ACTIONS);
+			const observationsEvent = turn.find((event) => event.type === EventType.OBSERVATIONS);
+			const outputEvent = turn.find((event) => event.type === EventType.OUTPUT);
 
 			if (actionsEvent?.actions.length) {
 				roundMessage.push({
@@ -95,12 +98,15 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 					} as ChatCompletionAssistantMessageParam);
 				}
 			}
+
+
 		}
 
-		return roundMessage;
-	});
+		messages.push(...roundMessage);
+	}
 
-	return roundsMessages.flat();
+
+	return messages;
 };
 
 export default class OpenAIAdaptor implements Vender.Adaptor {
@@ -153,7 +159,7 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 
 		let thoughtTextBuffer = '';
 		let outputTextBuffer = '';
-		const usage = {
+		const costs = {
 			inputTokens: 0,
 			outputTokens: 0,
 			totalTokens: 0,
@@ -166,13 +172,13 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 			for await (const chunk of stream) {
 				if (chunk.usage) {
 					if (chunk.usage.prompt_tokens) {
-						usage.inputTokens = chunk.usage.prompt_tokens;
+						costs.inputTokens = chunk.usage.prompt_tokens;
 					}
 					if (chunk.usage.completion_tokens) {
-						usage.outputTokens = chunk.usage.completion_tokens;
+						costs.outputTokens = chunk.usage.completion_tokens;
 					}
 					if (chunk.usage.total_tokens) {
-						usage.totalTokens = chunk.usage.total_tokens;
+						costs.totalTokens = chunk.usage.total_tokens;
 					}
 				}
 
@@ -247,11 +253,10 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 		} finally {
 			yield {
 				type: EventType.AGENT_TRACE,
-				kind: 'llm_usage',
 				startAt,
 				endAt: Date.now(),
 				model: config.model,
-				usage,
+				costs,
 			};
 		}
 	}

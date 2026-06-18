@@ -127,7 +127,7 @@ class AgentLoop implements AgentLoopInterface {
 
 		// 一个 input 到 output 为一个 roundId
 		const roundId = `round_id_${randomId()}`;
-		let turn = 0;
+		let turn = 1;
 
 		const emitAbort = () => {
 			this.emit({
@@ -149,7 +149,15 @@ class AgentLoop implements AgentLoopInterface {
 				return;
 			}
 
-			turn++;
+			if (turn > this.maxTurns) {
+				this.emit({
+					type: EventType.AGENT_STOP,
+					cause: 'runtime',
+					message: `Agent stopped after reaching max turns: ${this.maxTurns}`,
+					meta: { roundId, turn },
+				});
+				return;
+			}
 
 			let turnActions: ActionsEvent['actions'] = [];
 			// 这就支持了动态注册工具的能力
@@ -160,15 +168,7 @@ class AgentLoop implements AgentLoopInterface {
 			// 刷新 context
 			const context = loopDeps.pullContextSnap();
 
-			if (turn > this.maxTurns) {
-				this.emit({
-					type: EventType.AGENT_STOP,
-					cause: 'runtime',
-					message: `Agent stopped after reaching max turns: ${this.maxTurns}`,
-					meta: { roundId, turn },
-				});
-				return;
-			}
+			
 
 			const stream = this.venderAdaptor.stream({
 				input: context.events,
@@ -183,16 +183,12 @@ class AgentLoop implements AgentLoopInterface {
 				}
 
 				switch (chunk.type) {
-					case EventType.AGENT_STOP:
-						// LLM 厂商的错误, 我们无能为力, 但要进 canonicalEvents, 需要审计, 但不进下一轮的 prompt context ,对 LLM 来说没用。
-						this.emit({ ...chunk, meta: { roundId, turn } });
-						return;
 
 					case EventType.THOUGHT_DELTA:
-						this.emit({ ...chunk, meta: { roundId, turn } });
-						break;
-
 					case EventType.THOUGHT:
+					case EventType.OUTPUT_DELTA:
+					case EventType.OUTPUT:
+					case EventType.AGENT_TRACE:
 						this.emit({ ...chunk, meta: { roundId, turn } });
 						break;
 
@@ -200,19 +196,10 @@ class AgentLoop implements AgentLoopInterface {
 						turnActions = chunk.actions;
 						break;
 
-					case EventType.OUTPUT_DELTA:
+					case EventType.AGENT_STOP:
+						// LLM 厂商的错误, 我们无能为力, 但要进 canonicalEvents, 需要审计, 但不进下一轮的 prompt context ,对 LLM 来说没用。
 						this.emit({ ...chunk, meta: { roundId, turn } });
-						break;
-
-					case EventType.OUTPUT:
-						this.emit({ ...chunk, meta: { roundId, turn } });
-						break;
-
-					case EventType.AGENT_TRACE:
-						this.emit({ ...chunk, meta: { roundId, turn } });
-						break;
-					default:
-						break;
+						return;
 				}
 			}
 
@@ -257,6 +244,8 @@ class AgentLoop implements AgentLoopInterface {
 				observations,
 				meta,
 			});
+
+			turn++;
 		}
 	}
 
