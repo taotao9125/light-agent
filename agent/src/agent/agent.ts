@@ -11,6 +11,7 @@ export type { AgentViewEvent, AgentViewListener } from './helpers';
 
 import { projectAgentView } from './helpers';
 import ToolRegistry, { type Tool } from './tool';
+import createRecallTool from './internalTools/createRecallTool';
 
 import type { SessionStoreInterface } from './store';
 
@@ -36,6 +37,9 @@ type Job = {
 	abortController: AbortController;
 };
 
+
+
+
 export default class Agent implements AgentInterface {
 	private sessionId: string;
 	private store?: SessionStoreInterface;
@@ -45,6 +49,8 @@ export default class Agent implements AgentInterface {
 		queue: [] as Job[],
 		activeJob: null as Job | null,
 	};
+
+	private ssotEventIndexes: Context.BuildResult['ssotEventIndexes']  = new Map();
 
 	private context: Context.Config;
 	private canonicalEvents: SSOTEvent[] = [];
@@ -63,6 +69,10 @@ export default class Agent implements AgentInterface {
 		this.agentLoop.on((event) => {
 			void this.handleAgentEvent(event);
 		});
+
+		const recallTool = createRecallTool(() => this.ssotEventIndexes)
+
+		this.toolRegistry.register(recallTool.name, recallTool);
 	}
 
 	private async handleAgentEvent(event: AgentEvent) {
@@ -107,12 +117,15 @@ export default class Agent implements AgentInterface {
 			this.runRecords.activeJob = currentJob;
 			await this.agentLoop.prompt(currentJob.prompt, {
 				abortSignal: currentJob.abortController.signal,
-				pullContextSnap: () =>
-					contextBuilder({
+				pullContextSnap: () => {
+					const snap = contextBuilder({
 						events: this.canonicalEvents,
 						traces: this.traceEvents,
 						...this.context,
-					}),
+					});
+					this.ssotEventIndexes = snap.ssotEventIndexes;
+					return snap;
+				},
 				pullToolsSnap: () => this.toolRegistry.getTools(),
 			});
 			currentJob.resolve();

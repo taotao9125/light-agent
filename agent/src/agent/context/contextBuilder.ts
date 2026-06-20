@@ -21,22 +21,17 @@ export namespace Context {
 		strategy: Strategy;
 	};
 
+
 	export type BuildResult = {
 		events: SSOTEvent[];
 		systemPrompt: string;
+		ssotEventIndexes: Map<string, { id: string; content: string; }>
 	};
 }
 
 const CHAR_LENGTH_PER_TOKEN = 4;
 
-function keepRecentRounds(maxRecentRounds: number) {
-	return (events: SSOTEvent[]): SSOTEvent[] => {
-		const roundIds = events.map((event) => event.meta?.roundId).filter(Boolean);
-		const uniqueRoundIds = [...new Set(roundIds)];
-		const keepRecentIds = uniqueRoundIds.slice(-maxRecentRounds);
-		return events.filter((event) => keepRecentIds.includes(event.meta?.roundId));
-	};
-}
+
 
 export function truncateText(text: string, maxLength: number) {
 	if (text.length <= maxLength) return text;
@@ -196,6 +191,8 @@ function rebuildEvents(strategy: Context.Strategy) {
 }
 
 
+
+
 const thresholdSummary = {
 	enabled: true,
 	budgetTokens: 32000, // 模型 context 预算（或 prompt 侧上限）
@@ -213,53 +210,25 @@ function getIntent(args: Record<string, unknown>): string {
 	}
 	return '';
 }
-function buildObsIndexs(events: SSOTEvent[]) {
-	const actionEvents = events
-		.filter(event => event.type === EventType.ACTIONS)
-		.reduce((acc, { actions }) => {
-			acc.push(...actions);
-			return acc;
-		}, [] as ActionsEvent['actions'])
-
-	const observationEvents = events
-		.filter(event => event.type === EventType.OBSERVATIONS)
-		.reduce((acc, { observations }) => {
-			acc.push(...observations);
-			return acc;
-		}, [] as ObservationsEvent['observations'])
-
-	return actionEvents.map(action => {
-		return {
-			toolName: action.name,
-			intent: getIntent(action.args),
-			status: observationEvents.find(obs => obs.id === action.id)?.isError,
-
-		}
-	})
 
 
 
+type RoundMap = Map<string, Map<number, SSOTEvent[]>>;
 
-}
-
-
-
-type RoundMap = Map<string, Map<number, AgentEvent[]>>;
-
-function parseEventsIntoRoundMap(events: AgentEvent[]): RoundMap {
+function parseEventsIntoRoundMap(events: SSOTEvent[]): RoundMap {
 	const roundMap: RoundMap = new Map();
 
 	for (const event of events) {
 		const roundId = event.meta?.roundId;
 		const turnIndex = event.meta?.turn;
-		
+
 		if (!roundId || typeof turnIndex !== 'number') continue;
 
-		
+
 		if (!roundMap.get(roundId)) {
 			roundMap.set(roundId, new Map());
-		} 
-		
+		}
+
 		if (!roundMap.get(roundId)?.get(turnIndex)) {
 			roundMap.get(roundId)?.set(turnIndex, []);
 		}
@@ -276,7 +245,7 @@ function parseEventsIntoRoundMap(events: AgentEvent[]): RoundMap {
 
 
 async function summaryHistory(events: AgentEvent[], traces: TraceEvent[]) {
-	
+
 	const costsMap = toRounCostsMap(traces);
 	const nextContextInputTokens = costsMap.lastContextWindowTokens;
 
@@ -296,52 +265,129 @@ async function summaryHistory(events: AgentEvent[], traces: TraceEvent[]) {
 
 
 function buildHistoryIndex(events: AgentEvent[]) {
-	
+
 }
 
 
 // Context 构建策略：静态常驻 + 动态可回溯 + 摘要兜底。
-  //
-  // 总体原则：
-  // - 静态上下文保持稳定，减少 prompt 前缀抖动，尽量提升 KV cache 命中。
-  // - 动态上下文不追求全量常驻，而是优先变成可回溯记忆。
-  // - 有损摘要只作为二级兜底，不作为默认事实源。
-  //
-  // 1. Static context
-  // - system prompts、runtime instructions、product instructions 以 XML block 注入。
-  // - skill 也属于 instructions，但只注入 skill index，不注入 SKILL.md 全文。
-  // - 模型根据 skill index 按需读取具体 SKILL.md。
-  // - 静态块的顺序、格式、tag 尽量稳定。
-  //
-  // 2. Dynamic context
-  // - events 按 turn 构建模型视图，而不是按 round。
-  // - 最近 N 个 committed turns 保留原文，默认 N=2。
-  // - 更早的 turns 不再全量进入 context，而是投影为可回溯结构：
-  //   a. historyNotes：阶段性笔记，用于帮助模型快速回忆过去发生了什么。
-  //   b. historyIndex：证据目录，指向 SSOT event log 中的原始 event。
-  // - 精确历史细节必须通过 search_history / read_history 回溯。
-  // - SSOT event log 永远保留，不被摘要覆盖或删除。
-  //
-  // 2.1 Recoverable compression
-  // - 对 recent turns 之前的历史进行索引化裁剪。
-  // - 裁剪目标不是让模型“记住一切”，而是让模型在需要时能找到原始证据。
-  // - 设计必须保证 recall path 精确：historyNotes -> historyIndex -> SSOT ref。
-  // - 不能保证弱模型一定会主动 recall；但要保证有能力 recall 的模型能根据线索找回丢失细节。
-  // - historyNotes / historyIndex 不是事实源，只是导航层；精确事实以 read_history 返回的 SSOT 内容为准。
-  //
-  // 2.2 Lossy fallback summary
-  // - 如果 static context + recent raw turns + historyNotes + visible historyIndex 仍超过 context window 预算，
-  //   再进行摘要总结压缩。
-  // - 摘要优先压缩旧 historyNotes / historyIndex，而不是直接覆盖 SSOT。
-  // - 摘要结果仍应保留 refs / indexRefs，避免成为不可验证的孤立结论。
-  // - 摘要是兜底策略，不是默认记忆机制。
+//
+// 总体原则：
+// - 静态上下文保持稳定，减少 prompt 前缀抖动，尽量提升 KV cache 命中。
+// - 动态上下文不追求全量常驻，而是优先变成可回溯记忆。
+// - 有损摘要只作为二级兜底，不作为默认事实源。
+//
+// 1. Static context
+// - system prompts、runtime instructions、product instructions 以 XML block 注入。
+// - skill 也属于 instructions，但只注入 skill index，不注入 SKILL.md 全文。
+// - 模型根据 skill index 按需读取具体 SKILL.md。
+// - 静态块的顺序、格式、tag 尽量稳定。
+//
+// 2. Dynamic context
+// - events 按 turn 构建模型视图，而不是按 round。
+// - 最近 N 个 committed turns 保留原文，默认 N=2。
+// - 更早的 turns 不再全量进入 context，而是投影为可回溯结构：
+//   a. historyNotes：阶段性笔记，用于帮助模型快速回忆过去发生了什么。
+//   b. historyIndex：证据目录，指向 SSOT event log 中的原始 event。
+// - 精确历史细节必须通过 search_history / read_history 回溯。
+// - SSOT event log 永远保留，不被摘要覆盖或删除。
+//
+// 2.1 Recoverable compression
+// - 对 recent turns 之前的历史进行索引化裁剪。
+// - 裁剪目标不是让模型“记住一切”，而是让模型在需要时能找到原始证据。
+// - 设计必须保证 recall path 精确：historyNotes -> historyIndex -> SSOT ref。
+// - 不能保证弱模型一定会主动 recall；但要保证有能力 recall 的模型能根据线索找回丢失细节。
+// - historyNotes / historyIndex 不是事实源，只是导航层；精确事实以 read_history 返回的 SSOT 内容为准。
+//
+// 2.2 Lossy fallback summary
+// - 如果 static context + recent raw turns + historyNotes + visible historyIndex 仍超过 context window 预算，
+//   再进行摘要总结压缩。
+// - 摘要优先压缩旧 historyNotes / historyIndex，而不是直接覆盖 SSOT。
+// - 摘要结果仍应保留 refs / indexRefs，避免成为不可验证的孤立结论。
+// - 摘要是兜底策略，不是默认记忆机制。
+
+
+
+
+function formatObsIndexContent(obs: ObservationsEvent['observations'][number], action: ActionsEvent['actions'][number], id: string) {
+	const status = obs.isError ? 'error' : 'ok';
+	console.log(`-----> [indexed:tool_result:${id}]  intent: ${action.args._intent}`,)
+	return [
+		`[indexed:tool_result:${id}] | ${obs.name} | ${status} | tool_arguments: ${JSON.stringify(action.args)} | intent: ${action.args._intent}`,
+		`Recall: recall_indexed('${id}')`
+	].join('\n')
+
+}
+function buildHistoryEventsToIndexes(events: SSOTEvent[]) {
+	// agentEvent[][]
+	const turns = [...parseEventsIntoRoundMap(events).values()].map(turn => [...turn.values()]).flat()
+
+	const keepRecentTurnsEvents = turns.slice(-1).flat();
+	const needProcessTurnsEvents = turns.slice(0, turns.length - 1).flat();
+
+
+	const ssotEventIndexes: Context.BuildResult['ssotEventIndexes'] = new Map();
+
+	const compressedEvent: SSOTEvent[] = [];
+
+	for (const event of needProcessTurnsEvents) {
+		const roundId = event.meta?.roundId;
+		const turn = event.meta?.turn;
+		if (!roundId || typeof turn !== 'number') continue;
+
+		switch (event.type) {
+			case EventType.OBSERVATIONS:
+				const obses = event.observations;
+				const actionsEvent = needProcessTurnsEvents.find(
+					event => event.type === EventType.ACTIONS && event.meta?.roundId === roundId && event.meta.turn === turn
+				) as ActionsEvent;
+
+				const actions = actionsEvent.actions || [];
+
+				compressedEvent.push({
+					...event,
+					observations: obses.map((obs, index) => {
+						const id = `${roundId}_${turn}_tool_result_${index}`;
+						ssotEventIndexes.set(id, { id, content: obs.result });
+						
+						return {
+							...obs,
+							// error 不用索引
+							result: obs.isError ? obs.result : formatObsIndexContent(obs, actions[index], id)
+						}
+					})
+				})
+				break;
+			default:
+				compressedEvent.push(event);
+		}
+
+
+	}
+
+
+	return {
+		ssotEventIndexes,
+		events: [...compressedEvent, ...keepRecentTurnsEvents]
+	}
+
+
+
+}
 
 export default function contextBuilder(
 	input: Context.Config & { events: SSOTEvent[]; traces: TraceEvent[] },
 ): Context.BuildResult {
 	const { prompts, strategy, events, traces } = input;
+
+
+	let cleanedEvents = cleanEvents(EventType.AGENT_STOP)(events);
+
+	const compressed = buildHistoryEventsToIndexes(cleanedEvents)
+
 	return {
 		systemPrompt: buildPromptContext(prompts),
-		events: rebuildEvents(strategy)(events),
+		events: compressed.events,
+		ssotEventIndexes: compressed.ssotEventIndexes
+		// events: rebuildEvents(strategy)(events),
 	};
 }

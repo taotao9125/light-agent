@@ -152,3 +152,4 @@ vite.config.ts.timestamp-*
 
 
 mcp_server/src/db/*.json
+agent/notes/MONTH-PLAN.md
