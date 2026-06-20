@@ -264,10 +264,6 @@ async function summaryHistory(events: AgentEvent[], traces: TraceEvent[]) {
 }
 
 
-function buildHistoryIndex(events: AgentEvent[]) {
-
-}
-
 
 // Context 构建策略：静态常驻 + 动态可回溯 + 摘要兜底。
 //
@@ -307,13 +303,13 @@ function buildHistoryIndex(events: AgentEvent[]) {
 
 
 
-
-function formatObsIndexContent(obs: ObservationsEvent['observations'][number], action: ActionsEvent['actions'][number], id: string) {
-	const status = obs.isError ? 'error' : 'ok';
-	console.log(`-----> [indexed:tool_result:${id}]  intent: ${action.args._intent}`,)
+type Action = ActionsEvent['actions'][number];
+type Observation = ObservationsEvent['observations'][number];
+function formatObsIndexContent(obs: Observation, action: Action) {
+	const callId = obs.id;
 	return [
-		`[indexed:tool_result:${id}] | ${obs.name} | ${status} | tool_arguments: ${JSON.stringify(action.args)} | intent: ${action.args._intent}`,
-		`Recall: recall_indexed('${id}')`
+		`[indexed:tool_result:${callId}] | ${obs.name} | ok | intent: ${getIntent(action.args)}`,
+		`Recall: recall_indexed('${callId}')`
 	].join('\n')
 
 }
@@ -345,14 +341,16 @@ function buildHistoryEventsToIndexes(events: SSOTEvent[]) {
 
 				compressedEvent.push({
 					...event,
-					observations: obses.map((obs, index) => {
-						const id = `${roundId}_${turn}_tool_result_${index}`;
+					observations: obses.map(obs => {
+						// 不对召回内容进行二次压缩
+						if (obs.name === 'recall_indexed') return obs;
+						const id = obs.id;
 						ssotEventIndexes.set(id, { id, content: obs.result });
-						
+						const action = actions.find(action => action.id === id)!;
 						return {
 							...obs,
 							// error 不用索引
-							result: obs.isError ? obs.result : formatObsIndexContent(obs, actions[index], id)
+							result: obs.isError ? obs.result : formatObsIndexContent(obs, action)
 						}
 					})
 				})

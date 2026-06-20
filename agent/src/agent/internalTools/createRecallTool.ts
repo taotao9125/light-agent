@@ -41,7 +41,7 @@ function createRecallIndexTool(getSSOTEventsIndexes: () => Context.BuildResult['
             const entry = indexes.get(id);
             if (!entry) return textResult(`[index recall] not found: ${id}`, true);
             console.log(`<-----[召回] ${id}`)
-            return textResult(['[index recall]', id, '', entry.content].join('\n'));
+            return textResult(['[index recall]', id, entry.content].join('\n'));
         }
     }
 }
