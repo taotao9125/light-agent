@@ -179,4 +179,8 @@ export default class GoogleAdaptor implements Vender.Adaptor {
 			yield { type: EventType.AGENT_STOP, cause: 'llm', message };
 		}
 	}
+
+	async _generateText(_input: Vender.GenerateTextInput): Promise<Vender.GenerateTextResult> {
+		throw new Error('Google adaptor does not support _generateText yet');
+	}
 }

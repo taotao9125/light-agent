@@ -109,6 +109,8 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 	return messages;
 };
 
+
+
 export default class OpenAIAdaptor implements Vender.Adaptor {
 	private client: OpenAI;
 	private vender: Vender.Config;
@@ -143,6 +145,38 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 			})),
 			tool_choice: 'auto',
 			stream: true,
+		};
+	}
+
+	/** agent 内部使用：用于摘要等文本生成 */
+	async _generateText(input: Vender.GenerateTextInput): Promise<Vender.GenerateTextResult> {
+		const messages: ChatCompletionMessageParam[] = input.messages.map((message) => ({
+			role: message.role,
+			content: message.content,
+		}));
+
+		if (input.systemPrompt) {
+			messages.unshift({
+				role: 'system',
+				content: input.systemPrompt,
+			});
+		}
+
+		const response = await this.client.chat.completions.create({
+			model: this.vender.model,
+			messages,
+			stream: false,
+		});
+
+		const text = response.choices[0]?.message?.content ?? '';
+
+		return {
+			text,
+			usage: {
+				inputTokens: response.usage?.prompt_tokens ?? 0,
+				outputTokens: response.usage?.completion_tokens ?? 0,
+				totalTokens: response.usage?.total_tokens ?? 0,
+			},
 		};
 	}
 

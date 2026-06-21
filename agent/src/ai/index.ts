@@ -20,8 +20,24 @@ export namespace Vender {
 		systemPrompt?: string;
 	};
 
+	export type GenerateTextInput = {
+		systemPrompt?: string;
+		messages: Array<{ role: 'user', content: string }>;
+	};
+
+	export type GenerateTextResult = {
+		text: string;
+		usage: {
+			inputTokens: number;
+			outputTokens: number;
+			totalTokens: number;
+		};
+	};
+
+
 	export interface Adaptor {
 		stream(input: StreamInput): AsyncIterable<AgentEvent>;
+		_generateText(input: GenerateTextInput): Promise<GenerateTextResult>;
 	}
 }
 
