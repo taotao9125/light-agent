@@ -1,7 +1,7 @@
 import { type Tool } from '../tool';
 import { type Context } from '../context/contextBuilder';
 
-function createRecallIndexTool(getSSOTEventsIndexes: () => Context.BuildResult['ssotEventIndexes']): Tool.Definition {
+function createRecallIndexTool(getindexedEventsMap: () => Context.BuildResult['indexedEventsMap']): Tool.Definition {
 	return {
 		name: 'recall_indexed',
 		description:
@@ -20,7 +20,7 @@ function createRecallIndexTool(getSSOTEventsIndexes: () => Context.BuildResult['
 		async execute(p: { id: string }, context) {
 			context.signal?.throwIfAborted();
 			const id = p.id?.trim();
-			const indexes = getSSOTEventsIndexes();
+			const indexes = getindexedEventsMap();
 			if (!id) return { isError: true, content: '[index recall] missing id' };
 			const entry = indexes.get(id);
 			if (!entry) return { isError: true, content: `[index recall] not found: ${id}` };

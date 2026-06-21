@@ -165,6 +165,8 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 		const response = await this.client.chat.completions.create({
 			model: this.vender.model,
 			messages,
+			tools: [],
+			tool_choice: 'auto',
 			stream: false,
 		});
 

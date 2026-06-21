@@ -20,13 +20,14 @@ type AgentEventListener = (event: AgentEvent) => void;
 
 type LoopDeps = {
 	abortSignal: AbortSignal;
-	pullContextSnap: () => Context.BuildResult;
+	pullContextSnap: () => Promise<Context.BuildResult>;
 	pullToolsSnap: () => Tool.Definition[];
 };
 
 export interface AgentLoopInterface {
 	prompt: (prompt: string, options: LoopDeps) => Promise<void>;
 	on: (listener: AgentEventListener) => void;
+	getVenderAdaptor: () => Vender.Adaptor;
 }
 
 function randomId() {
@@ -160,7 +161,7 @@ class AgentLoop implements AgentLoopInterface {
 			const toolsMeta = toToolsMeta(tools);
 
 			// 刷新 context
-			const context = loopDeps.pullContextSnap();
+			const context = await loopDeps.pullContextSnap();
 
 			
 
@@ -249,6 +250,10 @@ class AgentLoop implements AgentLoopInterface {
 
 	on(listener: AgentEventListener) {
 		this.listeners.push(listener);
+	}
+
+	getVenderAdaptor() {
+		return this.venderAdaptor;
 	}
 }
 

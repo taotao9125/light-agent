@@ -1,9 +1,10 @@
-import { EventType, AgentEvent, ActionsEvent, ObservationsEvent } from '../../protocol/events';
+import { EventType, ActionsEvent, ObservationsEvent } from '../../protocol/events';
 import { pipe } from '../helpers';
 import { buildPromptContext } from './promptContextBuilder';
 
 import type { SSOTEvent, TraceEvent } from '../../protocol/events';
 import type { Prompts } from './prompts.types';
+import type { Vender } from '../../ai/index';
 
 export type { Prompts } from './prompts.types';
 
@@ -25,7 +26,7 @@ export namespace Context {
 	export type BuildResult = {
 		events: SSOTEvent[];
 		systemPrompt: string;
-		ssotEventIndexes: Map<string, { id: string; content: string; }>
+		indexedEventsMap: Map<string, { id: string; content: string; compressed: string; }>
 	};
 }
 
@@ -71,7 +72,7 @@ function cleanEvents(eventType: string) {
 
 
 
-function _estimateToken(text: string) {
+function estimateToken(text: string) {
 	if (!text) return 0;
 	return Math.round(text.length / CHAR_LENGTH_PER_TOKEN);
 }
@@ -192,18 +193,6 @@ function rebuildEvents(strategy: Context.Strategy) {
 
 
 
-
-const thresholdSummary = {
-	enabled: true,
-	budgetTokens: 32000, // 模型 context 预算（或 prompt 侧上限）
-	triggerRatio: 0.7, // 达到 70% 触发
-	targetRatio: 0.55, // 压到 55% 停（滞回，防抖动）
-	keepRecentRounds: 2, // 最近 N 个 round 永不总结
-	keepActiveRound: true, // 当前 round 永不总结
-	minRoundsBeforeSummary: 2, // 至少 2 个 completed round 才允许总结
-};
-
-
 function getIntent(args: Record<string, unknown>): string {
 	if (typeof args._intent === 'string') {
 		return args._intent;
@@ -242,26 +231,6 @@ function parseEventsIntoRoundMap(events: SSOTEvent[]): RoundMap {
 	return roundMap;
 }
 
-
-
-async function summaryHistory(events: AgentEvent[], traces: TraceEvent[]) {
-
-	const costsMap = toRounCostsMap(traces);
-	const nextContextInputTokens = costsMap.lastContextWindowTokens;
-
-	// 超过阈值进行压缩，返回压缩摘要 string
-	if (nextContextInputTokens >= thresholdSummary.budgetTokens * thresholdSummary.triggerRatio) {
-		// const turns = map<turnIndex, AgentEvent[]>;
-		// const needCompactTurns = turn.values().slice(-1);
-		// const keepTurnsEvents = [...turn.values().slice(turn.values().length - 2)];
-		// const summaryString await callLLM([...needCompactTurns]);
-		// return [summaryEvent, ...keepTurnsEvents];
-	}
-
-	// 不用进行压缩
-	return events;
-
-}
 
 
 
@@ -305,33 +274,49 @@ async function summaryHistory(events: AgentEvent[], traces: TraceEvent[]) {
 
 type Action = ActionsEvent['actions'][number];
 type Observation = ObservationsEvent['observations'][number];
-function formatObsIndexContent(obs: Observation, action: Action) {
+
+// 尽可能给模型视角提供线索: 这是什么历史结果，状态是什么, 调用目的是什么，如果需要细节，恢复指令是什么
+function compressObsContent(obs: Observation, action: Action) {
+
+	// token 数量太小了, 也没必要压缩
+	if (estimateToken(obs.result) <= 100) return obs.result;
+
 	const callId = obs.id;
+	const toolName = obs.name;
+	const intent = getIntent(action.args);
+
 	return [
-		`[indexed:tool_result:${callId}] | ${obs.name} | ok | intent: ${getIntent(action.args)}`,
-		`Recall: recall_indexed('${callId}')`
+		 // 这是什么历史结果, 状态
+		`[Indexed:tool_result:${callId}]] success`,
+		// 工具名
+		`tool: ${toolName}`,
+		// 调用目的
+		`intent: ${intent}`,
+		// 恢复指令
+		`Recall if need: recall_indexed("${callId}")`
 	].join('\n')
 
 }
 
 
-function buildHistoryEventsToIndexes(events: SSOTEvent[]) {
+function compressEvents(events: SSOTEvent[]) {
 
 	const roundsMap = parseEventsIntoRoundMap(events);
+	const rencentHotTurnsLength = 2;
+	const rencentHotRoundsLength = 2;
 
 	const roundsIds = [...roundsMap.keys()];
-	
+
 	// agentEvent[][]
 	const turns = [...roundsMap.values()].map(turn => [...turn.values()]).flat();
 
-	const keepRecentTurnsEvents = turns.slice(-2).flat();
-
-	const needProcessTurnsEvents = turns.slice(0, turns.length - 2).flat();
+	const keepRecentTurnsEvents = turns.slice(-rencentHotTurnsLength).flat();
+	const needProcessTurnsEvents = turns.slice(0, turns.length - rencentHotTurnsLength).flat();
 
 	// 最近两个 round 之前的可以丢弃 thinking block;
-	const needDropThinkingBlockRounds = roundsIds.slice(0, roundsIds.length - 2);
+	const needDropThinkingBlockRounds = roundsIds.slice(0, roundsIds.length - rencentHotRoundsLength);
 
-	const ssotEventIndexes: Context.BuildResult['ssotEventIndexes'] = new Map();
+	const indexedEventsMap: Context.BuildResult['indexedEventsMap'] = new Map();
 
 	const compressedEvent: SSOTEvent[] = [];
 
@@ -353,12 +338,13 @@ function buildHistoryEventsToIndexes(events: SSOTEvent[]) {
 					...event,
 					observations: obses.map(obs => {
 						const id = obs.id;
-						ssotEventIndexes.set(id, { id, content: obs.result });
 						const action = actions.find(action => action.id === id)!;
+						const compressedContent = compressObsContent(obs, action);
+						indexedEventsMap.set(id, { id, content: obs.result, compressed: compressedContent});
 						return {
 							...obs,
 							// error 不用索引
-							result: obs.isError ? obs.result : formatObsIndexContent(obs, action)
+							result: obs.isError ? obs.result : compressedContent,
 						}
 					})
 				})
@@ -374,36 +360,91 @@ function buildHistoryEventsToIndexes(events: SSOTEvent[]) {
 				compressedEvent.push(event);
 		}
 
-
 	}
 
 
 	return {
-		ssotEventIndexes,
+		indexedEventsMap,
 		events: [...compressedEvent, ...keepRecentTurnsEvents]
 	}
 
 
 }
 
-export default function contextBuilder(
-	input: Context.Config & { events: SSOTEvent[]; traces: TraceEvent[] },
-): Context.BuildResult {
-	const { prompts, strategy, events, traces } = input;
 
+// context_tokens_{t+1} = total_tokens_{t}（模型返回的上次总 token） + detal_obs(估算) + detal_input（估算）- 被索引压缩的
+function estimateNextWindowContextTokens(events: SSOTEvent[], lastWindowTokens: number) {
+	const deltaTokens = deltaObservationsTokens(events);
+	return lastWindowTokens + deltaTokens;
+}
+
+// 下一个 turn 里面 token 估算来自新增的工具计算的 observations 或者新的 prompt input
+function deltaObservationsTokens(events: SSOTEvent[]) {
+	const lastEvent = events[events.length - 1];
+	if (!lastEvent) {
+		return 0;
+	}
+
+	if (lastEvent.type === EventType.OBSERVATIONS) {
+		return lastEvent.observations.reduce((acc, obs) => {
+			acc += estimateToken(obs.result);
+			return acc;
+		}, 0)
+	}
+
+	if (lastEvent.type === EventType.INPUT) {
+		return estimateToken(lastEvent.text);
+	}
+
+	return 0;
+
+}
+
+
+
+
+// 构建成类似一个虚拟 dom 的树结构, 好用于构建结构化的 history content
+function buildEventsToSummaryStructureText(events: SSOTEvent[]) {
+	const roundsMap = parseEventsIntoRoundMap(events);
+	const hotTurnsLength = 2;
+
+
+	const allTurns = [...roundsMap.values()].map(round => [...round.values()]).flat();
+	const hotTurnsEvents = allTurns.slice(-hotTurnsLength).flat();
+	const coldTurnsEvents = allTurns.slice(0, allTurns.length - hotTurnsLength).flat();
+
+}
+
+// 让模型返回一个结构化的输出用于组装一个历史文本结构，为了结构稳定，需要用一个内部工具去让模型填参数
+// <historySummary>
+// Current goal:
+// ...
+
+// Topic
+// Status: implemented
+// - 旧 observation 使用 tool_call_id 建立索引。[ref: call_12]
+
+// Recall catalog:
+// - call_12: contextBuilder 源码 observation
+// <historySummary>
+function tryBuildSummary(events: SSOTEvent[]) {
+
+}
+
+export default async function contextBuilder(
+	input: Context.Config & { events: SSOTEvent[]; traces: TraceEvent[]; venderAdaptor: Vender.Adaptor },
+): Promise<Context.BuildResult> {
+	const { prompts, events, traces, venderAdaptor } = input;
 	const costs = toRounCostsMap(traces);
-	
-	console.log('---- last window tokens', costs.lastContextWindowTokens)
 
-	let cleanedEvents = cleanEvents(EventType.AGENT_STOP)(events);
+	const cleanedEvents = cleanEvents(EventType.AGENT_STOP)(events);
+	const { events: compressedEvents, indexedEventsMap } = compressEvents(cleanedEvents);
+	const nextWindowContextTokens = estimateNextWindowContextTokens(events, costs.lastContextWindowTokens);
 
-	const compressed = buildHistoryEventsToIndexes(cleanedEvents)
 
 	return {
 		systemPrompt: buildPromptContext(prompts),
-		events: compressed.events,
-		ssotEventIndexes: compressed.ssotEventIndexes
-
-		// events: rebuildEvents(strategy)(events),
+		events: compressedEvents,
+		indexedEventsMap,
 	};
 }

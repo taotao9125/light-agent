@@ -50,7 +50,7 @@ export default class Agent implements AgentInterface {
 		activeJob: null as Job | null,
 	};
 
-	private ssotEventIndexes: Context.BuildResult['ssotEventIndexes']  = new Map();
+	private indexedEventsMap: Context.BuildResult['indexedEventsMap']  = new Map();
 
 	private context: Context.Config;
 	private canonicalEvents: SSOTEvent[] = [];
@@ -66,13 +66,20 @@ export default class Agent implements AgentInterface {
 		this.agentLoop = new AgentLoop({
 			vender: config.vender,
 		});
+
+		
+
 		this.agentLoop.on((event) => {
 			void this.handleAgentEvent(event);
 		});
 
-		const recallTool = createRecallTool(() => this.ssotEventIndexes)
+		const recallTool = createRecallTool(() => this.indexedEventsMap)
 
 		this.toolRegistry.register(recallTool.name, recallTool);
+	}
+
+	private getVenderAdaptor() {
+		return this.agentLoop.getVenderAdaptor();
 	}
 
 	private async handleAgentEvent(event: AgentEvent) {
@@ -117,13 +124,14 @@ export default class Agent implements AgentInterface {
 			this.runRecords.activeJob = currentJob;
 			await this.agentLoop.prompt(currentJob.prompt, {
 				abortSignal: currentJob.abortController.signal,
-				pullContextSnap: () => {
-					const snap = contextBuilder({
+				pullContextSnap: async () => {
+					const snap = await contextBuilder({
 						events: this.canonicalEvents,
 						traces: this.traceEvents,
+						venderAdaptor: this.getVenderAdaptor(),
 						...this.context,
 					});
-					this.ssotEventIndexes = snap.ssotEventIndexes;
+					this.indexedEventsMap = snap.indexedEventsMap;
 					return snap;
 				},
 				pullToolsSnap: () => this.toolRegistry.getTools(),
