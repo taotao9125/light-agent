@@ -313,13 +313,23 @@ function formatObsIndexContent(obs: Observation, action: Action) {
 	].join('\n')
 
 }
+
+
 function buildHistoryEventsToIndexes(events: SSOTEvent[]) {
+
+	const roundsMap = parseEventsIntoRoundMap(events);
+
+	const roundsIds = [...roundsMap.keys()];
+	
 	// agentEvent[][]
-	const turns = [...parseEventsIntoRoundMap(events).values()].map(turn => [...turn.values()]).flat()
+	const turns = [...roundsMap.values()].map(turn => [...turn.values()]).flat();
 
-	const keepRecentTurnsEvents = turns.slice(-1).flat();
-	const needProcessTurnsEvents = turns.slice(0, turns.length - 1).flat();
+	const keepRecentTurnsEvents = turns.slice(-2).flat();
 
+	const needProcessTurnsEvents = turns.slice(0, turns.length - 2).flat();
+
+	// 最近两个 round 之前的可以丢弃 thinking block;
+	const needDropThinkingBlockRounds = roundsIds.slice(0, roundsIds.length - 2);
 
 	const ssotEventIndexes: Context.BuildResult['ssotEventIndexes'] = new Map();
 
@@ -334,7 +344,7 @@ function buildHistoryEventsToIndexes(events: SSOTEvent[]) {
 			case EventType.OBSERVATIONS:
 				const obses = event.observations;
 				const actionsEvent = needProcessTurnsEvents.find(
-					event => event.type === EventType.ACTIONS && event.meta?.roundId === roundId && event.meta.turn === turn
+					event => event.type === EventType.ACTIONS && event.meta?.roundId === roundId && event.meta?.turn === turn
 				) as ActionsEvent;
 
 				const actions = actionsEvent.actions || [];
@@ -342,8 +352,6 @@ function buildHistoryEventsToIndexes(events: SSOTEvent[]) {
 				compressedEvent.push({
 					...event,
 					observations: obses.map(obs => {
-						// 不对召回内容进行二次压缩
-						if (obs.name === 'recall_indexed') return obs;
 						const id = obs.id;
 						ssotEventIndexes.set(id, { id, content: obs.result });
 						const action = actions.find(action => action.id === id)!;
@@ -354,6 +362,13 @@ function buildHistoryEventsToIndexes(events: SSOTEvent[]) {
 						}
 					})
 				})
+				break;
+			case EventType.THOUGHT:
+				// 最近两个 round 之前的可以丢弃 thinking block;
+				compressedEvent.push({
+					...event,
+					text: needDropThinkingBlockRounds.includes(roundId) ? '' : event.text
+				});
 				break;
 			default:
 				compressedEvent.push(event);
@@ -369,7 +384,6 @@ function buildHistoryEventsToIndexes(events: SSOTEvent[]) {
 	}
 
 
-
 }
 
 export default function contextBuilder(
@@ -377,6 +391,9 @@ export default function contextBuilder(
 ): Context.BuildResult {
 	const { prompts, strategy, events, traces } = input;
 
+	const costs = toRounCostsMap(traces);
+	
+	console.log('---- last window tokens', costs.lastContextWindowTokens)
 
 	let cleanedEvents = cleanEvents(EventType.AGENT_STOP)(events);
 
@@ -386,6 +403,7 @@ export default function contextBuilder(
 		systemPrompt: buildPromptContext(prompts),
 		events: compressed.events,
 		ssotEventIndexes: compressed.ssotEventIndexes
+
 		// events: rebuildEvents(strategy)(events),
 	};
 }
