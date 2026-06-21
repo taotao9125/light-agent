@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { errorText, textResult } from './toolResult';
 
 import type { Tool } from '../../agent/tool';
 
@@ -31,13 +30,16 @@ const listFilesTool: Tool.Definition = {
 				return `- ${entry.name} [${type}]`;
 			});
 
-			return textResult([`Directory: ${targetPath}`, '', ...lines].join('\n'));
+			return {
+				isError: false,
+				content: [`Directory: ${targetPath}`, '', ...lines].join('\n'),
+			};
 		} catch (e) {
 			context.signal?.throwIfAborted();
-			return textResult(
-				[`Failed to list directory.`, `Directory: ${targetPath}`, `Reason: ${errorText(e)}`].join('\n'),
-				true,
-			);
+			return {
+				isError: true,
+				content: [`Failed to list directory.`, `Directory: ${targetPath}`, `Reason: ${e instanceof Error ? e.message : String(e)}`].join('\n'),
+			};
 		}
 	},
 };

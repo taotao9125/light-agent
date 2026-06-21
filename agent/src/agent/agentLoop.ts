@@ -1,6 +1,5 @@
 import { createClient } from '../ai/index';
 import { EventType } from '../protocol/events';
-import { stringify } from './helpers';
 
 import type { CreateClient, Vender } from '../ai/index';
 import type { ActionsEvent, AgentEvent, ObservationsEvent } from '../protocol/events';
@@ -92,19 +91,14 @@ class AgentLoop implements AgentLoopInterface {
 				id,
 				name,
 				isError,
-				result: stringify(content),
+				result: content,
 			};
 		} catch (e) {
 			return {
 				id,
 				name,
 				isError: true,
-				result: JSON.stringify([
-					{
-						type: 'text',
-						text: e instanceof Error ? e.message : String(e),
-					},
-				]),
+				result: e instanceof Error ? e.message : String(e),
 			};
 		}
 	}

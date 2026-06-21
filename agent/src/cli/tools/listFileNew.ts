@@ -2,7 +2,6 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { errorText, textResult } from './toolResult';
 
 import type { Tool } from '../../agent/tool';
 
@@ -60,8 +59,9 @@ const listFilesNewTool: Tool.Definition = {
 				.filter(Boolean)
 				.slice(0, limit);
 
-			return textResult(
-				[
+			return {
+				isError: false,
+				content: [
 					`Files under: ${targetPath}`,
 					args.glob ? `Glob: ${args.glob}` : undefined,
 					`Limit: ${limit}`,
@@ -70,20 +70,20 @@ const listFilesNewTool: Tool.Definition = {
 				]
 					.filter((line) => line !== undefined)
 					.join('\n'),
-			);
+			};
 		} catch (e) {
 			context.signal?.throwIfAborted();
-			return textResult(
-				[
+			return {
+				isError: true,
+				content: [
 					'Failed to list files.',
 					`Path: ${targetPath}`,
 					args.glob ? `Glob: ${args.glob}` : undefined,
-					`Reason: ${errorText(e)}`,
+					`Reason: ${e instanceof Error ? e.message : String(e)}`,
 				]
 					.filter((line) => line !== undefined)
 					.join('\n'),
-				true,
-			);
+			};
 		}
 	},
 };

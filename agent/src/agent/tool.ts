@@ -17,20 +17,10 @@ export namespace Tool {
 		};
 	};
 
-	export type ExecuteContext = {
-		signal?: AbortSignal;
-	};
-
-	export type Result = {
-		isError: boolean;
-		content: {
-			type: 'text';
-			text: string;
-		}[];
-	};
+	
 
 	export interface Definition extends Meta {
-		execute(p: Record<string, unknown>, context: ExecuteContext): Promise<Result>;
+		execute(p: Record<string, unknown>, context: {signal?: AbortSignal}): Promise<{isError: boolean, content: string}>;
 	}
 }
 
