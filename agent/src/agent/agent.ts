@@ -50,7 +50,6 @@ export default class Agent implements AgentInterface {
 		activeJob: null as Job | null,
 	};
 
-	private indexedEventsMap: Context.BuildResult['indexedEventsMap']  = new Map();
 
 	private context: Context.Config;
 	private canonicalEvents: SSOTEvent[] = [];
@@ -73,7 +72,7 @@ export default class Agent implements AgentInterface {
 			void this.handleAgentEvent(event);
 		});
 
-		const recallTool = createRecallTool(() => this.indexedEventsMap)
+		const recallTool = createRecallTool(() => this.canonicalEvents)
 
 		this.toolRegistry.register(recallTool.name, recallTool);
 	}
@@ -84,6 +83,7 @@ export default class Agent implements AgentInterface {
 
 	private async handleAgentEvent(event: AgentEvent) {
 		for (const viewEvent of projectAgentView(event)) {
+			// this.indexedEvents(event);
 			this.emit(viewEvent);
 		}
 

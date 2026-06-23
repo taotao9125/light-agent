@@ -1,7 +1,8 @@
 import { type Tool } from '../tool';
-import { type Context } from '../context/contextBuilder';
+import { type SSOTEvent, type ObservationsEvent } from '../../protocol/events';
+import { EventType } from '../../protocol/events';
 
-function createRecallIndexTool(getindexedEventsMap: () => Context.BuildResult['indexedEventsMap']): Tool.Definition {
+function createRecallIndexTool(getSSOTEvents: () => SSOTEvent[]): Tool.Definition {
 	return {
 		name: 'recall_indexed',
 		description:
@@ -20,16 +21,36 @@ function createRecallIndexTool(getindexedEventsMap: () => Context.BuildResult['i
 		async execute(p: { id: string }, context) {
 			context.signal?.throwIfAborted();
 			const id = p.id?.trim();
-			const indexes = getindexedEventsMap();
-			if (!id) return { isError: true, content: '[index recall] missing id' };
-			const entry = indexes.get(id);
-			if (!entry) return { isError: true, content: `[index recall] not found: ${id}` };
-			console.log(`<-----[召回] ${id}`);
+			// id = call_00_xxx_round_id_mqq56r0ry8sb04h_4
+			const splitedParts = id.split('_round_id_');
+			const callId = splitedParts[0];
+			const [roundIdStr, turnIndex] = splitedParts[1].split('_');
+			const roundId = `round_id_${roundIdStr}`;
+			const turn = +turnIndex;
+			
+			const events = getSSOTEvents();
+
+			const obsEvent = events.find(event =>  
+				event.type === EventType.OBSERVATIONS 
+				&&  event.meta?.roundId === roundId 
+				&& event.meta?.turn === turn
+			) as ObservationsEvent;
+
+			const obs = obsEvent.observations.find(obs => obs.id === callId);
+
+			if (obs) {
+				console.log(`<-----[召回] 成功${id}`);
+				return {
+					isError: false,
+					content: obs.result
+				}
+			}
+
 			return {
-				isError: false,
-				content: entry.content,
-			};
-		},
+				isError: true,
+				content: ''
+			}
+		}
 	};
 }
 
