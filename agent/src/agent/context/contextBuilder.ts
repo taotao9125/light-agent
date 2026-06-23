@@ -41,7 +41,7 @@ import { EventType, ActionsEvent, ObservationsEvent } from '../../protocol/event
 import { pipe } from '../helpers';
 import { buildPromptContext } from './promptContextBuilder';
 
-import type { SSOTEvent, TraceEvent } from '../../protocol/events';
+import type { AgentEvent, TraceEvent } from '../../protocol/events';
 import type { Prompts } from './prompts.types';
 import type { Vender } from '../../ai/index';
 
@@ -63,7 +63,7 @@ export namespace Context {
 
 
 	export type BuildResult = {
-		events: SSOTEvent[];
+		events: AgentEvent[];
 		systemPrompt: string;
 	};
 }
@@ -89,7 +89,7 @@ export function truncateText(text: string, maxLength: number) {
 function truncateObservation(maxSingleObservationToken: number) {
 	const maxLength = maxSingleObservationToken * CHAR_LENGTH_PER_TOKEN;
 
-	return (events: SSOTEvent[]): SSOTEvent[] => {
+	return (events: AgentEvent[]): AgentEvent[] => {
 		return events.map((event) => {
 			if (event.type !== EventType.OBSERVATIONS) return event;
 
@@ -105,7 +105,7 @@ function truncateObservation(maxSingleObservationToken: number) {
 }
 
 function cleanEvents(eventType: string) {
-	return (events: SSOTEvent[]) => events.filter((event) => event.type !== eventType);
+	return (events: AgentEvent[]) => events.filter((event) => event.type !== eventType);
 }
 
 
@@ -222,7 +222,7 @@ function toRounCostsMap(traces: TraceEvent[]) {
 }
 
 function rebuildEvents(strategy: Context.Strategy) {
-	return pipe<SSOTEvent[]>(
+	return pipe<AgentEvent[]>(
 		cleanEvents(EventType.AGENT_STOP),
 		//keepRecentRounds(strategy.keepRecentRounds ?? Infinity),
 		// truncateObservation(strategy.maxSingleObservationToken ?? Infinity),
@@ -240,9 +240,9 @@ function getIntent(args: Record<string, unknown>): string {
 
 
 
-type RoundMap = Map<string, Map<number, SSOTEvent[]>>;
+type RoundMap = Map<string, Map<number, AgentEvent[]>>;
 
-function parseEventsIntoRoundMap(events: SSOTEvent[]): RoundMap {
+function parseEventsIntoRoundMap(events: AgentEvent[]): RoundMap {
 	const roundMap: RoundMap = new Map();
 
 	for (const event of events) {
@@ -300,7 +300,7 @@ function compressObsContent(obs: Observation, action: Action, roundId: string, t
 }
 
 
-function compressEvents(events: SSOTEvent[]) {
+function compressEvents(events: AgentEvent[]) {
 
 	const roundsMap = parseEventsIntoRoundMap(events);
 	const rencentHotTurnsLength = 2;
@@ -317,7 +317,7 @@ function compressEvents(events: SSOTEvent[]) {
 	// 最近两个 round 之前的可以丢弃 thinking block;
 	const needDropThinkingBlockRounds = roundsIds.slice(0, roundsIds.length - rencentHotRoundsLength);
 
-	const compressedEvent: SSOTEvent[] = [];
+	const compressedEvent: AgentEvent[] = [];
 
 	for (const event of needProcessTurnsEvents) {
 		const roundId = event.meta?.roundId;
@@ -368,14 +368,14 @@ function compressEvents(events: SSOTEvent[]) {
 
 
 // context_tokens_{t+1} = total_tokens_{t}（模型返回的上次总 token） + detal_obs(估算) + detal_input（估算）- 被索引压缩的
-function estimateNextWindowContextTokens(events: SSOTEvent[], lastWindowTokens: number) {
+function estimateNextWindowContextTokens(events: AgentEvent[], lastWindowTokens: number) {
 	const deltaTokens = deltaObservationsTokens(events);
 	return lastWindowTokens + deltaTokens;
 }
 
 // 下一个 turn 估算 token 只有可能来自 observation 或者 input
 
-function deltaObservationsTokens(events: SSOTEvent[]) {
+function deltaObservationsTokens(events: AgentEvent[]) {
 	const lastEvent = events.at(-1);
 	if (!lastEvent) {
 		return 0;
@@ -399,7 +399,7 @@ function deltaObservationsTokens(events: SSOTEvent[]) {
 
 
 
-function buildEventText(events: SSOTEvent[]) {
+function buildEventText(events: AgentEvent[]) {
 	let lines: string[] = [];
 	for (const event of events) {
 		switch (event.type) {
@@ -462,7 +462,7 @@ function buildEventText(events: SSOTEvent[]) {
 }
 
 
-function buildTurnsText(turnMap: Map<number, SSOTEvent[]>) {
+function buildTurnsText(turnMap: Map<number, AgentEvent[]>) {
 	const lines: string[] = []
 	for (const [turnIndex, turn] of turnMap) {
 
@@ -490,7 +490,7 @@ function buildRoundText(roundsMap: RoundMap) {
 }
 
 
-function buildHistoryToXML(events: SSOTEvent[]) {
+function buildHistoryToXML(events: AgentEvent[]) {
 	const roundsMap = parseEventsIntoRoundMap(events);
 	const hotTurnsLength = 2;
 	const lastRoundId = [...roundsMap.keys()].at(-1);
@@ -543,7 +543,7 @@ const tool = {
 	}
 }
 
-async function tryBuildSummary(events: SSOTEvent[]) {
+async function tryBuildSummary(events: AgentEvent[]) {
 	// venderAdaptor._generateText({tool})
 }
 
@@ -633,7 +633,7 @@ const historyCompressionSystemPrompt = `
 `;
 
 export default async function contextBuilder(
-	input: Context.Config & { events: SSOTEvent[]; traces: TraceEvent[]; venderAdaptor: Vender.Adaptor },
+	input: Context.Config & { events: AgentEvent[]; traces: TraceEvent[]; venderAdaptor: Vender.Adaptor },
 ): Promise<Context.BuildResult> {
 	const { prompts, events, traces, venderAdaptor } = input;
 	const costs = toRounCostsMap(traces);

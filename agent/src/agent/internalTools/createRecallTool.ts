@@ -1,8 +1,8 @@
 import { type Tool } from '../tool';
-import { type SSOTEvent, type ObservationsEvent } from '../../protocol/events';
+import { type AgentEvent, type ObservationsEvent } from '../../protocol/events';
 import { EventType } from '../../protocol/events';
 
-function createRecallIndexTool(getSSOTEvents: () => SSOTEvent[]): Tool.Definition {
+function createRecallIndexTool(getAgentEvents: () => AgentEvent[]): Tool.Definition {
 	return {
 		name: 'recall_indexed',
 		description:
@@ -28,7 +28,7 @@ function createRecallIndexTool(getSSOTEvents: () => SSOTEvent[]): Tool.Definitio
 			const roundId = `round_id_${roundIdStr}`;
 			const turn = +turnIndex;
 			
-			const events = getSSOTEvents();
+			const events = getAgentEvents();
 
 			const obsEvent = events.find(event =>  
 				event.type === EventType.OBSERVATIONS 

@@ -107,9 +107,3 @@ export type AgentEvent =
 
 
 
-export type SSOTEvent = 
-	| InputEvent
-	| ThoughtEvent
-	| ActionsEvent
-	| ObservationsEvent
-	| OutputEvent

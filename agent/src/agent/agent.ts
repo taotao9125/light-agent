@@ -3,7 +3,7 @@ import AgentLoop from './agentLoop';
 import contextBuilder, { type Context } from './context/contextBuilder';
 
 import type { Vender } from '../ai/index';
-import type { AgentEvent, SSOTEvent, TraceEvent } from '../protocol/events';
+import type { AgentEvent, TraceEvent } from '../protocol/events';
 import type { AgentLoopInterface } from './agentLoop';
 import type { AgentViewEvent, AgentViewListener } from './helpers';
 
@@ -52,7 +52,7 @@ export default class Agent implements AgentInterface {
 
 
 	private context: Context.Config;
-	private canonicalEvents: SSOTEvent[] = [];
+	private canonicalEvents: AgentEvent[] = [];
 	private traceEvents: TraceEvent[] = [];
 	private listeners: AgentViewListener[] = [];
 	private toolRegistry = new ToolRegistry();
@@ -83,7 +83,6 @@ export default class Agent implements AgentInterface {
 
 	private async handleAgentEvent(event: AgentEvent) {
 		for (const viewEvent of projectAgentView(event)) {
-			// this.indexedEvents(event);
 			this.emit(viewEvent);
 		}
 
@@ -131,7 +130,6 @@ export default class Agent implements AgentInterface {
 						venderAdaptor: this.getVenderAdaptor(),
 						...this.context,
 					});
-					this.indexedEventsMap = snap.indexedEventsMap;
 					return snap;
 				},
 				pullToolsSnap: () => this.toolRegistry.getTools(),
