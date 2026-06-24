@@ -430,7 +430,7 @@ function deltaObservationsTokens(events: AgentEvent[]) {
 
 
 
-function buildEventText(events: AgentEvent[]) {
+function buildEventToXML(events: AgentEvent[]) {
 	let lines: string[] = [];
 	for (const event of events) {
 		switch (event.type) {
@@ -493,13 +493,13 @@ function buildEventText(events: AgentEvent[]) {
 }
 
 
-function buildTurnsText(turnMap: Map<number, AgentEvent[]>) {
+function buildTurnsToXML(turnMap: Map<number, AgentEvent[]>) {
 	const lines: string[] = []
 	for (const [turnIndex, turn] of turnMap) {
 
 		lines.push([
 			`<turn index="${turnIndex}">`,
-			buildEventText(turn),
+			buildEventToXML(turn),
 			'</turn>'
 		].join('\n'))
 	}
@@ -507,13 +507,13 @@ function buildTurnsText(turnMap: Map<number, AgentEvent[]>) {
 }
 
 
-function buildRoundText(roundsMap: RoundMap) {
+function buildRoundToXML(roundsMap: RoundMap) {
 	const lines: string[] = []
 	for (const [roundId, round] of roundsMap) {
 
 		lines.push([
 			`<round id="${roundId}">`,
-			buildTurnsText(round),
+			buildTurnsToXML(round),
 			'</round>'
 		].join('\n'))
 	}
@@ -539,7 +539,7 @@ function buildHistoryToXML(events: AgentEvent[]) {
 	}
 
 
-	return buildRoundText(roundsMap)
+	return buildRoundToXML(roundsMap)
 
 }
 
