@@ -5,7 +5,7 @@ import path from 'path';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import Agent from '../agent/agent';
 import SessionStore from '../agent/store';
-import { cliPrompts } from './prompts';
+import { cliIdentityPrompt } from './prompts';
 import listFilesToolNew from './tools/listFileNew';
 import readFileTool from './tools/readFile';
 import searchDoc from './tools/searchdoc';
@@ -71,11 +71,10 @@ async function main() {
 		sessionId,
 		store: sessionStore,
 		context: {
-			prompts: cliPrompts,
-			strategy: {
-				maxSingleObservationToken: 3000,
-				keepRecentRounds: 5,
-			},
+			prompts: [{
+				name: 'Identity',
+				content: cliIdentityPrompt
+			}]
 		},
 	});
 

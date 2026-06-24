@@ -1,7 +1,5 @@
-import type { Prompts } from '../agent/context/prompts.types';
-
 /** CLI 产品 identity：身份、行为、输出与产品级限制。 */
-export const cliIdentity = [
+export const cliIdentityPrompt = [
 	'你是运行在 CLI 中的编程助手，帮助用户理解、探索并完成代码相关任务。',
 	'请严格遵循用户要求；若需求不清晰，先提出简短澄清问题，再继续执行。',
 	'回答时保持简洁、准确、有条理；避免无根据的夸赞或过度自信。',
@@ -11,7 +9,3 @@ export const cliIdentity = [
 	'不要凭空猜测文件内容、目录结构或私有文档；需要外部依据时使用工具获取。',
 ].join('\n');
 
-export const cliPrompts: Prompts.Source = {
-	identity: cliIdentity,
-	instructions: [],
-};

@@ -6,61 +6,20 @@
 // - 静态上下文保持稳定，减少 prompt 前缀抖动，尽量提升 KV cache 命中。
 // - 动态上下文不追求全量常驻，而是优先变成可回溯记忆。
 // - 有损摘要只作为二级兜底，不作为默认事实源。
-//
-// 1. Static context
-// - system prompts、runtime instructions、product instructions 以 XML block 注入。
-// - skill 也属于 instructions，但只注入 skill index，不注入 SKILL.md 全文。
-// - 模型根据 skill index 按需读取具体 SKILL.md。
-// - 静态块的顺序、格式、tag 尽量稳定。
-//
-// 2. Dynamic context
-// - events 按 turn 构建模型视图，而不是按 round。
-// - 最近 N 个 committed turns 保留原文，默认 N=2。
-// - 更早的 turns 不再全量进入 context，而是投影为可回溯结构：
-//   a. historyNotes：阶段性笔记，用于帮助模型快速回忆过去发生了什么。
-//   b. historyIndex：证据目录，指向 SSOT event log 中的原始 event。
-// - 精确历史细节必须通过 search_history / read_history 回溯。
-// - SSOT event log 永远保留，不被摘要覆盖或删除。
-//
-// 2.1 Recoverable compression
-// - 对 recent turns 之前的历史进行索引化裁剪。
-// - 裁剪目标不是让模型“记住一切”，而是让模型在需要时能找到原始证据。
-// - 设计必须保证 recall path 精确：historyNotes -> historyIndex -> SSOT ref。
-// - 不能保证弱模型一定会主动 recall；但要保证有能力 recall 的模型能根据线索找回丢失细节。
-// - historyNotes / historyIndex 不是事实源，只是导航层；精确事实以 read_history 返回的 SSOT 内容为准。
-//
-// 2.2 Lossy fallback summary
-// - 如果 static context + recent raw turns + historyNotes + visible historyIndex 仍超过 context window 预算，
-//   再进行摘要总结压缩。
-// - 摘要优先压缩旧 historyNotes / historyIndex，而不是直接覆盖 SSOT。
-// - 摘要结果仍应保留 refs / indexRefs，避免成为不可验证的孤立结论。
-// - 摘要是兜底策略，不是默认记忆机制。
-
 
 import { EventType, ActionsEvent, ObservationsEvent } from '../../protocol/events';
 import { pipe } from '../helpers';
-import { buildPromptContext } from './promptContextBuilder';
 
 import type { AgentEvent, TraceEvent } from '../../protocol/events';
-import type { Prompts } from './prompts.types';
 import type { Vender } from '../../ai/index';
+import runtimePrompts from './prompts.consts';
 
-export type { Prompts } from './prompts.types';
 
-/** Context builder：prompts + strategy + canonical events → 模型可见 view。 */
 export namespace Context {
-	/** events 裁剪策略（caller 可配）。 */
-	export type Strategy = {
-		maxSingleObservationToken?: number;
-		keepRecentRounds?: number;
-	};
-
-	/** Agent 构造时传入的 context 配置。 */
 	export type Config = {
-		prompts: Prompts.Source;
-		strategy: Strategy;
+		prompts?: { name: string; content: string }[];
+		skills?: string[];
 	};
-
 
 	export type BuildResult = {
 		events: AgentEvent[];
@@ -71,44 +30,124 @@ export namespace Context {
 const CHAR_LENGTH_PER_TOKEN = 4;
 
 
-
-export function truncateText(text: string, maxLength: number) {
-	if (text.length <= maxLength) return text;
-	const placeHolder = '\n\n...[truncated]...\n\n';
-
-	if (maxLength <= placeHolder.length) return text.slice(0, maxLength);
-
-	const budgetLength = maxLength - placeHolder.length;
-
-	const headLength = Math.floor(budgetLength * 0.7);
-	const tailLength = budgetLength - headLength;
-
-	return text.slice(0, headLength) + placeHolder + text.slice(-tailLength);
-}
-
-function truncateObservation(maxSingleObservationToken: number) {
-	const maxLength = maxSingleObservationToken * CHAR_LENGTH_PER_TOKEN;
-
-	return (events: AgentEvent[]): AgentEvent[] => {
-		return events.map((event) => {
-			if (event.type !== EventType.OBSERVATIONS) return event;
-
-			return {
-				...event,
-				observations: event.observations.map((observation) => ({
-					...observation,
-					result: truncateText(observation.result, maxLength),
-				})),
-			};
-		});
-	};
-}
-
-function cleanEvents(eventType: string) {
-	return (events: AgentEvent[]) => events.filter((event) => event.type !== eventType);
+type Prompt = Context.Config['prompts'];
+function buildPromptsToXML(prompts: Prompt = []): string {
+	return prompts.map(prompt => {
+		const xmlTagName = `${prompt.name}_instructions`;
+		return [
+			`<${xmlTagName}>`,
+			prompt.content,
+			`</${xmlTagName}`
+		].join('\n')
+	}).join('\n');
 }
 
 
+
+
+// ---
+// name:
+// description:
+// ---
+// ...content...
+
+type SkillJson = { name: string; description: string; content: string }
+function parseSkill(skillRaw: string): SkillJson {
+
+	const textLines = skillRaw
+		// 去掉BOM字节顺序, windows 可能有
+		.replace(/^\uFEFF/, '')
+		.trim()
+		.split('\n')
+		.filter(line => line !== '\n');
+
+	if (!textLines[0].startsWith('---')) {
+		throw new Error('SKILL.md 必须以 --- 开头');
+	}
+
+	const closeHyphenIndex = textLines.indexOf('---', 3);
+
+	if (closeHyphenIndex === -1) {
+		throw new Error('缺少结束的 ---');
+	}
+
+	const frontmatterLines = textLines
+		.slice(0, closeHyphenIndex)
+		// 去掉 `---` 和 `#` 注释
+		.filter(line => line !== '---' && !line.startsWith('#'))
+	const contentLines = textLines.slice(closeHyphenIndex + 1);
+
+
+	const meta: Record<'name' | 'description', string> = { name: '', description: '' };
+
+	for (const line of frontmatterLines) {
+		// key:value
+		const trimmedLine = line.trim();
+		const i = trimmedLine.indexOf(':');
+		const key = trimmedLine.slice(0, i).trim();
+		const value = trimmedLine.slice(i + 1).trim();
+
+		if (key === 'name') {
+			meta.name = value;
+		}
+
+		if (key === 'description') {
+			meta.description = value;
+		}
+	}
+
+	if (!meta.name) {
+		throw new Error('skill 缺少 `name` 属性');
+	}
+
+	if (!meta.description) {
+		throw new Error('skill 缺少 `description` 属性');
+	}
+
+
+	return {
+		name: meta.name,
+		description: meta.description,
+		content: contentLines.join('\n')
+
+	}
+
+
+}
+
+function buildSkillsToXML(skills: string[] = []) {
+	const SKILL_USAGE_INSTRUCTIONS = [
+		'当用户任务明显落在某个 skill 的领域内时：',
+		'1. 先用 read_file 读取对应 SKILL.md 的完整说明',
+		'2. 按 skill 中的流程与约束执行任务',
+		'3. skill 内的领域规则以 SKILL 为准，但不违背 identity 与上述 instructions',
+		'',
+		'不要假设 skill 内容；未 read_file 前不要声称已遵循某 skill。',
+	].join('\n');
+
+	const skillIndexesXml = skills
+		.map(skillRaw => {
+			const skillJson = parseSkill(skillRaw);
+			return [
+				'<skill>',
+					`<name>${skillJson.name}</name>`,
+					`<description>${skillJson.description}</description>`,
+				'</skill>'
+			].join('\n')
+		}).join('\n')
+
+	return [
+		'<skillIndex_instructions>',
+			SKILL_USAGE_INSTRUCTIONS,
+		'</skillIndex_instructions>',
+		skillIndexesXml
+	].join('\n')
+}
+
+
+function cleanEvents(events: AgentEvent[]) {
+	return events.filter(event => event.type !== EventType.AGENT_STOP)
+}
 
 function estimateToken(text: string) {
 	if (!text) return 0;
@@ -221,13 +260,6 @@ function toRounCostsMap(traces: TraceEvent[]) {
 	return tokenStat;
 }
 
-function rebuildEvents(strategy: Context.Strategy) {
-	return pipe<AgentEvent[]>(
-		cleanEvents(EventType.AGENT_STOP),
-		//keepRecentRounds(strategy.keepRecentRounds ?? Infinity),
-		// truncateObservation(strategy.maxSingleObservationToken ?? Infinity),
-	);
-}
 
 
 
@@ -361,7 +393,7 @@ function compressEvents(events: AgentEvent[]) {
 
 	}
 
-	return  [...compressedEvent, ...keepRecentTurnsEvents];
+	return [...compressedEvent, ...keepRecentTurnsEvents];
 
 
 }
@@ -374,7 +406,6 @@ function estimateNextWindowContextTokens(events: AgentEvent[], lastWindowTokens:
 }
 
 // 下一个 turn 估算 token 只有可能来自 observation 或者 input
-
 function deltaObservationsTokens(events: AgentEvent[]) {
 	const lastEvent = events.at(-1);
 	if (!lastEvent) {
@@ -632,22 +663,22 @@ const historyCompressionSystemPrompt = `
 </outputFormat>
 `;
 
+
+
+
 export default async function contextBuilder(
 	input: Context.Config & { events: AgentEvent[]; traces: TraceEvent[]; venderAdaptor: Vender.Adaptor },
 ): Promise<Context.BuildResult> {
-	const { prompts, events, traces, venderAdaptor } = input;
+	const { prompts, skills, events, traces, venderAdaptor } = input;
 	const costs = toRounCostsMap(traces);
 
-	const cleanedEvents = cleanEvents(EventType.AGENT_STOP)(events);
-	const compressedEvents = compressEvents(cleanedEvents);
-	const nextWindowContextTokens = estimateNextWindowContextTokens(events, costs.lastContextWindowTokens);
+	const rebuildedEvents = pipe<AgentEvent[]>(
+		cleanEvents,
+		compressEvents
+	)(events);
 
-	turn++;
 
-	const historyXML = buildHistoryToXML(events);
-
-	//console.log(`-----> turn: ${turn}`, lastEvent, events.map(e => e.type).slice(lastEvent.length), costs.lastContextWindowTokens, nextWindowContextTokens)
-
+	const nextWindowContextTokens = estimateNextWindowContextTokens(rebuildedEvents, costs.lastContextWindowTokens);
 
 	console.log('next contextToken ---->', costs.lastContextWindowTokens, nextWindowContextTokens)
 	if (nextWindowContextTokens >= 30_000) {
@@ -655,18 +686,18 @@ export default async function contextBuilder(
 			systemPrompt: historyCompressionSystemPrompt,
 			messages: [{
 				role: 'user',
-				content: historyXML
+				content:  buildHistoryToXML(events)
 			}]
 		})
-		const y = summaryText;
 	}
 
 
-
-
 	return {
-		systemPrompt: buildPromptContext(prompts),
-		events: compressedEvents,
-		//events
+		systemPrompt: [
+			buildPromptsToXML(prompts),
+			buildPromptsToXML(runtimePrompts),
+			buildSkillsToXML(skills)
+		].join('\n'),
+		events: rebuildedEvents,
 	};
 }
