@@ -46,7 +46,10 @@ import type { Vender } from '../index';
 
 // 注意这是 deepseek 要求的结构, 回传时, 都塞进一个 assistant message 里
 const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMessageParam[] => {
-	const roundsMap = parseEventsIntoRoundMap(events);
+
+	const summaryEvent = events.findLast(event => event.type === EventType.AGENT_SUMMARY);
+
+	const roundsMap = parseEventsIntoRoundMap(events.filter(event => event.type !== EventType.AGENT_SUMMARY));
 
 	const messages: ChatCompletionMessageParam[] = [];
 
@@ -54,6 +57,7 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 		const roundMessage: ChatCompletionMessageParam[] = [];
 		for (const [_, turn] of round) {
 			const inputEvent = turn.find(event => event.type === EventType.INPUT);
+			
 			
 			if (inputEvent) {
 				roundMessage.push({
@@ -105,6 +109,12 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 		messages.push(...roundMessage);
 	}
 
+	if (summaryEvent) {
+		messages.unshift({
+			role: summaryEvent.source,
+			content: summaryEvent.text
+		})
+	}
 
 	return messages;
 };

@@ -21,7 +21,6 @@ type AgentEventListener = (event: AgentEvent) => void;
 type LoopDeps = {
 	abortSignal: AbortSignal;
 	pullContextSnap: () => Promise<Context.BuildResult>;
-	pullToolsSnap: () => Tool.Definition[];
 };
 
 export interface AgentLoopInterface {
@@ -155,19 +154,21 @@ class AgentLoop implements AgentLoopInterface {
 			}
 
 			let turnActions: ActionsEvent['actions'] = [];
-			// 这就支持了动态注册工具的能力
-			const tools = loopDeps.pullToolsSnap();
+			
+			// 刷新 context
+			const {
+				systemPrompt = '',
+				tools = [],
+				events = []
+			} = await loopDeps.pullContextSnap();
+
 			const toolsMap = toToolsMap(tools);
 			const toolsMeta = toToolsMeta(tools);
-
-			// 刷新 context
-			const context = await loopDeps.pullContextSnap();
-
 			
 
 			const stream = this.venderAdaptor.stream({
-				input: context.events,
-				systemPrompt: context.systemPrompt,
+				systemPrompt: systemPrompt,
+				input: events,
 				tools: toolsMeta,
 			});
 

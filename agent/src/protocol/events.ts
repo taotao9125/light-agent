@@ -10,7 +10,8 @@ export const EventType = {
 	OUTPUT_DELTA: 'output_delta',
 	AGENT_STOP: 'agent_stop',
 
-	AGENT_TRACE: 'agent_trace'
+	AGENT_TRACE: 'agent_trace',
+	AGENT_SUMMARY: 'agent_summary'
 } as const;
 
 export type Meta = {
@@ -21,9 +22,19 @@ export type Meta = {
 export type InputEvent = {
 	type: typeof EventType.INPUT;
 	text: string;
-	source?: 'user' | 'system';
+	source?: 'user' | 'system'
 	meta?: Meta;
 };
+
+export type SummaryEvent = {
+	type: typeof EventType.AGENT_SUMMARY,
+	text: string;
+	source: 'system',
+	meta?: Meta & {
+		endRoundId: string;
+		endTurn: number;
+	};
+}
 
 export type ThoughtEvent = {
 	type: typeof EventType.THOUGHT;
@@ -43,7 +54,6 @@ export type ActionsEvent = {
 		id: string;
 		name: string;
 		args: Record<string, any>;
-		intent: string;
 	}[];
 	meta?: Meta;
 };
@@ -104,6 +114,7 @@ export type AgentEvent =
 	| ThoughtDeltaEvent
 	| OutputDeltaEvent
 	| TraceEvent
+	| SummaryEvent
 
 
 

@@ -125,14 +125,20 @@ export default class Agent implements AgentInterface {
 				abortSignal: currentJob.abortController.signal,
 				pullContextSnap: async () => {
 					const snap = await contextBuilder({
+						prompts: this.context.prompts,
+						skills: this.context.skills,
 						events: this.canonicalEvents,
-						traces: this.traceEvents,
+						lastWindowTokens: this.traceEvents.at(-1)?.costs.totalTokens || 0,
 						venderAdaptor: this.getVenderAdaptor(),
-						...this.context,
+						tools: this.toolRegistry.getTools()
 					});
+
+					if (snap.summaryEvent) {
+						this.canonicalEvents.push(snap.summaryEvent)
+					}
+
 					return snap;
-				},
-				pullToolsSnap: () => this.toolRegistry.getTools(),
+				}
 			});
 			currentJob.resolve();
 		} catch (e) {
@@ -176,7 +182,8 @@ export default class Agent implements AgentInterface {
 	getState() {
 		return {
 			isRunning: !!this.runRecords.activeJob,
-			canonicalEvents: this.canonicalEvents,
+			// 这里如果需要更加精细化的 UI 显示如 system prompt token, tool token 等, 需要本地估算, 暂时不做
+			currentWindowTokens: this.traceEvents.at(-1)?.costs.totalTokens || 0
 		};
 	}
 }
