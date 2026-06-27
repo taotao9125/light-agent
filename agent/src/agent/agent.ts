@@ -10,8 +10,8 @@ import type { AgentViewEvent, AgentViewListener } from './helpers';
 export type { AgentViewEvent, AgentViewListener } from './helpers';
 
 import { projectAgentView } from './helpers';
-import ToolRegistry, { type Tool } from './tool';
 import createRecallTool from './internalTools/createRecallTool';
+import ToolRegistry, { type Tool } from './tool';
 
 import type { SessionStoreInterface } from './store';
 
@@ -19,6 +19,9 @@ type Config = {
 	sessionId: string;
 	store?: SessionStoreInterface;
 	vender: Vender.Config;
+	strategy?: {
+		maxTurns?: number;
+	};
 	context: Context.Config;
 };
 
@@ -37,9 +40,6 @@ type Job = {
 	abortController: AbortController;
 };
 
-
-
-
 export default class Agent implements AgentInterface {
 	private sessionId: string;
 	private store?: SessionStoreInterface;
@@ -49,7 +49,6 @@ export default class Agent implements AgentInterface {
 		queue: [] as Job[],
 		activeJob: null as Job | null,
 	};
-
 
 	private context: Context.Config;
 	private canonicalEvents: AgentEvent[] = [];
@@ -64,15 +63,14 @@ export default class Agent implements AgentInterface {
 
 		this.agentLoop = new AgentLoop({
 			vender: config.vender,
+			strategy: config.strategy,
 		});
-
-		
 
 		this.agentLoop.on((event) => {
 			void this.handleAgentEvent(event);
 		});
 
-		const recallTool = createRecallTool(() => this.canonicalEvents)
+		const recallTool = createRecallTool(() => this.canonicalEvents);
 
 		this.toolRegistry.register(recallTool.name, recallTool);
 	}
@@ -89,21 +87,23 @@ export default class Agent implements AgentInterface {
 		this.commitEvent(event);
 	}
 
-	private commitEvent(event: AgentEvent) {
+	private async commitEvent(event: AgentEvent) {
 		switch (event.type) {
 			case EventType.INPUT:
 			case EventType.THOUGHT:
 			case EventType.ACTIONS:
 			case EventType.OBSERVATIONS:
 			case EventType.OUTPUT:
+			case EventType.AGENT_STOP:
+			case EventType.AGENT_SUMMARY:
 				this.canonicalEvents.push(event);
+				await this.store?.append(this.sessionId, event);
 				break;
 			case EventType.AGENT_TRACE:
 				this.traceEvents.push(event);
+				await this.store?.appendTrace(this.sessionId, event);
 				break;
 		}
-
-		// await this.store?.append(this.sessionId, event);
 	}
 
 	private emit(event: AgentViewEvent) {
@@ -130,15 +130,15 @@ export default class Agent implements AgentInterface {
 						events: this.canonicalEvents,
 						lastWindowTokens: this.traceEvents.at(-1)?.costs.totalTokens || 0,
 						venderAdaptor: this.getVenderAdaptor(),
-						tools: this.toolRegistry.getTools()
+						tools: this.toolRegistry.getTools(),
 					});
 
 					if (snap.summaryEvent) {
-						this.canonicalEvents.push(snap.summaryEvent)
+						await this.commitEvent(snap.summaryEvent);
 					}
 
 					return snap;
-				}
+				},
 			});
 			currentJob.resolve();
 		} catch (e) {
@@ -183,7 +183,7 @@ export default class Agent implements AgentInterface {
 		return {
 			isRunning: !!this.runRecords.activeJob,
 			// 这里如果需要更加精细化的 UI 显示如 system prompt token, tool token 等, 需要本地估算, 暂时不做
-			currentWindowTokens: this.traceEvents.at(-1)?.costs.totalTokens || 0
+			currentWindowTokens: this.traceEvents.at(-1)?.costs.totalTokens || 0,
 		};
 	}
 }
