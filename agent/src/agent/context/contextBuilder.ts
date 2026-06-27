@@ -206,7 +206,7 @@ type Observation = ObservationsEvent['observations'][number];
 function compressObsContent(obs: Observation, action: Action, roundId: string, turn: number) {
 
 	// token 数量太小了, 也没必要压缩
-	if (estimateToken(obs.result) <= 100) return obs.result;
+	if (obs.result.length <= 100) return obs.result;
 
 	const callId = `${obs.id}_${roundId}_${turn}`;
 	const toolName = obs.name;
@@ -465,7 +465,7 @@ function preProcessEvents(events: AgentEvent[]) {
 
 
 const recentHotTurnsLength = 2;
-const maxWindowTokens = 30_000;
+const maxWindowTokens = 200_000;
 // |--------------------------------- round1 -------------------------------------------|
 // |------------- turn1 ---------------|  |------------- turn2 --------|  |--- turn3 ---|
 // input, thought, actions, observations, thought, actions, observations, thought, output

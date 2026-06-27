@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { EventType } from '../../protocol/events';
+import { formatLlmError } from '../formatLlmError';
 import { parseEventsIntoRoundMap, stringifyContent } from '../helpers';
 
 import type {
@@ -294,8 +295,7 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 
 			pendingToolCalls.clear();
 		} catch (e) {
-			const message = e instanceof Error ? e.message : String(e);
-			yield { type: EventType.AGENT_STOP, cause: 'llm', message };
+			yield { type: EventType.AGENT_STOP, cause: 'llm', message: formatLlmError(e) };
 		} finally {
 			yield {
 				type: EventType.AGENT_TRACE,
