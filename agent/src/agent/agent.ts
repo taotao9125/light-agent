@@ -75,10 +75,6 @@ export default class Agent implements AgentInterface {
 		this.toolRegistry.register(recallTool.name, recallTool);
 	}
 
-	private getVenderAdaptor() {
-		return this.agentLoop.getVenderAdaptor();
-	}
-
 	private async handleAgentEvent(event: AgentEvent) {
 		for (const viewEvent of projectAgentView(event)) {
 			this.emit(viewEvent);
@@ -129,8 +125,9 @@ export default class Agent implements AgentInterface {
 						skills: this.context.skills,
 						events: this.canonicalEvents,
 						lastWindowTokens: this.traceEvents.at(-1)?.costs.totalTokens || 0,
-						venderAdaptor: this.getVenderAdaptor(),
+						venderAdaptor: this.agentLoop.getVenderAdaptor(),
 						tools: this.toolRegistry.getTools(),
+						strategyEnabled: this.context.strategyEnabled ?? true,
 					});
 
 					if (snap.summaryEvent) {
@@ -184,6 +181,14 @@ export default class Agent implements AgentInterface {
 			isRunning: !!this.runRecords.activeJob,
 			// 这里如果需要更加精细化的 UI 显示如 system prompt token, tool token 等, 需要本地估算, 暂时不做
 			currentWindowTokens: this.traceEvents.at(-1)?.costs.totalTokens || 0,
+			contextStrategyEnabled: this.context.strategyEnabled ?? true,
 		};
+	}
+
+	async loadSession(): Promise<void> {
+		if (!this.store) return;
+
+		this.canonicalEvents = await this.store.load(this.sessionId);
+		this.traceEvents = await this.store.loadTraces(this.sessionId);
 	}
 }

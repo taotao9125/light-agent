@@ -9,6 +9,8 @@ import type { AgentEvent, TraceEvent } from '../protocol/events';
 export namespace Session {
 	export type StoreConfig = {
 		rootDir: string;
+		sessionFile?: string;
+		traceFile?: string;
 	};
 }
 
@@ -29,20 +31,24 @@ type AppendJob = {
 
 export default class SessionStore implements SessionStoreInterface {
 	private rootDir: string;
+	private sessionFile?: string;
+	private traceFile?: string;
 	private isRunning = false;
 	private queue: AppendJob[] = [];
 	private flushWaiters: Array<{ resolve: () => void; reject: (reason?: unknown) => void }> = [];
 
 	constructor(config: Session.StoreConfig) {
 		this.rootDir = config.rootDir;
+		this.sessionFile = config.sessionFile;
+		this.traceFile = config.traceFile;
 	}
 
 	private getCanonicalFilePath(sessionId: string) {
-		return path.join(this.rootDir, `${sessionId}.jsonl`);
+		return this.sessionFile ?? path.join(this.rootDir, `${sessionId}.jsonl`);
 	}
 
 	private getTraceFilePath(sessionId: string) {
-		return path.join(this.rootDir, `${sessionId}.trace.jsonl`);
+		return this.traceFile ?? path.join(this.rootDir, `${sessionId}.trace.jsonl`);
 	}
 
 	private async readJsonl<T>(filePath: string): Promise<T[]> {

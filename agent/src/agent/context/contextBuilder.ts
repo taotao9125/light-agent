@@ -17,12 +17,15 @@ import type { AgentEvent, TraceEvent, SummaryEvent } from '../../protocol/events
 import type { Vender } from '../../ai/index';
 import type { Tool } from '../tool';
 import runtimePrompts, { historyCompressionSystemPrompt } from './prompts.consts';
+import {pipe} from '../helpers';
 
 
 export namespace Context {
 	export type Config = {
 		prompts?: { name: string; content: string }[];
 		skills?: string[];
+		/** hot/cold index + summary; off = pass full history to the model */
+		strategyEnabled?: boolean;
 	};
 
 	export type BuildResult = {
@@ -202,32 +205,75 @@ function parseEventsIntoRoundMap(events: AgentEvent[]): RoundMap {
 type Action = ActionsEvent['actions'][number];
 type Observation = ObservationsEvent['observations'][number];
 
-// 尽可能给模型视角提供线索: 这是什么历史结果，状态是什么, 调用目的是什么，如果需要细节，恢复指令是什么
-function compressObsContent(obs: Observation, action: Action, roundId: string, turn: number) {
+const INDEX_MIN_CHARS = 100;
 
-	// token 数量太小了, 也没必要压缩
-	if (obs.result.length <= 100) return obs.result;
-
-	const callId = `${obs.id}_${roundId}_${turn}`;
-	const toolName = obs.name;
-	const intent = getIntent(action.args);
-
-	return [
-		// 这是什么历史结果, 状态
-		`[Indexed:tool_result:${callId}]] success`,
-		// 工具名
-		`tool: ${toolName}`,
-		// 调用目的
-		`intent: ${intent}`,
-		// 恢复指令
-		`Recall if need: recall_indexed("${callId}")`
-	].join('\n')
-
+function buildIndexedCallId(actionId: string, roundId: string, turn: number) {
+	return `${actionId}_${roundId}_${turn}`;
 }
 
+function buildIndexedToolResultPlaceholder(callId: string, toolName: string, intent: string) {
+	return [
+		`[Indexed:tool_result:${callId}]] success`,
+		`tool: ${toolName}`,
+		intent ? `intent: ${intent}` : undefined,
+		`Recall if need: recall_indexed("${callId}")`,
+	]
+		.filter(Boolean)
+		.join('\n');
+}
+
+function buildIndexedToolArgPlaceholder(
+	callId: string,
+	toolName: string,
+	fieldName: string,
+	intent: string,
+) {
+	return [
+		`[Indexed:tool_arg:${fieldName}:${callId}]`,
+		`tool: ${toolName}`,
+		`field: ${fieldName}`,
+		intent ? `intent: ${intent}` : undefined,
+		`Recall if need: recall_indexed("${callId}")`,
+	]
+		.filter(Boolean)
+		.join('\n');
+}
+
+function measureArgValue(value: unknown) {
+	if (typeof value === 'string') return value.length;
+	return JSON.stringify(value).length;
+}
+
+// 尽可能给模型视角提供线索: 这是什么历史结果，状态是什么, 调用目的是什么，如果需要细节，恢复指令是什么
+function compressObsContent(obs: Observation, action: Action, roundId: string, turn: number) {
+	if (obs.result.length <= INDEX_MIN_CHARS) return obs.result;
+
+	const callId = buildIndexedCallId(obs.id, roundId, turn);
+	return buildIndexedToolResultPlaceholder(callId, obs.name, getIntent(action.args));
+}
+
+function compressActionArgs(action: Action, roundId: string, turn: number, isError: boolean) {
+	if (isError) return action.args;
+
+	const callId = buildIndexedCallId(action.id, roundId, turn);
+	const intent = getIntent(action.args);
+	const compressedArgs: Record<string, unknown> = {};
+	let changed = false;
+
+	for (const [fieldName, value] of Object.entries(action.args)) {
+		if (measureArgValue(value) <= INDEX_MIN_CHARS) {
+			compressedArgs[fieldName] = value;
+			continue;
+		}
+
+		changed = true;
+		compressedArgs[fieldName] = buildIndexedToolArgPlaceholder(callId, action.name, fieldName, intent);
+	}
+
+	return changed ? compressedArgs : action.args;
+}
 
 function compressEvents(events: AgentEvent[]) {
-
 	const compressedEvent: AgentEvent[] = [];
 
 	for (const event of events) {
@@ -236,51 +282,60 @@ function compressEvents(events: AgentEvent[]) {
 		if (!roundId || typeof turn !== 'number') continue;
 
 		switch (event.type) {
-			case EventType.OBSERVATIONS:
-				const obses = event.observations;
-				const actionsEvent = events.find(
-					event => event.type === EventType.ACTIONS && event.meta?.roundId === roundId && event.meta?.turn === turn
-				) as ActionsEvent;
-
-				const actions = actionsEvent.actions || [];
+			case EventType.ACTIONS: {
+				const observationsEvent = events.find(
+					(obs) =>
+						obs.type === EventType.OBSERVATIONS &&
+						obs.meta?.roundId === roundId &&
+						obs.meta?.turn === turn,
+				) as ObservationsEvent;
 
 				compressedEvent.push({
 					...event,
-					observations: obses.map(obs => {
-						const id = obs.id;
-						const action = actions.find(action => action.id === id);
-						let compressedContent = '';
-						if (action) {
-							compressedContent = compressObsContent(obs, action, roundId, turn);
-						}
+					actions: event.actions.map((action) => {
+						const observation = observationsEvent?.observations.find((obs) => obs.id === action.id);
+						return {
+							...action,
+							args: compressActionArgs(action, roundId, turn, observation?.isError ?? false),
+						};
+					}),
+				});
+				break;
+			}
+			case EventType.OBSERVATIONS: {
+				const actionsEvent = events.find(
+					(item) =>
+						item.type === EventType.ACTIONS && item.meta?.roundId === roundId && item.meta?.turn === turn,
+				) as ActionsEvent;
+
+				const actions = actionsEvent?.actions || [];
+
+				compressedEvent.push({
+					...event,
+					observations: event.observations.map((obs) => {
+						const action = actions.find((item) => item.id === obs.id);
+						const compressedContent = action ? compressObsContent(obs, action, roundId, turn) : '';
 
 						return {
 							...obs,
-							// error 不用索引
-							result: obs.isError 
-								? obs.result 
-								: compressedContent
-									? compressedContent
-									: obs.result 
-						}
-					})
-				})
+							result: obs.isError ? obs.result : compressedContent || obs.result,
+						};
+					}),
+				});
 				break;
+			}
 			case EventType.THOUGHT:
-				// thinking block 丢弃
 				compressedEvent.push({
 					...event,
-					text: ''
+					text: '',
 				});
 				break;
 			default:
 				compressedEvent.push(event);
 		}
-
 	}
 
 	return compressedEvent;
-
 }
 
 
@@ -409,6 +464,9 @@ function buildEventsToXML(events: AgentEvent[]) {
 }
 
 
+function cleanEvents(events: AgentEvent[]) {
+	return events.filter(event => event.type !== EventType.AGENT_STOP);
+}
 
 
 function splitEventsBoundary(events: AgentEvent[], hotTurnLength = 2) {
@@ -435,7 +493,7 @@ function splitEventsBoundary(events: AgentEvent[], hotTurnLength = 2) {
 // ...manyEvents, summaryV1, ...manyEvents, summaryV2, ...manyEvenys
 // ↓
 // summaryV2, ...manyEvenys
-function preProcessEvents(events: AgentEvent[]) {
+function resortSummaryEvents(events: AgentEvent[]) {
 	const lastSummaryEvent = events.findLast(event => event.type === EventType.AGENT_SUMMARY);
 	if (!lastSummaryEvent) return events;
 
@@ -481,7 +539,8 @@ export default async function contextBuilder(
 		lastWindowTokens: number;
 		// 摘要压缩模型
 		venderAdaptor: Vender.Adaptor,
-		tools: Tool.Definition[]
+		tools: Tool.Definition[],
+		strategyEnabled?: boolean;
 	}
 ): Promise<Context.BuildResult> {
 	const {
@@ -490,7 +549,8 @@ export default async function contextBuilder(
 		events,
 		lastWindowTokens,
 		venderAdaptor,
-		tools
+		tools,
+		strategyEnabled = true,
 	} = config;
 
 	const systemPrompt = [
@@ -500,10 +560,27 @@ export default async function contextBuilder(
 	].join('\n');
 
 
+	
+
+	const preProcessEvents = pipe(
+		cleanEvents,
+		resortSummaryEvents
+	)(events)
+	
+
+	if (!strategyEnabled) {
+		return {
+			systemPrompt,
+			events: preProcessEvents,
+			tools,
+			summaryEvent: null,
+		};
+	}
+
 	const {
 		coldEvents,
 		hotEvents
-	} = splitEventsBoundary(preProcessEvents(events), recentHotTurnsLength);
+	} = splitEventsBoundary(preProcessEvents, recentHotTurnsLength);
 
 
 	let compressedColdEvents = compressEvents(coldEvents);

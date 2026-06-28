@@ -7,8 +7,11 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev": "node --import tsx src/cli/index.ts",
-    "dev:ui": "node --import tsx src/cli/cli-ui.tsx",
+    "dev": "node --import tsx src/cli/index.ts --session-file .agent/sessions/cli_session.jsonl --trace-file .agent/sessions/cli_session.trace.jsonl --context-strategy on",
+    "dev:baseline": "node --import tsx src/cli/index.ts --session-file .agent/sessions/cli_baseline.jsonl --trace-file .agent/sessions/cli_baseline.trace.jsonl --context-strategy off",
+    "dev:eval:on": "node --import tsx src/cli/index.ts --session-file .agent/sessions/eval_strategy_on.jsonl --trace-file .agent/sessions/eval_strategy_on.trace.jsonl --context-strategy on",
+    "dev:eval:off": "node --import tsx src/cli/index.ts --session-file .agent/sessions/eval_strategy_off.jsonl --trace-file .agent/sessions/eval_strategy_off.trace.jsonl --context-strategy off",
+    "dev:help": "node --import tsx src/cli/index.ts --help",
     "ws:server": "node --import tsx src/server/index.ts",
     "ts:check": "tsc --noEmit",
     "ts:tsc": "tsc",
