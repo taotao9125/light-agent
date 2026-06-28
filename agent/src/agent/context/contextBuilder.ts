@@ -12,13 +12,11 @@
 // 展示用 api 返回的真值, 决策压缩用 api 返回的真值 + 本次 turn 的 agent 本地增量 token (如工具调用的结果)
 
 import { EventType, ActionsEvent, ObservationsEvent } from '../../protocol/events';
-
 import type { AgentEvent, TraceEvent, SummaryEvent } from '../../protocol/events';
 import type { Vender } from '../../ai/index';
 import type { Tool } from '../tool';
 import runtimePrompts, { historyCompressionSystemPrompt } from './prompts.consts';
 import {pipe} from '../helpers';
-
 
 export namespace Context {
 	export type Config = {
@@ -27,7 +25,6 @@ export namespace Context {
 		/** hot/cold index + summary; off = pass full history to the model */
 		strategyEnabled?: boolean;
 	};
-
 	export type BuildResult = {
 		events: AgentEvent[];
 		systemPrompt: string;
@@ -37,7 +34,6 @@ export namespace Context {
 }
 
 const CHAR_LENGTH_PER_TOKEN = 4;
-
 
 type Prompt = Context.Config['prompts'];
 function buildPromptsToXML(prompts: Prompt = []): string {
@@ -51,18 +47,13 @@ function buildPromptsToXML(prompts: Prompt = []): string {
 	}).join('\n');
 }
 
-
-
-
 // ---
 // name:
 // description:
 // ---
 // ...content...
-
 type SkillJson = { name: string; description: string; content: string }
 function parseSkill(skillRaw: string): SkillJson {
-
 	const textLines = skillRaw
 		// 去掉BOM字节顺序, windows 可能有
 		.replace(/^\uFEFF/, '')
@@ -70,25 +61,18 @@ function parseSkill(skillRaw: string): SkillJson {
 		.split('\n')
 		.filter(line => line !== '\n');
 
-	if (!textLines[0].startsWith('---')) {
-		throw new Error('SKILL.md 必须以 --- 开头');
-	}
+	if (!textLines[0].startsWith('---')) throw new Error('SKILL.md 必须以 --- 开头');
 
 	const closeHyphenIndex = textLines.indexOf('---', 3);
-
-	if (closeHyphenIndex === -1) {
-		throw new Error('缺少结束的 ---');
-	}
-
+	
+	if (closeHyphenIndex === -1) throw new Error('缺少结束的 ---');
+	
 	const frontmatterLines = textLines
 		.slice(0, closeHyphenIndex)
 		// 去掉 `---` 和 `#` 注释
 		.filter(line => line !== '---' && !line.startsWith('#'))
 	const contentLines = textLines.slice(closeHyphenIndex + 1);
-
-
 	const meta: Record<'name' | 'description', string> = { name: '', description: '' };
-
 	for (const line of frontmatterLines) {
 		// key:value
 		const trimmedLine = line.trim();
@@ -96,23 +80,12 @@ function parseSkill(skillRaw: string): SkillJson {
 		const key = trimmedLine.slice(0, i).trim();
 		const value = trimmedLine.slice(i + 1).trim();
 
-		if (key === 'name') {
-			meta.name = value;
-		}
-
-		if (key === 'description') {
-			meta.description = value;
-		}
+		if (key === 'name') meta.name = value;
+		if (key === 'description') meta.description = value;
 	}
 
-	if (!meta.name) {
-		throw new Error('skill 缺少 `name` 属性');
-	}
-
-	if (!meta.description) {
-		throw new Error('skill 缺少 `description` 属性');
-	}
-
+	if (!meta.name) throw new Error('skill 缺少 `name` 属性');
+	if (!meta.description) throw new Error('skill 缺少 `description` 属性');
 
 	return {
 		name: meta.name,
@@ -120,8 +93,6 @@ function parseSkill(skillRaw: string): SkillJson {
 		content: contentLines.join('\n')
 
 	}
-
-
 }
 
 function buildSkillsToXML(skills: string[] = []) {
@@ -153,8 +124,6 @@ function buildSkillsToXML(skills: string[] = []) {
 	].join('\n')
 }
 
-
-
 function estimateToken(text: string) {
 	if (!text) return 0;
 	return Math.round(text.length / CHAR_LENGTH_PER_TOKEN);
@@ -167,19 +136,14 @@ function getIntent(args: Record<string, unknown>): string {
 	return '';
 }
 
-
-
 type RoundMap = Map<string, Map<number, AgentEvent[]>>;
-
 function parseEventsIntoRoundMap(events: AgentEvent[]): RoundMap {
 	const roundMap: RoundMap = new Map();
-
 	for (const event of events) {
 		const roundId = event.meta?.roundId;
 		const turnIndex = event.meta?.turn;
 
 		if (!roundId || typeof turnIndex !== 'number') continue;
-
 
 		if (!roundMap.get(roundId)) {
 			roundMap.set(roundId, new Map());
@@ -190,21 +154,13 @@ function parseEventsIntoRoundMap(events: AgentEvent[]): RoundMap {
 		}
 
 		const currentTurn = roundMap.get(roundId)?.get(turnIndex);
-
 		currentTurn?.push(event);
-
 	}
-
 	return roundMap;
 }
 
-
-
-
-
 type Action = ActionsEvent['actions'][number];
 type Observation = ObservationsEvent['observations'][number];
-
 const INDEX_MIN_CHARS = 100;
 
 function buildIndexedCallId(actionId: string, roundId: string, turn: number) {
@@ -247,7 +203,6 @@ function measureArgValue(value: unknown) {
 // 尽可能给模型视角提供线索: 这是什么历史结果，状态是什么, 调用目的是什么，如果需要细节，恢复指令是什么
 function compressObsContent(obs: Observation, action: Action, roundId: string, turn: number) {
 	if (obs.result.length <= INDEX_MIN_CHARS) return obs.result;
-
 	const callId = buildIndexedCallId(obs.id, roundId, turn);
 	return buildIndexedToolResultPlaceholder(callId, obs.name, getIntent(action.args));
 }
@@ -338,8 +293,6 @@ function compressEvents(events: AgentEvent[]) {
 	return compressedEvent;
 }
 
-
-
 // 下一个 turn 的 token 增量能来自两个方向:
 // 1. agent 执行工具调用拿到的结果（要喂个下一个 turn）
 // 2. 一个 round 对话结束, 用户新增了一个对话 prompt
@@ -363,9 +316,6 @@ function countDeltaTokens(events: AgentEvent[]) {
 	return 0;
 
 }
-
-
-
 
 function buildEventToXML(events: AgentEvent[]) {
 	let lines: string[] = [];
@@ -429,7 +379,6 @@ function buildEventToXML(events: AgentEvent[]) {
 	return lines.join('\n')
 }
 
-
 function buildTurnsToXML(turnMap: Map<number, AgentEvent[]>) {
 	const lines: string[] = []
 	for (const [turnIndex, turn] of turnMap) {
@@ -443,11 +392,9 @@ function buildTurnsToXML(turnMap: Map<number, AgentEvent[]>) {
 	return lines.join('\n')
 }
 
-
 function buildRoundToXML(roundsMap: RoundMap) {
 	const lines: string[] = []
 	for (const [roundId, round] of roundsMap) {
-
 		lines.push([
 			`<round id="${roundId}">`,
 			buildTurnsToXML(round),
@@ -457,22 +404,18 @@ function buildRoundToXML(roundsMap: RoundMap) {
 	return lines.join('\n')
 }
 
-
 function buildEventsToXML(events: AgentEvent[]) {
 	const roundsMap = parseEventsIntoRoundMap(events);
 	return buildRoundToXML(roundsMap)
 }
 
-
 function cleanEvents(events: AgentEvent[]) {
 	return events.filter(event => event.type !== EventType.AGENT_STOP);
 }
 
-
 function splitEventsBoundary(events: AgentEvent[], hotTurnLength = 2) {
 	const roundsMap = parseEventsIntoRoundMap(events);
 	const turns = [...roundsMap.values()].map(turnMap => [...turnMap.values()]).flat();
-
 	const hotTurns = turns.slice(-hotTurnLength);
 	const coldTurns = turns.slice(0, turns.length - hotTurnLength);
 
@@ -559,15 +502,11 @@ export default async function contextBuilder(
 		buildSkillsToXML(skills)
 	].join('\n');
 
-
-	
-
 	const preProcessEvents = pipe(
 		cleanEvents,
 		resortSummaryEvents
 	)(events)
 	
-
 	if (!strategyEnabled) {
 		return {
 			systemPrompt,
@@ -581,12 +520,8 @@ export default async function contextBuilder(
 		coldEvents,
 		hotEvents
 	} = splitEventsBoundary(preProcessEvents, recentHotTurnsLength);
-
-
 	let compressedColdEvents = compressEvents(coldEvents);
-
 	let currentWindowTokens = lastWindowTokens + countDeltaTokens(events);
-
 	let summaryEvent: SummaryEvent | null = null;
 
 	// 当压缩后, currentWindowTokens 会变小, 下一个人 turn 模型视角是看到的压缩后的摘要, 然后返回新的账单
@@ -621,11 +556,9 @@ export default async function contextBuilder(
 
 	}
 
-
 	if (summaryEvent) {
 		compressedColdEvents = [summaryEvent];
 	}
-
 
 	return {
 		systemPrompt,
