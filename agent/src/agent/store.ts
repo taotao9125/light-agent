@@ -11,6 +11,7 @@ export namespace Session {
 		rootDir: string;
 		sessionFile?: string;
 		traceFile?: string;
+		contextFile?: string;
 	};
 }
 
@@ -19,6 +20,7 @@ export interface SessionStoreInterface {
 	loadTraces: (sessionId: string) => Promise<TraceEvent[]>;
 	append: (sessionId: string, event: AgentEvent) => Promise<void>;
 	appendTrace: (sessionId: string, event: TraceEvent) => Promise<void>;
+	appendContextSnap: (sessionId: string, record: Record<string, unknown>) => Promise<void>;
 	flush: () => Promise<void>;
 }
 
@@ -33,6 +35,7 @@ export default class SessionStore implements SessionStoreInterface {
 	private rootDir: string;
 	private sessionFile?: string;
 	private traceFile?: string;
+	private contextFile?: string;
 	private isRunning = false;
 	private queue: AppendJob[] = [];
 	private flushWaiters: Array<{ resolve: () => void; reject: (reason?: unknown) => void }> = [];
@@ -41,6 +44,7 @@ export default class SessionStore implements SessionStoreInterface {
 		this.rootDir = config.rootDir;
 		this.sessionFile = config.sessionFile;
 		this.traceFile = config.traceFile;
+		this.contextFile = config.contextFile;
 	}
 
 	private getCanonicalFilePath(sessionId: string) {
@@ -49,6 +53,10 @@ export default class SessionStore implements SessionStoreInterface {
 
 	private getTraceFilePath(sessionId: string) {
 		return this.traceFile ?? path.join(this.rootDir, `${sessionId}.trace.jsonl`);
+	}
+
+	private getContextFilePath(sessionId: string) {
+		return this.contextFile ?? path.join(this.rootDir, `${sessionId}.context.jsonl`);
 	}
 
 	private async readJsonl<T>(filePath: string): Promise<T[]> {
@@ -137,6 +145,10 @@ export default class SessionStore implements SessionStoreInterface {
 
 	async appendTrace(sessionId: string, event: TraceEvent): Promise<void> {
 		return this.enqueueAppend(this.getTraceFilePath(sessionId), event);
+	}
+
+	async appendContextSnap(sessionId: string, record: Record<string, unknown>): Promise<void> {
+		return this.enqueueAppend(this.getContextFilePath(sessionId), record);
 	}
 
 	async flush(): Promise<void> {

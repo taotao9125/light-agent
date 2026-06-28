@@ -1,7 +1,7 @@
-import fs from 'fs/promises';
-import path from 'path';
+import fs from 'node:fs/promises';
 
 import type { Tool } from '../../agent/tool';
+import { resolveWorkspacePath } from './pathSafety';
 
 const readFileTool: Tool.Definition = {
 	name: 'read_file',
@@ -21,18 +21,32 @@ const readFileTool: Tool.Definition = {
 	async execute(p: { path: string }, context) {
 		context.signal?.throwIfAborted();
 
-		const realPath = path.resolve(process.cwd(), p.path);
+		const resolved = resolveWorkspacePath(p.path);
+		if (!resolved.ok) {
+			return {
+				isError: true,
+				content: ['Failed to read file.', `Path: ${p.path}`, `Reason: ${resolved.reason}`].join('\n'),
+			};
+		}
+
 		try {
-			const content = await fs.readFile(realPath, { encoding: 'utf8', signal: context.signal });
+			const content = await fs.readFile(resolved.absolutePath, {
+				encoding: 'utf8',
+				signal: context.signal,
+			});
 			return {
 				isError: false,
-				content: ['File read successfully.', `Path: ${p.path}`, '', content].join('\n'),
+				content: ['File read successfully.', `Path: ${resolved.relativePath}`, '', content].join('\n'),
 			};
 		} catch (e) {
 			context.signal?.throwIfAborted();
 			return {
 				isError: true,
-				content: ['Failed to read file.', `Path: ${p.path}`, `Reason: ${e instanceof Error ? e.message : String(e)}`].join('\n'),
+				content: [
+					'Failed to read file.',
+					`Path: ${p.path}`,
+					`Reason: ${e instanceof Error ? e.message : String(e)}`,
+				].join('\n'),
 			};
 		}
 	},

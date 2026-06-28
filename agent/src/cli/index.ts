@@ -1,24 +1,25 @@
 #!/usr/bin/env node
 import { stdin, stdout } from 'node:process';
-import readline from 'node:readline/promises';
+import readline, { type Interface } from 'node:readline/promises';
 import path from 'path';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import Agent from '../agent/agent';
 import SessionStore from '../agent/store';
-import { cliIdentityPrompt } from './prompts';
-import listFilesToolNew from './tools/listFileNew';
+import { cliPrompts } from './prompts';
+import { parseCliArgs, printCliHelp } from './parseCliArgs';
+import { drainStdinBuffer, isSubmittableCliInput, readCliInput } from './readCliInput';
+import gitDiffTool from './tools/gitDiff';
+import gitStatusTool from './tools/gitStatus';
+import grepTool from './tools/grep';
 import readFileTool from './tools/readFile';
+import runCommandTool from './tools/runCommand';
 import searchDoc from './tools/searchdoc';
+import writeFileTool from './tools/writeFile';
 import 'dotenv/config';
 
 if (process.env.HTTPS_PROXY) {
 	setGlobalDispatcher(new ProxyAgent(process.env.HTTPS_PROXY));
 }
-
-const rl = readline.createInterface({
-	input: stdin,
-	output: stdout,
-});
 
 const color = {
 	reset: '\x1b[0m',
@@ -28,11 +29,30 @@ const color = {
 	red: '\x1b[31m',
 };
 
-function isReadlineAbortError(error: unknown) {
-	return error instanceof Error && 'code' in error && error.code === 'ABORT_ERR';
+function isReadlineClosedError(error: unknown) {
+	return (
+		error instanceof Error &&
+		'code' in error &&
+		(error.code === 'ABORT_ERR' || error.code === 'ERR_USE_AFTER_CLOSE')
+	);
 }
 
 function formatToolLabel(name: string, args: Record<string, unknown>) {
+	if (name === 'git_status' || name === 'git_diff') {
+		const staged = args.staged ? ' staged' : '';
+		const pathArg = typeof args.path === 'string' ? ` ${args.path}` : '';
+		return `${name}${staged}${pathArg}`.trim();
+	}
+	if (name === 'run_command' && typeof args.command === 'string') {
+		const cwd = typeof args.cwd === 'string' ? ` (cwd: ${args.cwd})` : '';
+		return `${name}  ${args.command}${cwd}`;
+	}
+	if (name === 'grep') {
+		const mode = typeof args.mode === 'string' ? ` ${args.mode}` : '';
+		const query = typeof args.query === 'string' && args.query ? ` ${args.query}` : '';
+		const pathArg = typeof args.path === 'string' ? ` ${args.path}` : '';
+		return `${name}${mode}${query}${pathArg}`.trim();
+	}
 	if (typeof args.path === 'string') {
 		return `${name}  ${args.path}`;
 	}
@@ -49,14 +69,30 @@ function cursorUp(lines: number) {
 }
 
 function rewriteLine(text: string) {
-	process.stdout.write(`\x1b[2K\r${text}\n`);
+	writeStdout(`\x1b[2K\r${text}\n`);
+}
+
+function writeStdout(text: string) {
+	if (!stdout.write(text)) {
+		stdout.once('drain', () => {});
+	}
 }
 
 async function main() {
-	const sessionId = 'cli_session';
+	const cliArgs = parseCliArgs();
+	if (cliArgs.help) {
+		process.stdout.write(`${printCliHelp()}\n`);
+		return;
+	}
+
+	const sessionId = path.basename(cliArgs.sessionFile, '.jsonl');
+	let activeReadline: Interface | null = null;
 
 	const sessionStore = new SessionStore({
-		rootDir: path.resolve(process.cwd(), '.agent/sessions'),
+		rootDir: path.dirname(cliArgs.sessionFile),
+		sessionFile: cliArgs.sessionFile,
+		traceFile: cliArgs.traceFile,
+		contextFile: cliArgs.contextFile,
 	});
 
 	// -------------------------------------------
@@ -68,19 +104,26 @@ async function main() {
 			baseURL: process.env.AI_DEEP_SEEK_API_HOST as string,
 			model: 'deepseek-v4-flash',
 		},
+		strategy: {
+			maxTurns: cliArgs.maxTurns,
+		},
 		sessionId,
 		store: sessionStore,
 		context: {
-			prompts: [{
-				name: 'Identity',
-				content: cliIdentityPrompt
-			}]
+			prompts: cliPrompts,
+			strategyEnabled: cliArgs.contextStrategy,
 		},
 	});
 
+	await agent.loadSession();
+
 	agent.registerTool(readFileTool.name, readFileTool);
-	agent.registerTool(listFilesToolNew.name, listFilesToolNew);
+	agent.registerTool(writeFileTool.name, writeFileTool);
+	agent.registerTool(grepTool.name, grepTool);
 	agent.registerTool(searchDoc.name, searchDoc);
+	agent.registerTool(gitStatusTool.name, gitStatusTool);
+	agent.registerTool(gitDiffTool.name, gitDiffTool);
+	agent.registerTool(runCommandTool.name, runCommandTool);
 
 	// -------------------------------------------
 	let isThinking = false;
@@ -93,9 +136,43 @@ async function main() {
 	let pendingActions = new Map<string, { name: string; args: Record<string, unknown> }>();
 	let parallelToolLineCount = 0;
 
+	function endThinkingLine() {
+		if (isThinking) {
+			writeStdout(`${color.reset}\n`);
+			isThinking = false;
+		}
+	}
+
+	function closeReadline() {
+		if (!activeReadline) {
+			return;
+		}
+		activeReadline.close();
+		activeReadline = null;
+	}
+
+	function shutdown() {
+		if (isExiting) {
+			return;
+		}
+		isExiting = true;
+		closeReadline();
+	}
+
+	function createReadline() {
+		closeReadline();
+		drainStdinBuffer();
+		activeReadline = readline.createInterface({
+			input: stdin,
+			output: stdout,
+			terminal: Boolean(stdin.isTTY),
+		});
+		return activeReadline;
+	}
+
 	function resetStreamState() {
 		if (isThinking) {
-			process.stdout.write(color.reset);
+			writeStdout(color.reset);
 		}
 		isThinking = false;
 		isOutputting = false;
@@ -109,33 +186,29 @@ async function main() {
 			return;
 		}
 
-		isExiting = true;
-		rl.close();
+		shutdown();
 	});
 
 	agent.on((event) => {
 		switch (event.type) {
 			case 'agent_start':
-				process.stdout.write(`${color.green}开始执行 agent${color.reset}\n`);
+				writeStdout(`${color.green}开始执行 agent${color.reset}\n`);
 				break;
 
 			case 'thought_delta':
 				if (isOutputting) {
-					process.stdout.write('\n');
+					writeStdout('\n');
 					isOutputting = false;
 				}
 				if (!isThinking) {
-					process.stdout.write(`${color.dim}thinking: `);
+					writeStdout(`${color.dim}thinking: `);
 					isThinking = true;
 				}
-				process.stdout.write(event.text);
+				writeStdout(event.text);
 				break;
 
 			case 'actions': {
-				if (isThinking) {
-					process.stdout.write(`${color.reset}\n`);
-					isThinking = false;
-				}
+				endThinkingLine();
 
 				toolBatchStartedAt = Date.now();
 				pendingActions = new Map(
@@ -144,18 +217,14 @@ async function main() {
 
 				if (event.actions.length === 1) {
 					const action = event.actions[0];
-					process.stdout.write(
-						`${color.yellow}tool: ${formatToolLabel(action.name, action.args)}${color.reset}\n`,
-					);
+					writeStdout(`${color.yellow}tool: ${formatToolLabel(action.name, action.args)}${color.reset}\n`);
 					break;
 				}
 
-				process.stdout.write(`${color.yellow}parallel tools (${event.actions.length}):${color.reset}\n`);
+				writeStdout(`${color.yellow}parallel tools (${event.actions.length}):${color.reset}\n`);
 				parallelToolLineCount = event.actions.length;
 				for (const action of event.actions) {
-					process.stdout.write(
-						`  ${color.dim}⟳${color.reset} ${formatToolLabel(action.name, action.args)}\n`,
-					);
+					writeStdout(`  ${color.dim}⟳${color.reset} ${formatToolLabel(action.name, action.args)}\n`);
 				}
 				break;
 			}
@@ -170,11 +239,11 @@ async function main() {
 					const label = action ? formatToolLabel(action.name, action.args) : observation.name;
 
 					if (observation.isError) {
-						process.stdout.write(
+						writeStdout(
 							`${color.red}tool error: ${label}${color.reset} ${color.dim}${observation.result}${color.reset}\n`,
 						);
 					} else {
-						process.stdout.write(`${color.dim}tool done: ${label}${color.reset}\n`);
+						writeStdout(`${color.dim}tool done: ${label}${color.reset}\n`);
 					}
 					pendingActions.clear();
 					break;
@@ -195,7 +264,7 @@ async function main() {
 					}
 				}
 
-				process.stdout.write(`${color.dim}  completed in ${elapsedMs}ms (parallel)${color.reset}\n`);
+				writeStdout(`${color.dim}  completed in ${elapsedMs}ms (parallel)${color.reset}\n`);
 				pendingActions.clear();
 				parallelToolLineCount = 0;
 				break;
@@ -203,14 +272,14 @@ async function main() {
 
 			case 'output_delta':
 				if (isThinking) {
-					process.stdout.write(`${color.reset}\n`);
+					writeStdout(`${color.reset}\n`);
 					isThinking = false;
 				}
 				if (!isOutputting) {
-					process.stdout.write(`${color.green}output:${color.reset}\n`);
+					writeStdout(`${color.green}output:${color.reset}\n`);
 					isOutputting = true;
 				}
-				process.stdout.write(event.text);
+				writeStdout(event.text);
 				break;
 
 			case 'agent_stop':
@@ -219,7 +288,7 @@ async function main() {
 					if (!interruptPrinted) {
 						interruptPrinted = true;
 						const suffix = event.message && event.message !== 'aborted' ? `: ${event.message}` : '';
-						process.stdout.write(`\n${color.yellow}Agent interrupted${suffix}${color.reset}\n`);
+						writeStdout(`\n${color.yellow}Agent interrupted${suffix}${color.reset}\n`);
 					}
 				} else {
 					process.stderr.write(
@@ -233,27 +302,38 @@ async function main() {
 		}
 	});
 
-	while (true) {
+	process.stdout.write(
+		[
+			`${color.dim}Session: ${cliArgs.sessionFile}${color.reset}`,
+			`${color.dim}Trace:   ${cliArgs.traceFile}${color.reset}`,
+			`${color.dim}Context: ${cliArgs.contextFile}${color.reset}`,
+			`${color.dim}Context strategy: ${cliArgs.contextStrategy ? 'on' : 'off'}${color.reset}`,
+			`${color.dim}Tip: paste multi-line prompts directly; or type """ for multiline mode. While agent runs, wait before typing.${color.reset}`,
+		].join('\n') + '\n',
+	);
+
+	while (!isExiting) {
 		let text = '';
+		const rl = createReadline();
 		try {
-			text = (await rl.question('\n> ')).trim();
+			text = (await readCliInput(rl, { onCancel: () => shutdown() })).trim();
 		} catch (e) {
-			if (isReadlineAbortError(e)) {
-				isExiting = true;
-				rl.close();
+			closeReadline();
+			if (isReadlineClosedError(e) || isExiting) {
 				break;
 			}
 
 			throw e;
+		} finally {
+			closeReadline();
 		}
 
-		if (!text) {
+		if (!isSubmittableCliInput(text)) {
 			continue;
 		}
 
 		if (text === 'exit' || text === 'quit') {
-			isExiting = true;
-			rl.close();
+			shutdown();
 			break;
 		}
 
@@ -262,6 +342,7 @@ async function main() {
 			interruptPrinted = false;
 			isThinking = false;
 			isOutputting = false;
+			drainStdinBuffer();
 
 			const promptPromise = agent.prompt(text);
 			const promptWaitPromise = new Promise<'interrupted'>((resolve) => {
@@ -292,15 +373,13 @@ async function main() {
 		} finally {
 			isWaitingForPrompt = false;
 			resolvePromptWait = null;
+			drainStdinBuffer();
 		}
-
-		if (isExiting) break;
 	}
 }
 
 main().catch((e) => {
-	if (isReadlineAbortError(e)) {
-		rl.close();
+	if (isReadlineClosedError(e)) {
 		process.exit(0);
 	}
 

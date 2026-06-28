@@ -1,5 +1,6 @@
 import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
 import { EventType } from '../../protocol/events';
+import { formatLlmError } from '../formatLlmError';
 import { parseEventsIntoRoundMap, stringifyContent } from '../helpers';
 
 import type { Content, FunctionCall, FunctionDeclaration, GenerateContentParameters } from '@google/genai';
@@ -175,8 +176,7 @@ export default class GoogleAdaptor implements Vender.Adaptor {
 				yield { type: EventType.OUTPUT, text: outputTextBuffer };
 			}
 		} catch (e) {
-			const message = e instanceof Error ? e.message : String(e);
-			yield { type: EventType.AGENT_STOP, cause: 'llm', message };
+			yield { type: EventType.AGENT_STOP, cause: 'llm', message: formatLlmError(e) };
 		}
 	}
 

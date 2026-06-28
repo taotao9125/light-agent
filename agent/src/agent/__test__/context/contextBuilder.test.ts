@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventType } from '../../../protocol/events';
 import contextBuilder from '../../context/contextBuilder';
 
-import type { AgentEvent, ObservationsEvent, ThoughtEvent } from '../../../protocol/events';
+import type { AgentEvent, ActionsEvent, ObservationsEvent, ThoughtEvent } from '../../../protocol/events';
 import type { Vender } from '../../../ai/index';
 import type { Tool } from '../../tool';
 
@@ -126,6 +126,52 @@ function findThought(events: AgentEvent[], roundId: string, turn: number) {
 	) as ThoughtEvent | undefined;
 }
 
+function findActions(events: AgentEvent[], roundId: string, turn: number) {
+	return events.find(
+		(event) =>
+			event.type === EventType.ACTIONS &&
+			event.meta?.roundId === roundId &&
+			event.meta?.turn === turn,
+	) as ActionsEvent | undefined;
+}
+
+function writeFileTurn(roundId: string, turn: number, fileContent: string, obsId?: string): AgentEvent[] {
+	const id = obsId ?? `call_${turn}`;
+	return [
+		{
+			type: EventType.THOUGHT,
+			text: `thought-${turn}`,
+			meta: { roundId, turn },
+		},
+		{
+			type: EventType.ACTIONS,
+			actions: [
+				{
+					id,
+					name: 'write_file',
+					args: {
+						path: `src/file-${turn}.ts`,
+						content: fileContent,
+					},
+				},
+			],
+			meta: { roundId, turn },
+		},
+		{
+			type: EventType.OBSERVATIONS,
+			observations: [
+				{
+					id,
+					name: 'write_file',
+					result: `File written successfully.\nPath: src/file-${turn}.ts\nBytes: ${fileContent.length}`,
+					isError: false,
+				},
+			],
+			meta: { roundId, turn },
+		},
+	];
+}
+
 describe('contextBuilder', () => {
 	beforeEach(() => {
 		mockGenerateText.mockReset();
@@ -218,6 +264,24 @@ describe('contextBuilder', () => {
 
 			expect(coldObs?.observations[0].result).toBe(errorText);
 			expect(coldObs?.observations[0].result).not.toContain('[Indexed:tool_result:');
+		});
+
+		it('cold turn 的大 write_file args 应 index，hot turn 保留全文', async () => {
+			const fileContent = `export const value = '${'x'.repeat(500)}';`;
+			const events = [
+				inputEvent(ROUND_ID, 1, 'start'),
+				...writeFileTurn(ROUND_ID, 1, fileContent, 'call_1'),
+				...writeFileTurn(ROUND_ID, 2, fileContent, 'call_2'),
+				...writeFileTurn(ROUND_ID, 3, fileContent, 'call_3'),
+			];
+
+			const result = await buildContext(events);
+			const coldAction = findActions(result.events, ROUND_ID, 1)?.actions[0];
+			const hotAction = findActions(result.events, ROUND_ID, 3)?.actions[0];
+
+			expect(String(coldAction?.args.content)).toContain('[Indexed:tool_arg:content:');
+			expect(coldAction?.args.path).toBe('src/file-1.ts');
+			expect(hotAction?.args.content).toBe(fileContent);
 		});
 	});
 
@@ -363,6 +427,33 @@ describe('contextBuilder', () => {
 		it('应原样回传 tools', async () => {
 			const result = await buildContext([], 0, { tools: mockTools });
 			expect(result.tools).toBe(mockTools);
+		});
+	});
+
+	describe('strategyEnabled', () => {
+		it('关闭策略时应原样返回 events，不 index、不 summary', async () => {
+			const fullText = `full-${'x'.repeat(500)}`;
+			const events = [
+				inputEvent(ROUND_ID, 1, 'start'),
+				...toolTurn(ROUND_ID, 1, fullText, { obsId: 'call_1' }),
+				...toolTurn(ROUND_ID, 2, fullText, { obsId: 'call_2' }),
+				...toolTurn(ROUND_ID, 3, fullText, { obsId: 'call_3' }),
+			];
+
+			const result = await contextBuilder({
+				prompts: [{ name: 'identity', content: 'test assistant' }],
+				skills: [],
+				events,
+				lastWindowTokens: MAX_WINDOW_TOKENS,
+				venderAdaptor: mockVenderAdaptor,
+				tools: mockTools,
+				strategyEnabled: false,
+			});
+
+			expect(mockGenerateText).not.toHaveBeenCalled();
+			expect(result.summaryEvent).toBeNull();
+			expect(findObservations(result.events, ROUND_ID, 1)?.observations[0].result).toBe(fullText);
+			expect(findThought(result.events, ROUND_ID, 1)?.text).toBe('thought-1');
 		});
 	});
 });

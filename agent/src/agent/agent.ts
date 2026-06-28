@@ -1,5 +1,6 @@
 import { EventType } from '../protocol/events';
 import AgentLoop from './agentLoop';
+import buildContextSnap from './context/buildContextSnap';
 import contextBuilder, { type Context } from './context/contextBuilder';
 
 import type { Vender } from '../ai/index';
@@ -120,19 +121,31 @@ export default class Agent implements AgentInterface {
 			await this.agentLoop.prompt(currentJob.prompt, {
 				abortSignal: currentJob.abortController.signal,
 				pullContextSnap: async () => {
+					const lastWindowTokens = this.traceEvents.at(-1)?.costs.totalTokens || 0;
+					const strategyEnabled = this.context.strategyEnabled ?? true;
 					const snap = await contextBuilder({
 						prompts: this.context.prompts,
 						skills: this.context.skills,
 						events: this.canonicalEvents,
-						lastWindowTokens: this.traceEvents.at(-1)?.costs.totalTokens || 0,
+						lastWindowTokens,
 						venderAdaptor: this.agentLoop.getVenderAdaptor(),
 						tools: this.toolRegistry.getTools(),
-						strategyEnabled: this.context.strategyEnabled ?? true,
+						strategyEnabled,
 					});
 
 					if (snap.summaryEvent) {
 						await this.commitEvent(snap.summaryEvent);
 					}
+
+					await this.store?.appendContextSnap(
+						this.sessionId,
+						buildContextSnap({
+							snap,
+							canonicalEvents: this.canonicalEvents,
+							strategyEnabled,
+							lastWindowTokens,
+						}),
+					);
 
 					return snap;
 				},

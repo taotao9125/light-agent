@@ -95,9 +95,11 @@ async function createAgent(sessionId: string) {
 		sessionId,
 		store,
 		vender,
+		strategy: {
+			maxTurns: 80,
+		},
 		context: {
 			prompts: cliPrompts,
-			strategy: {},
 		},
 	});
 
