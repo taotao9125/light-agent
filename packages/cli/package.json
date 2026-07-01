@@ -1,0 +1,42 @@
+{
+  "name": "@light-agent/cli",
+  "version": "0.0.1",
+  "type": "module",
+  "bin": {
+    "light-agent-cli": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "shx rm -rf dist",
+    "watch": "tsgo -w -p tsconfig.build.json",
+    "build": "tsgo -p tsconfig.build.json",
+    "dev": "node --conditions development --import tsx src/index.ts --session-file .agent/sessions/cli_session.jsonl --trace-file .agent/sessions/cli_session.trace.jsonl --context-strategy on",
+    "dev:baseline": "node --conditions development --import tsx src/index.ts --session-file .agent/sessions/cli_baseline.jsonl --trace-file .agent/sessions/cli_baseline.trace.jsonl --context-strategy off",
+    "dev:eval:on": "node --conditions development --import tsx src/index.ts --session-file .agent/sessions/eval_strategy_on.jsonl --trace-file .agent/sessions/eval_strategy_on.trace.jsonl --context-strategy on --max-turns 300",
+    "dev:eval:off": "node --conditions development --import tsx src/index.ts --session-file .agent/sessions/eval_strategy_off.jsonl --trace-file .agent/sessions/eval_strategy_off.trace.jsonl --context-strategy off --max-turns 300",
+    "dev:help": "node --conditions development --import tsx src/index.ts --help"
+  },
+  "dependencies": {
+    "@langchain/classic": "^1.0.34",
+    "@langchain/community": "^1.1.29",
+    "@langchain/core": "^1.1.48",
+    "@langchain/ollama": "^1.2.7",
+    "@langchain/textsplitters": "^1.0.1",
+    "@light-agent/ai": "workspace:*",
+    "@light-agent/agent": "workspace:*",
+    "dotenv": "^16.4.5",
+    "pdf-parse": "^2.4.5",
+    "undici": "^8.3.0"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "light-agent",
+  "version": "0.0.1",
+  "description": "",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/protocol",
+    "packages/ai",
+    "packages/agent",
+    "packages/cli"
+  ],
+  "scripts": {
+    "clean": "pnpm -r run clean",
+    "watch": "pnpm -r --parallel --stream --reporter=default watch",
+    "build": "pnpm -r run build",
+    "test": "vitest run",
+    "cli:link": "cd packages/cli && npm link",
+    "cli:unlink": "cd packages/cli && npm unlink -g light-agent-cli",
+    "ts:check": "tsgo --noEmit",
+    "pack:check": "pnpm build && pnpm --filter @light-agent/cli pack --dry-run",
+    "check": "biome check --write"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "packageManager": "pnpm@11.5.0",
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.15",
+    "@types/node": "^25.8.0",
+    "@typescript/native-preview": "7.0.0-dev.20260629.1",
+    "shx": "^0.4.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.18"
+  }
+}

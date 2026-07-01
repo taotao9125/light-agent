@@ -1,0 +1,36 @@
+{
+  "name": "@light-agent/agent",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/agent.js",
+  "types": "./dist/agent.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/agent.ts",
+      "types": "./dist/agent.d.ts",
+      "import": "./dist/agent.js"
+    },
+    "./store": {
+      "development": "./src/store.ts",
+      "types": "./dist/store.d.ts",
+      "import": "./dist/store.js"
+    },
+    "./tool": {
+      "development": "./src/tool.ts",
+      "types": "./dist/tool.d.ts",
+      "import": "./dist/tool.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "shx rm -rf dist",
+    "watch": "tsgo -w -p tsconfig.build.json",
+    "build": "tsgo -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@light-agent/ai": "workspace:*",
+    "@light-agent/protocol": "workspace:*"
+  }
+}

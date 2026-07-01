@@ -1,0 +1,27 @@
+{
+  "name": "@light-agent/ai",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "watch": "tsgo -w -p tsconfig.build.json",
+    "clean": "shx rm -rf dist",
+    "build": "tsgo -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@google/genai": "^2.3.0",
+    "@light-agent/protocol": "workspace:*",
+    "openai": "^6.38.0"
+  }
+}

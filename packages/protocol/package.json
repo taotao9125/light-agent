@@ -1,0 +1,27 @@
+{
+  "name": "@light-agent/protocol",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/events.js",
+  "types": "./dist/events.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/events.ts",
+      "types": "./dist/events.d.ts",
+      "import": "./dist/events.js"
+    },
+    "./events": {
+      "development": "./src/events.ts",
+      "types": "./dist/events.d.ts",
+      "import": "./dist/events.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "shx rm -rf dist",
+    "watch": "tsgo -w -p tsconfig.build.json",
+    "build": "tsgo -p tsconfig.build.json"
+  }
+}
