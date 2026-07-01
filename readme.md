@@ -1,3 +1,8 @@
+
+https://github.com/user-attachments/assets/78560566-6359-4a48-9eb4-a407cd146afc
+
+-----------------------
+
 # Agent Runtime Architecture
 
 ```text
