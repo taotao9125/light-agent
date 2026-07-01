@@ -13,12 +13,7 @@ context-metrics
 context-benchmark
 .pnpm-store/
 .agents
-mcp.json
-*-lock.json
-demo*
-*.copilotmd
-ops-platform
-openClaw
+.vscode/
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
