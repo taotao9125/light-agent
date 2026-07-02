@@ -55,7 +55,6 @@ export default class Agent implements AgentInterface {
 
 	private context: Context.Config;
 	private canonicalEvents: AgentEvent[] = [];
-	private traceEvents: TraceEvent[] = [];
 	private listeners: AgentViewListener[] = [];
 	private toolRegistry = new ToolRegistry();
 
@@ -95,12 +94,9 @@ export default class Agent implements AgentInterface {
 			case EventType.OUTPUT:
 			case EventType.AGENT_STOP:
 			case EventType.AGENT_SUMMARY:
+			case EventType.AGENT_TRACE:
 				this.canonicalEvents.push(event);
 				await this.store?.append(this.sessionId, event);
-				break;
-			case EventType.AGENT_TRACE:
-				this.traceEvents.push(event);
-				await this.store?.appendTrace(this.sessionId, event);
 				break;
 		}
 	}
@@ -123,7 +119,7 @@ export default class Agent implements AgentInterface {
 			await this.agentLoop.prompt(currentJob.prompt, {
 				abortSignal: currentJob.abortController.signal,
 				pullContextSnap: async () => {
-					const lastWindowTokens = this.traceEvents.at(-1)?.costs.totalTokens || 0;
+					const lastWindowTokens = this.getLastWindowCosts()?.costs.totalTokens || 0;
 					const strategyEnabled = this.context.strategyEnabled ?? true;
 					const snap = await contextBuilder({
 						prompts: this.context.prompts,
@@ -191,19 +187,21 @@ export default class Agent implements AgentInterface {
 		activeJob.abortController.abort(reason);
 	}
 
+	getLastWindowCosts() {
+		return this.canonicalEvents.findLast(event => event.type === EventType.AGENT_TRACE);
+	}
+
 	getState() {
 		return {
 			isRunning: !!this.runRecords.activeJob,
 			// 这里如果需要更加精细化的 UI 显示如 system prompt token, tool token 等, 需要本地估算, 暂时不做
-			currentWindowTokens: this.traceEvents.at(-1)?.costs.totalTokens || 0,
+			currentWindowTokens: this.getLastWindowCosts()?.costs.totalTokens || 0,
 			contextStrategyEnabled: this.context.strategyEnabled ?? true,
 		};
 	}
 
 	async loadSession(): Promise<void> {
 		if (!this.store) return;
-
 		this.canonicalEvents = await this.store.load(this.sessionId);
-		this.traceEvents = await this.store.loadTraces(this.sessionId);
 	}
 }
