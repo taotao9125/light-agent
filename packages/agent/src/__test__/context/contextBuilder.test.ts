@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import contextBuilder from '../../context/contextBuilder.ts';
 
 import type { Vender } from '@light-agent/ai';
-import type { ActionsEvent, AgentEvent, ObservationsEvent, ThoughtEvent } from '@light-agent/protocol/events';
+import type { AgentEvent, ThoughtEvent, ToolCallsEvent, ToolResultsEvent } from '@light-agent/protocol/events';
 import type { Tool } from '../../tool.ts';
 
 const ROUND_ID = 'round-1';
@@ -49,8 +49,8 @@ function toolTurn(
 			meta: { roundId, turn },
 		},
 		{
-			type: EventType.ACTIONS,
-			actions: [
+			type: EventType.Tool_Calls,
+			tool_calls: [
 				{
 					id: obsId,
 					name: 'read_file',
@@ -63,8 +63,8 @@ function toolTurn(
 			meta: { roundId, turn },
 		},
 		{
-			type: EventType.OBSERVATIONS,
-			observations: [
+			type: EventType.Tool_Results,
+			tool_results: [
 				{
 					id: obsId,
 					name: 'read_file',
@@ -109,11 +109,11 @@ async function buildContext(
 	});
 }
 
-function findObservations(events: AgentEvent[], roundId: string, turn: number) {
+function findToolResults(events: AgentEvent[], roundId: string, turn: number) {
 	return events.find(
 		(event) =>
-			event.type === EventType.OBSERVATIONS && event.meta?.roundId === roundId && event.meta?.turn === turn,
-	) as ObservationsEvent | undefined;
+			event.type === EventType.Tool_Results && event.meta?.roundId === roundId && event.meta?.turn === turn,
+	) as ToolResultsEvent | undefined;
 }
 
 function findThought(events: AgentEvent[], roundId: string, turn: number) {
@@ -122,10 +122,10 @@ function findThought(events: AgentEvent[], roundId: string, turn: number) {
 	) as ThoughtEvent | undefined;
 }
 
-function findActions(events: AgentEvent[], roundId: string, turn: number) {
+function findToolCalls(events: AgentEvent[], roundId: string, turn: number) {
 	return events.find(
-		(event) => event.type === EventType.ACTIONS && event.meta?.roundId === roundId && event.meta?.turn === turn,
-	) as ActionsEvent | undefined;
+		(event) => event.type === EventType.Tool_Calls && event.meta?.roundId === roundId && event.meta?.turn === turn,
+	) as ToolCallsEvent | undefined;
 }
 
 function writeFileTurn(roundId: string, turn: number, fileContent: string, obsId?: string): AgentEvent[] {
@@ -137,8 +137,8 @@ function writeFileTurn(roundId: string, turn: number, fileContent: string, obsId
 			meta: { roundId, turn },
 		},
 		{
-			type: EventType.ACTIONS,
-			actions: [
+			type: EventType.Tool_Calls,
+			tool_calls: [
 				{
 					id,
 					name: 'write_file',
@@ -151,8 +151,8 @@ function writeFileTurn(roundId: string, turn: number, fileContent: string, obsId
 			meta: { roundId, turn },
 		},
 		{
-			type: EventType.OBSERVATIONS,
-			observations: [
+			type: EventType.Tool_Results,
+			tool_results: [
 				{
 					id,
 					name: 'write_file',
@@ -205,12 +205,12 @@ describe('contextBuilder', () => {
 
 			const result = await buildContext(events);
 
-			const coldObs = findObservations(result.events, ROUND_ID, 1);
-			const hotObs = findObservations(result.events, ROUND_ID, 4);
+			const coldResult = findToolResults(result.events, ROUND_ID, 1);
+			const hotResult = findToolResults(result.events, ROUND_ID, 4);
 
-			expect(coldObs?.observations[0].result).toContain('[Indexed:tool_result:');
-			expect(coldObs?.observations[0].result).toContain('recall_indexed("call_1_');
-			expect(hotObs?.observations[0].result).toBe(fullText);
+			expect(coldResult?.tool_results[0].result).toContain('[Indexed:tool_result:');
+			expect(coldResult?.tool_results[0].result).toContain('recall_indexed("call_1_');
+			expect(hotResult?.tool_results[0].result).toBe(fullText);
 		});
 
 		it('cold turn 的 THOUGHT 应被清空，hot turn 保留', async () => {
@@ -238,9 +238,9 @@ describe('contextBuilder', () => {
 			];
 
 			const result = await buildContext(events);
-			const coldObs = findObservations(result.events, ROUND_ID, 1);
+			const coldResult = findToolResults(result.events, ROUND_ID, 1);
 
-			expect(coldObs?.observations[0].result).toBe(smallText);
+			expect(coldResult?.tool_results[0].result).toBe(smallText);
 		});
 
 		it('isError 的 OBS 不 index', async () => {
@@ -253,10 +253,10 @@ describe('contextBuilder', () => {
 			];
 
 			const result = await buildContext(events);
-			const coldObs = findObservations(result.events, ROUND_ID, 1);
+			const coldResult = findToolResults(result.events, ROUND_ID, 1);
 
-			expect(coldObs?.observations[0].result).toBe(errorText);
-			expect(coldObs?.observations[0].result).not.toContain('[Indexed:tool_result:');
+			expect(coldResult?.tool_results[0].result).toBe(errorText);
+			expect(coldResult?.tool_results[0].result).not.toContain('[Indexed:tool_result:');
 		});
 
 		it('cold turn 的大 write_file args 应 index，hot turn 保留全文', async () => {
@@ -269,12 +269,12 @@ describe('contextBuilder', () => {
 			];
 
 			const result = await buildContext(events);
-			const coldAction = findActions(result.events, ROUND_ID, 1)?.actions[0];
-			const hotAction = findActions(result.events, ROUND_ID, 3)?.actions[0];
+			const coldToolCall = findToolCalls(result.events, ROUND_ID, 1)?.tool_calls[0];
+			const hotToolCall = findToolCalls(result.events, ROUND_ID, 3)?.tool_calls[0];
 
-			expect(String(coldAction?.args.content)).toContain('[Indexed:tool_arg:content:');
-			expect(coldAction?.args.path).toBe('src/file-1.ts');
-			expect(hotAction?.args.content).toBe(fileContent);
+			expect(String(coldToolCall?.args.content)).toContain('[Indexed:tool_arg:content:');
+			expect(coldToolCall?.args.path).toBe('src/file-1.ts');
+			expect(hotToolCall?.args.content).toBe(fileContent);
 		});
 	});
 
@@ -285,8 +285,8 @@ describe('contextBuilder', () => {
 				inputEvent(ROUND_ID, 1, 'start'),
 				...buildManyToolTurns(ROUND_ID, [1, 2, 3, 4], `chunk-${'a'.repeat(500)}`),
 				{
-					type: EventType.OBSERVATIONS,
-					observations: [{ id: 'call_final', name: 'read_file', result: obsText, isError: false }],
+					type: EventType.Tool_Results,
+					tool_results: [{ id: 'call_final', name: 'read_file', result: obsText, isError: false }],
 					meta: { roundId: ROUND_ID, turn: 5 },
 				},
 			];
@@ -408,8 +408,8 @@ describe('contextBuilder', () => {
 
 			expect(result.events[0].type).toBe(EventType.AGENT_SUMMARY);
 			expect(result.events[0]).toMatchObject({ text: 'checkpoint summary' });
-			expect(findObservations(result.events, ROUND_ID, 1)).toBeUndefined();
-			expect(findObservations(result.events, ROUND_ID, 3)).toBeDefined();
+			expect(findToolResults(result.events, ROUND_ID, 1)).toBeUndefined();
+			expect(findToolResults(result.events, ROUND_ID, 3)).toBeDefined();
 		});
 	});
 
@@ -442,7 +442,7 @@ describe('contextBuilder', () => {
 
 			expect(mockGenerateText).not.toHaveBeenCalled();
 			expect(result.summaryEvent).toBeNull();
-			expect(findObservations(result.events, ROUND_ID, 1)?.observations[0].result).toBe(fullText);
+			expect(findToolResults(result.events, ROUND_ID, 1)?.tool_results[0].result).toBe(fullText);
 			expect(findThought(result.events, ROUND_ID, 1)?.text).toBe('thought-1');
 		});
 	});

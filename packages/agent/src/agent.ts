@@ -90,8 +90,8 @@ export default class Agent implements AgentInterface {
 		switch (event.type) {
 			case EventType.INPUT:
 			case EventType.THOUGHT:
-			case EventType.ACTIONS:
-			case EventType.OBSERVATIONS:
+			case EventType.Tool_Calls:
+			case EventType.Tool_Results:
 			case EventType.OUTPUT:
 			case EventType.AGENT_STOP:
 			case EventType.AGENT_SUMMARY:

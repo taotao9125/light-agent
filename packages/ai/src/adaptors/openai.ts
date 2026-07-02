@@ -66,16 +66,16 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 			}
 
 			const thoughtEvent = turn.find((event) => event.type === EventType.THOUGHT);
-			const actionsEvent = turn.find((event) => event.type === EventType.ACTIONS);
-			const observationsEvent = turn.find((event) => event.type === EventType.OBSERVATIONS);
+			const toolCallsEvent = turn.find((event) => event.type === EventType.Tool_Calls);
+			const toolResultsEvent = turn.find((event) => event.type === EventType.Tool_Results);
 			const outputEvent = turn.find((event) => event.type === EventType.OUTPUT);
 
-			if (actionsEvent?.actions.length) {
+			if (toolCallsEvent?.tool_calls.length) {
 				roundMessage.push({
 					role: 'assistant',
 					content: outputEvent?.text ?? '',
 					reasoning_content: thoughtEvent?.text ?? '',
-					tool_calls: actionsEvent.actions.map((action) => ({
+					tool_calls: toolCallsEvent.tool_calls.map((action) => ({
 						id: action.id,
 						type: 'function',
 						function: {
@@ -85,7 +85,7 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 					})),
 				} as ChatCompletionAssistantMessageParam);
 
-				for (const observation of observationsEvent?.observations ?? []) {
+				for (const observation of toolResultsEvent?.tool_results ?? []) {
 					roundMessage.push({
 						role: 'tool',
 						tool_call_id: observation.id,
@@ -96,7 +96,7 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 				if (outputEvent || thoughtEvent) {
 					roundMessage.push({
 						role: 'assistant',
-						content: outputEvent?.text,
+						content: outputEvent?.text ?? '',
 						reasoning_content: thoughtEvent?.text,
 					} as ChatCompletionAssistantMessageParam);
 				}
@@ -273,14 +273,14 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 				yield { type: EventType.THOUGHT, text: thoughtTextBuffer };
 			}
 
-			const actions = [...pendingToolCalls.values()].map((call) => ({
+			const toolCalls = [...pendingToolCalls.values()].map((call) => ({
 				id: call.id,
 				name: call.name,
 				args: call.args ? JSON.parse(call.args) : {},
 			}));
 
-			if (actions.length) {
-				yield { type: EventType.ACTIONS, actions };
+			if (toolCalls.length) {
+				yield { type: EventType.Tool_Calls, tool_calls: toolCalls };
 			}
 
 			if (outputTextBuffer) {

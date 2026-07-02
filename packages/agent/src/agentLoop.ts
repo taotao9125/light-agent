@@ -1,7 +1,7 @@
 import { EventType } from '@light-agent/protocol/events';
 
 import type { Vender } from '@light-agent/ai';
-import type { ActionsEvent, AgentEvent, ObservationsEvent } from '@light-agent/protocol/events';
+import type { AgentEvent, ToolCallsEvent, ToolResultsEvent } from '@light-agent/protocol/events';
 import type { Context } from './context/contextBuilder.ts';
 import type { Tool } from './tool.ts';
 
@@ -65,10 +65,10 @@ class AgentLoop implements AgentLoopInterface {
 	}
 
 	private async runToolAction(
-		action: ActionsEvent['actions'][number],
+		action: ToolCallsEvent['tool_calls'][number],
 		toolsMap: Map<string, Tool.Definition>,
 		abortSignal: AbortSignal,
-	): Promise<ObservationsEvent['observations'][number]> {
+	): Promise<ToolResultsEvent['tool_results'][number]> {
 		const { name, id, args } = action;
 		const toolCommand = toolsMap.get(name);
 
@@ -152,7 +152,7 @@ class AgentLoop implements AgentLoopInterface {
 				return;
 			}
 
-			let turnActions: ActionsEvent['actions'] = [];
+			let turnToolCalls: ToolCallsEvent['tool_calls'] = [];
 
 			// 刷新 context
 			const { systemPrompt = '', tools = [], events = [] } = await loopDeps.pullContextSnap();
@@ -181,8 +181,8 @@ class AgentLoop implements AgentLoopInterface {
 						this.emit({ ...chunk, meta: { roundId, turn } });
 						break;
 
-					case EventType.ACTIONS:
-						turnActions = chunk.actions;
+					case EventType.Tool_Calls:
+						turnToolCalls = chunk.tool_calls;
 						break;
 
 					case EventType.AGENT_STOP:
@@ -192,20 +192,20 @@ class AgentLoop implements AgentLoopInterface {
 				}
 			}
 
-			if (!turnActions.length) {
+			if (!turnToolCalls.length) {
 				return;
 			}
 
 			const meta = { roundId, turn };
 
 			this.emit({
-				type: EventType.ACTIONS,
-				actions: turnActions,
+				type: EventType.Tool_Calls,
+				tool_calls: turnToolCalls,
 				meta,
 			});
 
 			const settled = await Promise.allSettled(
-				turnActions.map((action) => this.runToolAction(action, toolsMap, abortSignal)),
+				turnToolCalls.map((action) => this.runToolAction(action, toolsMap, abortSignal)),
 			);
 
 			if (abortSignal.aborted) {
@@ -213,12 +213,12 @@ class AgentLoop implements AgentLoopInterface {
 				return;
 			}
 
-			const observations = settled.map((result, index) => {
+			const toolResults = settled.map((result, index) => {
 				if (result.status === 'fulfilled') {
 					return result.value;
 				}
 
-				const action = turnActions[index];
+				const action = turnToolCalls[index];
 				const rejectReason = result.reason;
 				return {
 					id: action.id,
@@ -229,8 +229,8 @@ class AgentLoop implements AgentLoopInterface {
 			});
 
 			this.emit({
-				type: EventType.OBSERVATIONS,
-				observations,
+				type: EventType.Tool_Results,
+				tool_results: toolResults,
 				meta,
 			});
 

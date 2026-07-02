@@ -9,8 +9,8 @@ describe('recall_indexed', () => {
 		const roundId = 'round_id_test';
 		const events: AgentEvent[] = [
 			{
-				type: EventType.ACTIONS,
-				actions: [
+				type: EventType.Tool_Calls,
+				tool_calls: [
 					{
 						id: 'call_1',
 						name: 'write_file',
@@ -20,8 +20,8 @@ describe('recall_indexed', () => {
 				meta: { roundId, turn: 1 },
 			},
 			{
-				type: EventType.OBSERVATIONS,
-				observations: [
+				type: EventType.Tool_Results,
+				tool_results: [
 					{
 						id: 'call_1',
 						name: 'write_file',

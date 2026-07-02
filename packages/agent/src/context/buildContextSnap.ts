@@ -77,16 +77,16 @@ function measureEventsCharCount(events: AgentEvent[]) {
 			case EventType.AGENT_SUMMARY:
 				total += event.text.length;
 				break;
-			case EventType.ACTIONS:
-				for (const action of event.actions) {
+			case EventType.Tool_Calls:
+				for (const action of event.tool_calls) {
 					total += action.name.length;
 					for (const value of Object.values(action.args)) {
 						total += measureArgValue(value);
 					}
 				}
 				break;
-			case EventType.OBSERVATIONS:
-				for (const obs of event.observations) {
+			case EventType.Tool_Results:
+				for (const obs of event.tool_results) {
 					total += obs.result.length;
 				}
 				break;
@@ -115,8 +115,8 @@ function countDeltaTokens(events: AgentEvent[]) {
 		return 0;
 	}
 
-	if (lastEvent.type === EventType.OBSERVATIONS) {
-		return lastEvent.observations.reduce((acc, obs) => acc + estimateToken(obs.result.length), 0);
+	if (lastEvent.type === EventType.Tool_Results) {
+		return lastEvent.tool_results.reduce((acc, obs) => acc + estimateToken(obs.result.length), 0);
 	}
 
 	if (lastEvent.type === EventType.INPUT) {
@@ -133,14 +133,14 @@ function measureIndexSavings(canonicalEvents: AgentEvent[], promptEvents: AgentE
 	for (const event of canonicalEvents) {
 		if (!event.meta) continue;
 
-		if (event.type === EventType.OBSERVATIONS) {
-			for (const obs of event.observations) {
+		if (event.type === EventType.Tool_Results) {
+			for (const obs of event.tool_results) {
 				canonicalObs.set(`${event.meta.roundId}:${event.meta.turn}:${obs.id}`, obs.result);
 			}
 		}
 
-		if (event.type === EventType.ACTIONS) {
-			for (const action of event.actions) {
+		if (event.type === EventType.Tool_Calls) {
+			for (const action of event.tool_calls) {
 				for (const [fieldName, value] of Object.entries(action.args)) {
 					canonicalArgs.set(`${event.meta.roundId}:${event.meta.turn}:${action.id}:${fieldName}`, value);
 				}
@@ -158,8 +158,8 @@ function measureIndexSavings(canonicalEvents: AgentEvent[], promptEvents: AgentE
 	for (const event of promptEvents) {
 		if (!event.meta) continue;
 
-		if (event.type === EventType.OBSERVATIONS) {
-			for (const obs of event.observations) {
+		if (event.type === EventType.Tool_Results) {
+			for (const obs of event.tool_results) {
 				if (obs.isError || !obs.result.includes(INDEXED_RESULT_PREFIX)) continue;
 
 				indexedObs += 1;
@@ -171,8 +171,8 @@ function measureIndexSavings(canonicalEvents: AgentEvent[], promptEvents: AgentE
 			}
 		}
 
-		if (event.type === EventType.ACTIONS) {
-			for (const action of event.actions) {
+		if (event.type === EventType.Tool_Calls) {
+			for (const action of event.tool_calls) {
 				for (const [fieldName, value] of Object.entries(action.args)) {
 					if (typeof value !== 'string' || !value.includes(INDEXED_ARG_PREFIX)) continue;
 
@@ -231,7 +231,7 @@ function inferSnapMeta(canonicalEvents: AgentEvent[]) {
 	const lastEvent = canonicalEvents.at(-1);
 	if (!lastEvent?.meta) return undefined;
 
-	if (lastEvent.type === EventType.OBSERVATIONS) {
+	if (lastEvent.type === EventType.Tool_Results) {
 		return {
 			roundId: lastEvent.meta.roundId,
 			turn: lastEvent.meta.turn + 1,

@@ -1,13 +1,13 @@
 import { EventType } from '@light-agent/protocol/events';
 
-import type { ActionsEvent, AgentEvent, AgentStopCause, Meta, ObservationsEvent } from '@light-agent/protocol/events';
+import type { AgentEvent, AgentStopCause, Meta, ToolCallsEvent, ToolResultsEvent } from '@light-agent/protocol/events';
 
 export type AgentViewEvent =
 	| { type: 'agent_start'; meta?: Meta }
 	| { type: 'thought_delta'; text: string; meta?: Meta }
 	| { type: 'output_delta'; text: string; meta?: Meta }
-	| { type: 'actions'; actions: ActionsEvent['actions']; meta?: Meta }
-	| { type: 'observations'; observations: ObservationsEvent['observations']; meta?: Meta }
+	| { type: 'tool_calls'; tool_calls: ToolCallsEvent['tool_calls']; meta?: Meta }
+	| { type: 'tool_results'; tool_results: ToolResultsEvent['tool_results']; meta?: Meta }
 	| { type: 'agent_stop'; cause: AgentStopCause; message: string; meta?: Meta };
 
 export type AgentViewListener = (event: AgentViewEvent) => void;
@@ -23,11 +23,11 @@ export function projectAgentView(event: AgentEvent): AgentViewEvent[] {
 		case EventType.OUTPUT_DELTA:
 			return [{ type: 'output_delta', text: event.text, meta: event.meta }];
 
-		case EventType.ACTIONS:
-			return [{ type: 'actions', actions: event.actions, meta: event.meta }];
+		case EventType.Tool_Calls:
+			return [{ type: 'tool_calls', tool_calls: event.tool_calls, meta: event.meta }];
 
-		case EventType.OBSERVATIONS:
-			return [{ type: 'observations', observations: event.observations, meta: event.meta }];
+		case EventType.Tool_Results:
+			return [{ type: 'tool_results', tool_results: event.tool_results, meta: event.meta }];
 
 		case EventType.AGENT_STOP:
 			return [

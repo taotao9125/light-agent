@@ -1,6 +1,6 @@
 import { EventType } from '@light-agent/protocol/events';
 
-import type { ActionsEvent, AgentEvent, ObservationsEvent } from '@light-agent/protocol/events';
+import type { AgentEvent, ToolCallsEvent, ToolResultsEvent } from '@light-agent/protocol/events';
 import type { Tool } from '../tool.ts';
 
 function parseRecallId(id: string) {
@@ -43,19 +43,19 @@ function createRecallIndexTool(getAgentEvents: () => AgentEvent[]): Tool.Definit
 			const { callId, roundId, turn } = parsed;
 			const events = getAgentEvents();
 
-			const actionsEvent = events.find(
+			const toolCallsEvent = events.find(
 				(event) =>
-					event.type === EventType.ACTIONS && event.meta?.roundId === roundId && event.meta?.turn === turn,
-			) as ActionsEvent | undefined;
-			const action = actionsEvent?.actions.find((item) => item.id === callId);
+					event.type === EventType.Tool_Calls && event.meta?.roundId === roundId && event.meta?.turn === turn,
+			) as ToolCallsEvent | undefined;
+			const action = toolCallsEvent?.tool_calls.find((item) => item.id === callId);
 
 			const obsEvent = events.find(
 				(event) =>
-					event.type === EventType.OBSERVATIONS &&
+					event.type === EventType.Tool_Results &&
 					event.meta?.roundId === roundId &&
 					event.meta?.turn === turn,
-			) as ObservationsEvent | undefined;
-			const obs = obsEvent?.observations.find((item) => item.id === callId);
+			) as ToolResultsEvent | undefined;
+			const obs = obsEvent?.tool_results.find((item) => item.id === callId);
 
 			const parts: string[] = [];
 			if (action) {

@@ -20,13 +20,13 @@ describe('buildContextSnap', () => {
 				meta: { roundId: 'round-1', turn: 1 },
 			},
 			{
-				type: EventType.ACTIONS,
-				actions: [{ id: 'a1', name: 'read_file', args: { path: 'a.ts', _intent: 'read' } }],
+				type: EventType.Tool_Calls,
+				tool_calls: [{ id: 'a1', name: 'read_file', args: { path: 'a.ts', _intent: 'read' } }],
 				meta: { roundId: 'round-1', turn: 1 },
 			},
 			{
-				type: EventType.OBSERVATIONS,
-				observations: [{ id: 'a1', name: 'read_file', result: longResult, isError: false }],
+				type: EventType.Tool_Results,
+				tool_results: [{ id: 'a1', name: 'read_file', result: longResult, isError: false }],
 				meta: { roundId: 'round-1', turn: 1 },
 			},
 		];
@@ -55,13 +55,13 @@ describe('buildContextSnap', () => {
 					meta: { roundId: 'round-1', turn: 1 },
 				},
 				{
-					type: EventType.ACTIONS,
-					actions: [{ id: 'a1', name: 'read_file', args: { path: 'a.ts', _intent: 'read' } }],
+					type: EventType.Tool_Calls,
+					tool_calls: [{ id: 'a1', name: 'read_file', args: { path: 'a.ts', _intent: 'read' } }],
 					meta: { roundId: 'round-1', turn: 1 },
 				},
 				{
-					type: EventType.OBSERVATIONS,
-					observations: [{ id: 'a1', name: 'read_file', result: indexedResult, isError: false }],
+					type: EventType.Tool_Results,
+					tool_results: [{ id: 'a1', name: 'read_file', result: indexedResult, isError: false }],
 					meta: { roundId: 'round-1', turn: 1 },
 				},
 			] as AgentEvent[],

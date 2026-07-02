@@ -13,7 +13,7 @@ import { pipe } from '../helpers.ts';
 import runtimePrompts, { historyCompressionSystemPrompt } from './prompts.consts.ts';
 
 import type { Vender } from '@light-agent/ai';
-import type { ActionsEvent, AgentEvent, ObservationsEvent, SummaryEvent } from '@light-agent/protocol/events';
+import type { AgentEvent, SummaryEvent, ToolCallsEvent, ToolResultsEvent } from '@light-agent/protocol/events';
 import type { Tool } from '../tool.ts';
 
 export namespace Context {
@@ -152,8 +152,8 @@ function parseEventsIntoRoundMap(events: AgentEvent[]): RoundMap {
 	return roundMap;
 }
 
-type Action = ActionsEvent['actions'][number];
-type Observation = ObservationsEvent['observations'][number];
+type ToolCall = ToolCallsEvent['tool_calls'][number];
+type ToolResult = ToolResultsEvent['tool_results'][number];
 const INDEX_MIN_CHARS = 100;
 
 function buildIndexedCallId(actionId: string, roundId: string, turn: number) {
@@ -189,13 +189,13 @@ function measureArgValue(value: unknown) {
 }
 
 // 尽可能给模型视角提供线索: 这是什么历史结果，状态是什么, 调用目的是什么，如果需要细节，恢复指令是什么
-function compressObsContent(obs: Observation, action: Action, roundId: string, turn: number) {
+function compressObsContent(obs: ToolResult, action: ToolCall, roundId: string, turn: number) {
 	if (obs.result.length <= INDEX_MIN_CHARS) return obs.result;
 	const callId = buildIndexedCallId(obs.id, roundId, turn);
 	return buildIndexedToolResultPlaceholder(callId, obs.name, getIntent(action.args));
 }
 
-function compressActionArgs(action: Action, roundId: string, turn: number, isError: boolean) {
+function compressActionArgs(action: ToolCall, roundId: string, turn: number, isError: boolean) {
 	if (isError) return action.args;
 
 	const callId = buildIndexedCallId(action.id, roundId, turn);
@@ -225,16 +225,16 @@ function compressEvents(events: AgentEvent[]) {
 		if (!roundId || typeof turn !== 'number') continue;
 
 		switch (event.type) {
-			case EventType.ACTIONS: {
-				const observationsEvent = events.find(
+			case EventType.Tool_Calls: {
+				const toolResultsEvent = events.find(
 					(obs) =>
-						obs.type === EventType.OBSERVATIONS && obs.meta?.roundId === roundId && obs.meta?.turn === turn,
-				) as ObservationsEvent;
+						obs.type === EventType.Tool_Results && obs.meta?.roundId === roundId && obs.meta?.turn === turn,
+				) as ToolResultsEvent;
 
 				compressedEvent.push({
 					...event,
-					actions: event.actions.map((action) => {
-						const observation = observationsEvent?.observations.find((obs) => obs.id === action.id);
+					tool_calls: event.tool_calls.map((action) => {
+						const observation = toolResultsEvent?.tool_results.find((obs) => obs.id === action.id);
 						return {
 							...action,
 							args: compressActionArgs(action, roundId, turn, observation?.isError ?? false),
@@ -243,18 +243,20 @@ function compressEvents(events: AgentEvent[]) {
 				});
 				break;
 			}
-			case EventType.OBSERVATIONS: {
-				const actionsEvent = events.find(
+			case EventType.Tool_Results: {
+				const toolCallsEvent = events.find(
 					(item) =>
-						item.type === EventType.ACTIONS && item.meta?.roundId === roundId && item.meta?.turn === turn,
-				) as ActionsEvent;
+						item.type === EventType.Tool_Calls &&
+						item.meta?.roundId === roundId &&
+						item.meta?.turn === turn,
+				) as ToolCallsEvent;
 
-				const actions = actionsEvent?.actions || [];
+				const toolCalls = toolCallsEvent?.tool_calls || [];
 
 				compressedEvent.push({
 					...event,
-					observations: event.observations.map((obs) => {
-						const action = actions.find((item) => item.id === obs.id);
+					tool_results: event.tool_results.map((obs) => {
+						const action = toolCalls.find((item) => item.id === obs.id);
 						const compressedContent = action ? compressObsContent(obs, action, roundId, turn) : '';
 
 						return {
@@ -288,8 +290,8 @@ function countDeltaTokens(events: AgentEvent[]) {
 		return 0;
 	}
 
-	if (lastEvent.type === EventType.OBSERVATIONS) {
-		return lastEvent.observations.reduce((acc, obs) => {
+	if (lastEvent.type === EventType.Tool_Results) {
+		return lastEvent.tool_results.reduce((acc, obs) => {
 			acc += estimateToken(obs.result);
 			return acc;
 		}, 0);
@@ -315,11 +317,11 @@ function buildEventToXML(events: AgentEvent[]) {
 			case EventType.OUTPUT:
 				lines.push(['<assistantOutput>', event.text, '</assistantOutput>'].join('\n'));
 				break;
-			case EventType.ACTIONS:
+			case EventType.Tool_Calls:
 				lines.push(
 					[
 						'<toolCalls>',
-						event.actions
+						event.tool_calls
 							.map((action) => {
 								return [
 									`<toolCall id="${action.id}" name="${action.name}">`,
@@ -337,11 +339,11 @@ function buildEventToXML(events: AgentEvent[]) {
 			// 的是全量工具结果还是索引信息呢
 			// 如果是索引信息？摘要后，会不会丢失索引
 			// 如果是全量工具结果，那会不会可能直接撑爆模型的窗口大小，退一步，即使没撑爆，这么多信息模型会不会失焦点
-			case EventType.OBSERVATIONS:
+			case EventType.Tool_Results:
 				lines.push(
 					[
 						'<toolResults>',
-						event.observations
+						event.tool_results
 							.map((obs) => {
 								return [`<toolResult isError="${obs.isError}">`, obs.result, '</toolResult>'];
 							})
@@ -430,7 +432,7 @@ const recentHotTurnsLength = 2;
 const maxWindowTokens = 30_000;
 // |--------------------------------- round1 -------------------------------------------|
 // |------------- turn1 ---------------|  |------------- turn2 --------|  |--- turn3 ---|
-// input, thought, actions, observations, thought, actions, observations, thought, output
+// input, thought, toolCalls, toolResults, thought, toolCalls, toolResults, thought, output
 
 export default async function contextBuilder(config: {
 	// 构建 prompt

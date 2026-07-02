@@ -16,8 +16,8 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 		for (const oneTurnEvents of turnsList) {
 			const inputEvent = oneTurnEvents.find((event) => event.type === EventType.INPUT);
 			const thoughtEvent = oneTurnEvents.find((event) => event.type === EventType.THOUGHT);
-			const actionsEvent = oneTurnEvents.find((event) => event.type === EventType.ACTIONS);
-			const observationsEvent = oneTurnEvents.find((event) => event.type === EventType.OBSERVATIONS);
+			const toolCallsEvent = oneTurnEvents.find((event) => event.type === EventType.Tool_Calls);
+			const toolResultsEvent = oneTurnEvents.find((event) => event.type === EventType.Tool_Results);
 			const outputEvent = oneTurnEvents.find((event) => event.type === EventType.OUTPUT);
 
 			if (inputEvent) {
@@ -27,13 +27,13 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 				});
 			}
 
-			if (actionsEvent?.actions.length) {
+			if (toolCallsEvent?.tool_calls.length) {
 				roundContents.push({
 					role: 'model',
 					parts: [
 						...(thoughtEvent?.text ? [{ text: thoughtEvent.text, thought: true }] : []),
 						...(outputEvent?.text ? [{ text: outputEvent.text }] : []),
-						...actionsEvent.actions.map((action) => ({
+						...toolCallsEvent.tool_calls.map((action) => ({
 							functionCall: {
 								id: action.id,
 								name: action.name,
@@ -43,10 +43,10 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 					],
 				});
 
-				if (observationsEvent?.observations.length) {
+				if (toolResultsEvent?.tool_results.length) {
 					roundContents.push({
 						role: 'user',
-						parts: observationsEvent.observations.map((observation) => ({
+						parts: toolResultsEvent.tool_results.map((observation) => ({
 							functionResponse: {
 								id: observation.id,
 								name: observation.name,
@@ -157,7 +157,7 @@ export default class GoogleAdaptor implements Vender.Adaptor {
 				yield { type: EventType.THOUGHT, text: thoughtTextBuffer };
 			}
 
-			const actions = functionCalls.flatMap((call, index) => {
+			const toolCalls = functionCalls.flatMap((call, index) => {
 				if (!call.name) return [];
 
 				return [
@@ -169,8 +169,8 @@ export default class GoogleAdaptor implements Vender.Adaptor {
 				];
 			});
 
-			if (actions.length) {
-				yield { type: EventType.ACTIONS, actions };
+			if (toolCalls.length) {
+				yield { type: EventType.Tool_Calls, tool_calls: toolCalls };
 			}
 
 			if (outputTextBuffer) {

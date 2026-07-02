@@ -141,7 +141,7 @@ async function main() {
 	let resolvePromptWait: (() => void) | null = null;
 	let interruptPrinted = false;
 	let toolBatchStartedAt = 0;
-	let pendingActions = new Map<string, { name: string; args: Record<string, unknown> }>();
+	let pendingToolCalls = new Map<string, { name: string; args: Record<string, unknown> }>();
 	let parallelToolLineCount = 0;
 
 	function endThinkingLine() {
@@ -215,57 +215,59 @@ async function main() {
 				writeStdout(event.text);
 				break;
 
-			case 'actions': {
+			case 'tool_calls': {
 				endThinkingLine();
 
 				toolBatchStartedAt = Date.now();
-				pendingActions = new Map(
-					event.actions.map((action) => [action.id, { name: action.name, args: action.args }]),
+				pendingToolCalls = new Map(
+					event.tool_calls.map((toolCall) => [toolCall.id, { name: toolCall.name, args: toolCall.args }]),
 				);
 
-				if (event.actions.length === 1) {
-					const action = event.actions[0];
-					writeStdout(`${color.yellow}tool: ${formatToolLabel(action.name, action.args)}${color.reset}\n`);
+				if (event.tool_calls.length === 1) {
+					const toolCall = event.tool_calls[0];
+					writeStdout(
+						`${color.yellow}tool: ${formatToolLabel(toolCall.name, toolCall.args)}${color.reset}\n`,
+					);
 					break;
 				}
 
-				writeStdout(`${color.yellow}parallel tools (${event.actions.length}):${color.reset}\n`);
-				parallelToolLineCount = event.actions.length;
-				for (const action of event.actions) {
-					writeStdout(`  ${color.dim}⟳${color.reset} ${formatToolLabel(action.name, action.args)}\n`);
+				writeStdout(`${color.yellow}parallel tools (${event.tool_calls.length}):${color.reset}\n`);
+				parallelToolLineCount = event.tool_calls.length;
+				for (const toolCall of event.tool_calls) {
+					writeStdout(`  ${color.dim}⟳${color.reset} ${formatToolLabel(toolCall.name, toolCall.args)}\n`);
 				}
 				break;
 			}
 
-			case 'observations': {
+			case 'tool_results': {
 				const elapsedMs = Date.now() - toolBatchStartedAt;
-				const isParallel = event.observations.length > 1;
+				const isParallel = event.tool_results.length > 1;
 
 				if (!isParallel) {
-					const observation = event.observations[0];
-					const action = pendingActions.get(observation.id);
-					const label = action ? formatToolLabel(action.name, action.args) : observation.name;
+					const toolResult = event.tool_results[0];
+					const toolCall = pendingToolCalls.get(toolResult.id);
+					const label = toolCall ? formatToolLabel(toolCall.name, toolCall.args) : toolResult.name;
 
-					if (observation.isError) {
+					if (toolResult.isError) {
 						writeStdout(
-							`${color.red}tool error: ${label}${color.reset} ${color.dim}${observation.result}${color.reset}\n`,
+							`${color.red}tool error: ${label}${color.reset} ${color.dim}${toolResult.result}${color.reset}\n`,
 						);
 					} else {
 						writeStdout(`${color.dim}tool done: ${label}${color.reset}\n`);
 					}
-					pendingActions.clear();
+					pendingToolCalls.clear();
 					break;
 				}
 
 				cursorUp(parallelToolLineCount);
 
-				for (const observation of event.observations) {
-					const action = pendingActions.get(observation.id);
-					const label = action ? formatToolLabel(action.name, action.args) : observation.name;
+				for (const toolResult of event.tool_results) {
+					const toolCall = pendingToolCalls.get(toolResult.id);
+					const label = toolCall ? formatToolLabel(toolCall.name, toolCall.args) : toolResult.name;
 
-					if (observation.isError) {
+					if (toolResult.isError) {
 						rewriteLine(
-							`  ${color.red}✗${color.reset} ${label} ${color.dim}${observation.result}${color.reset}`,
+							`  ${color.red}✗${color.reset} ${label} ${color.dim}${toolResult.result}${color.reset}`,
 						);
 					} else {
 						rewriteLine(`  ${color.green}✓${color.reset} ${label}`);
@@ -273,7 +275,7 @@ async function main() {
 				}
 
 				writeStdout(`${color.dim}  completed in ${elapsedMs}ms (parallel)${color.reset}\n`);
-				pendingActions.clear();
+				pendingToolCalls.clear();
 				parallelToolLineCount = 0;
 				break;
 			}
