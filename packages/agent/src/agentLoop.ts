@@ -201,11 +201,11 @@ class AgentLoop {
 
 	on(listener: AgentEventListener) {
 		this.listeners.push(listener);
+		return () => {
+			this.listeners = this.listeners.filter((item) => item !== listener);
+		};
 	}
 
-	getVenderAdaptor() {
-		return this.venderAdaptor;
-	}
 }
 
 export default AgentLoop;

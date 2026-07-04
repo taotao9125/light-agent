@@ -15,7 +15,7 @@
     "watch": "pnpm -r --parallel --stream --reporter=default watch",
     "build": "pnpm -r run build",
     "test": "vitest run",
-    "cli:link": "cd packages/cli && npm link",
+    "cli:link": "cd packages/cli && npm link && shx chmod +x dist/index.js",
     "cli:unlink": "cd packages/cli && npm unlink -g light-agent-cli",
     "ts:check": "tsgo --noEmit",
     "pack:check": "pnpm build && pnpm --filter @light-agent/cli pack --dry-run",

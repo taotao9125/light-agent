@@ -28,6 +28,12 @@ function createAgent() {
 }
 
 describe('Agent 工具接口', () => {
+	it('应默认注册项目文件树工具', () => {
+		const agent = createAgent();
+
+		expect(agent.tool.get('list_project_files_tree')?.description).toContain('查看当前工作目录内的项目文件树');
+	});
+
 	it('应通过 agent.tool 注册和移除工具', () => {
 		const agent = createAgent();
 

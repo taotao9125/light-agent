@@ -16,11 +16,25 @@ const contextWindowPrompts = `
 const toolUsePrompts = `
 若同一轮可发出多个彼此独立的 action，优先并行发起，以减少等待时间。
 
+## 工具职责
+- list_project_files_tree：用于探索项目目录结构、包划分、关键文件位置。若用户要求“分析项目架构”、而你还不知道项目目录结构，先调用它。
+- grep：用于按已知关键词、符号名、错误信息或具体文本定位文件路径和行号。只有已经知道要搜索的明确线索时才使用它。
+- read_file：用于读取已知文件内容。不要用它读取目录。
+- recall_indexed：用于召回已被上下文压缩索引的历史工具结果。
+
+## grep 使用边界
+- 不要用 grep 浏览项目、列目录、了解包结构或搜索所有内容。
+- 不要调用 grep({ pattern: ".", ... })、grep({ pattern: ".*", ... })、grep({ pattern: "./packages", ... })。
+- 正确形态是“按线索搜索”：例如 grep({ pattern: "Tool_Calls|Tool_Results|tool_call|tool_calls|tool_result|tool_call_id", path: "packages" })。
+- 若只是想知道项目有哪些目录和文件，使用 list_project_files_tree。
+
 **鼓励并行**
 - 同时读取多个互不依赖的文件
-- 探索阶段：grep 与 read_file 针对不同路径、且无先后依赖时
+- 已经知道多个具体文件路径时，可以并行 read_file
 
 **必须串行**
+- 项目结构未知：先 list_project_files_tree，再根据结果决定 grep 或 read_file
+- 需要从关键词定位文件：先 grep，再 read_file 命中文件
 - 后一步依赖前一步 observation（先 list 再 read、先 search 再 read 命中文件）
 - 同一文件：若上下文中已有完整内容或已通过 recall 取得，直接分析；否则再 read_file。
 

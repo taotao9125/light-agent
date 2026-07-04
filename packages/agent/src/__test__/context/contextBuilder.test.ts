@@ -171,6 +171,18 @@ describe('contextBuilder', () => {
 			expect(result.systemPrompt).toContain('<context_window_instructions>');
 		});
 
+		it('应包含项目结构探索与 grep 边界说明', async () => {
+			const result = await buildContext([]);
+
+			expect(result.systemPrompt).toContain('list_project_files_tree：用于探索项目目录结构');
+			expect(result.systemPrompt).toContain('若用户要求“分析项目架构”、而你还不知道项目目录结构，先调用它');
+			expect(result.systemPrompt).toContain('不要调用 grep({ pattern: ".", ... })');
+			expect(result.systemPrompt).toContain(
+				'grep({ pattern: "Tool_Calls|Tool_Results|tool_call|tool_calls|tool_result|tool_call_id", path: "packages" })',
+			);
+			expect(result.systemPrompt).toContain('项目结构未知：先 list_project_files_tree');
+		});
+
 		it('传入 skills 时应包含 skill index', async () => {
 			const skill = ['---', 'name: demo-skill', 'description: demo', '---', 'skill body'].join('\n');
 			const result = await buildContext([], 0, { skills: [skill] });

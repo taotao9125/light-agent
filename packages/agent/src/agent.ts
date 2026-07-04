@@ -12,6 +12,7 @@ export type { AgentViewEvent, AgentViewListener } from './helpers.ts';
 import { projectAgentView } from './helpers.ts';
 import ToolRegistry from './tool.ts';
 import createGrepTool from './tools/createGrepTool.ts';
+import createListProjectFilesTreeTool from './tools/createListProjectFilesTreeTool.ts';
 import createReadFileTool from './tools/createReadFileTool.ts';
 import createRecallTool from './tools/createRecallTool.ts';
 
@@ -37,6 +38,7 @@ export default class Agent {
 	private cwd: string;
 	private store?: SessionStoreInterface;
 	private agentLoop: AgentLoop;
+	private venderAdaptor: Vender.Adaptor;
 
 	private runRecords = {
 		queue: [] as Job[],
@@ -53,13 +55,14 @@ export default class Agent {
 		this.cwd = config.cwd;
 		this.store = config.store;
 		this.context = config.context;
+		this.venderAdaptor = config.venderAdaptor;
 		this.tool = new ToolRegistry(() => ({
 			cwd: this.cwd,
 			signal: this.runRecords.activeJob?.abortController.signal,
 		}));
 
 		this.agentLoop = new AgentLoop({
-			venderAdaptor: config.venderAdaptor,
+			venderAdaptor: this.venderAdaptor,
 			toolRegistry: this.tool,
 		});
 
@@ -68,10 +71,12 @@ export default class Agent {
 		});
 
 		const recallTool = createRecallTool(() => this.canonicalEvents);
+		const listProjectFilesTreeTool = createListProjectFilesTreeTool();
 		const grepTool = createGrepTool();
 		const readFileTool = createReadFileTool();
 
 		this.tool.register(recallTool);
+		this.tool.register(listProjectFilesTreeTool);
 		this.tool.register(grepTool);
 		this.tool.register(readFileTool);
 	}
@@ -124,8 +129,8 @@ export default class Agent {
 						prompts: this.context.prompts,
 						skills: this.context.skills,
 						events: this.canonicalEvents,
+						venderAdaptor: this.venderAdaptor,
 						lastWindowTokens,
-						venderAdaptor: this.agentLoop.getVenderAdaptor(),
 						strategyEnabled,
 					});
 
