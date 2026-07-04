@@ -27,10 +27,11 @@
   "scripts": {
     "clean": "shx rm -rf dist",
     "watch": "tsgo -w -p tsconfig.build.json",
-    "build": "tsgo -p tsconfig.build.json"
+    "build": "tsgo -p tsconfig.build.json && shx mkdir -p dist/tools && shx cp src/tools/rg dist/tools/rg && shx chmod +x dist/tools/rg"
   },
   "dependencies": {
     "@light-agent/ai": "workspace:*",
-    "@light-agent/protocol": "workspace:*"
+    "@light-agent/protocol": "workspace:*",
+    "zod": "^4.4.3"
   }
 }
