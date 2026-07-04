@@ -32,10 +32,10 @@ describe('buildContextSnap', () => {
 		];
 
 		const indexedResult = [
-			'[Indexed:tool_result:a1_round-1_1]] success',
+			'[Indexed:tool_result:a1]] success',
 			'tool: read_file',
 			'intent: read',
-			'Recall if need: recall_indexed("a1_round-1_1")',
+			'Recall if need: recall_indexed("a1")',
 		].join('\n');
 
 		const snap = {

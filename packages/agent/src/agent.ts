@@ -1,32 +1,29 @@
 import { EventType } from '@light-agent/protocol/events';
 import AgentLoop from './agentLoop.ts';
-import buildContextSnap from './context/buildContextSnap.ts';
 import contextBuilder from './context/contextBuilder.ts';
 
 import type { Vender } from '@light-agent/ai';
-import type { AgentEvent, TraceEvent } from '@light-agent/protocol/events';
+import type { AgentEvent } from '@light-agent/protocol/events';
 import type { Context } from './context/contextBuilder.ts';
 import type { AgentViewEvent, AgentViewListener } from './helpers.ts';
 
 export type { AgentViewEvent, AgentViewListener } from './helpers.ts';
 
 import { projectAgentView } from './helpers.ts';
-import createRecallTool from './internalTools/createRecallTool.ts';
 import ToolRegistry from './tool.ts';
+import createGrepTool from './tools/createGrepTool.ts';
+import createReadFileTool from './tools/createReadFileTool.ts';
+import createRecallTool from './tools/createRecallTool.ts';
 
 import type { SessionStoreInterface } from './store.ts';
-import type { Tool } from './tool.ts';
 
 type Config = {
 	sessionId: string;
+	cwd: string;
 	store?: SessionStoreInterface;
 	venderAdaptor: Vender.Adaptor;
-	strategy?: {
-		maxTurns?: number;
-	};
 	context: Context.Config;
 };
-
 
 type Job = {
 	prompt: string;
@@ -37,6 +34,7 @@ type Job = {
 
 export default class Agent {
 	private sessionId: string;
+	private cwd: string;
 	private store?: SessionStoreInterface;
 	private agentLoop: AgentLoop;
 
@@ -48,16 +46,21 @@ export default class Agent {
 	private context: Context.Config;
 	private canonicalEvents: AgentEvent[] = [];
 	private listeners: AgentViewListener[] = [];
-	private toolRegistry = new ToolRegistry();
+	public tool: ToolRegistry;
 
 	constructor(config: Config) {
 		this.sessionId = config.sessionId;
+		this.cwd = config.cwd;
 		this.store = config.store;
 		this.context = config.context;
+		this.tool = new ToolRegistry(() => ({
+			cwd: this.cwd,
+			signal: this.runRecords.activeJob?.abortController.signal,
+		}));
 
 		this.agentLoop = new AgentLoop({
 			venderAdaptor: config.venderAdaptor,
-			strategy: config.strategy,
+			toolRegistry: this.tool,
 		});
 
 		this.agentLoop.on((event) => {
@@ -65,8 +68,12 @@ export default class Agent {
 		});
 
 		const recallTool = createRecallTool(() => this.canonicalEvents);
+		const grepTool = createGrepTool();
+		const readFileTool = createReadFileTool();
 
-		this.toolRegistry.register(recallTool.name, recallTool);
+		this.tool.register(recallTool);
+		this.tool.register(grepTool);
+		this.tool.register(readFileTool);
 	}
 
 	private async handleAgentEvent(event: AgentEvent) {
@@ -119,15 +126,12 @@ export default class Agent {
 						events: this.canonicalEvents,
 						lastWindowTokens,
 						venderAdaptor: this.agentLoop.getVenderAdaptor(),
-						tools: this.toolRegistry.getTools(),
 						strategyEnabled,
 					});
 
 					if (snap.summaryEvent) {
 						await this.commitEvent(snap.summaryEvent);
 					}
-
-	
 
 					return snap;
 				},
@@ -161,10 +165,6 @@ export default class Agent {
 		};
 	}
 
-	registerTool(name: string, tool: Tool.Definition) {
-		this.toolRegistry.register(name, tool);
-	}
-
 	interrupt(reason = 'user interrupted') {
 		const activeJob = this.runRecords.activeJob;
 		if (!activeJob) return;
@@ -172,7 +172,7 @@ export default class Agent {
 	}
 
 	getLastWindowCosts() {
-		return this.canonicalEvents.findLast(event => event.type === EventType.AGENT_TRACE);
+		return this.canonicalEvents.findLast((event) => event.type === EventType.AGENT_TRACE);
 	}
 
 	getState() {

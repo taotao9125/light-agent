@@ -1,11 +1,11 @@
 import { EventType } from '@light-agent/protocol/events';
 import { describe, expect, it } from 'vitest';
-import createRecallTool from '../../internalTools/createRecallTool.ts';
+import createRecallTool from '../../tools/createRecallTool.ts';
 
 import type { AgentEvent } from '@light-agent/protocol/events';
 
 describe('recall_indexed', () => {
-	it('应召回 canonical 中的 tool args 与 tool result', async () => {
+	it('应只召回 canonical 中的 tool result', async () => {
 		const roundId = 'round_id_test';
 		const events: AgentEvent[] = [
 			{
@@ -34,11 +34,10 @@ describe('recall_indexed', () => {
 		];
 
 		const tool = createRecallTool(() => events);
-		const result = await tool.execute({ id: 'call_1_round_id_test_1' }, { signal: undefined });
+		const result = await tool.execute({ id: 'call_1' }, { cwd: '/tmp/workspace', signal: undefined });
 
 		expect(result.isError).toBe(false);
-		expect(result.content).toContain('tool_args:');
-		expect(result.content).toContain('"content": "hello world"');
-		expect(result.content).toContain('tool_result:');
+		expect(result.content).toBe('File written successfully.');
+		expect(result.content).not.toContain('tool_args:');
 	});
 });

@@ -3,15 +3,13 @@ import { EventType } from '@light-agent/protocol/events';
 import type { Vender } from '@light-agent/ai';
 import type { AgentEvent, ToolCallsEvent, ToolResultsEvent } from '@light-agent/protocol/events';
 import type { Context } from './context/contextBuilder.ts';
-import type { Tool } from './tool.ts';
+import type ToolRegistry from './tool.ts';
 
 /** Agent loop runtime configuration. */
 export namespace Loop {
 	export type Config = {
 		venderAdaptor: Vender.Adaptor;
-		strategy?: {
-			maxTurns?: number;
-		};
+		toolRegistry: ToolRegistry;
 	};
 }
 
@@ -26,30 +24,14 @@ function randomId() {
 	return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function toToolsMap(tools: Tool.Definition[]) {
-	const map = new Map<string, Tool.Definition>();
-	for (const tool of tools) {
-		map.set(tool.name, tool);
-	}
-	return map;
-}
-
-function toToolsMeta(tools: Tool.Definition[]) {
-	return tools.map((tool) => ({
-		name: tool.name,
-		description: tool.description,
-		schema: tool.schema,
-	}));
-}
-
 class AgentLoop {
 	private venderAdaptor: Vender.Adaptor;
+	private toolRegistry: ToolRegistry;
 	private listeners: AgentEventListener[] = [];
-	private maxTurns: number;
 
 	constructor(config: Loop.Config) {
-		this.maxTurns = config.strategy?.maxTurns ?? 20;
 		this.venderAdaptor = config.venderAdaptor;
+		this.toolRegistry = config.toolRegistry;
 	}
 
 	private emit(event: AgentEvent): void {
@@ -60,11 +42,9 @@ class AgentLoop {
 
 	private async runToolAction(
 		action: ToolCallsEvent['tool_calls'][number],
-		toolsMap: Map<string, Tool.Definition>,
-		abortSignal: AbortSignal,
 	): Promise<ToolResultsEvent['tool_results'][number]> {
 		const { name, id, args } = action;
-		const toolCommand = toolsMap.get(name);
+		const toolCommand = this.toolRegistry.get(name);
 
 		if (!toolCommand) {
 			return {
@@ -76,9 +56,7 @@ class AgentLoop {
 		}
 
 		try {
-			const { isError, content } = await toolCommand.execute(args, {
-				signal: abortSignal,
-			});
+			const { isError, content } = await toolCommand.execute(args);
 
 			return {
 				id,
@@ -113,7 +91,7 @@ class AgentLoop {
 		const { abortSignal } = loopDeps;
 
 		// 一个 input 到 output 为一个 roundId
-		const roundId = `round_id_${randomId()}`;
+		const roundId = `${randomId()}`;
 		let turn = 1;
 
 		const emitAbort = () => {
@@ -136,28 +114,15 @@ class AgentLoop {
 				return;
 			}
 
-			if (turn > this.maxTurns) {
-				this.emit({
-					type: EventType.AGENT_STOP,
-					cause: 'runtime',
-					message: `Agent stopped after reaching max turns: ${this.maxTurns}`,
-					meta: { roundId, turn },
-				});
-				return;
-			}
-
 			let turnToolCalls: ToolCallsEvent['tool_calls'] = [];
 
 			// 刷新 context
-			const { systemPrompt = '', tools = [], events = [] } = await loopDeps.pullContextSnap();
-
-			const toolsMap = toToolsMap(tools);
-			const toolsMeta = toToolsMeta(tools);
+			const { systemPrompt = '', events = [] } = await loopDeps.pullContextSnap();
 
 			const stream = this.venderAdaptor.stream({
 				systemPrompt: systemPrompt,
 				input: events,
-				tools: toolsMeta,
+				tools: this.toolRegistry.getTools(),
 			});
 
 			for await (const chunk of stream) {
@@ -198,9 +163,7 @@ class AgentLoop {
 				meta,
 			});
 
-			const settled = await Promise.allSettled(
-				turnToolCalls.map((action) => this.runToolAction(action, toolsMap, abortSignal)),
-			);
+			const settled = await Promise.allSettled(turnToolCalls.map((action) => this.runToolAction(action)));
 
 			if (abortSignal.aborted) {
 				emitAbort();

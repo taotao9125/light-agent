@@ -8,7 +8,6 @@ import contextBuilder from '../../context/contextBuilder.ts';
 
 import type { Vender } from '@light-agent/ai';
 import type { AgentEvent, ThoughtEvent, ToolCallsEvent, ToolResultsEvent } from '@light-agent/protocol/events';
-import type { Tool } from '../../tool.ts';
 
 const ROUND_ID = 'round-1';
 const MAX_WINDOW_TOKENS = 30_000;
@@ -20,15 +19,6 @@ const mockVenderAdaptor = {
 	_generateText: mockGenerateText,
 	stream: vi.fn(),
 } as unknown as Vender.Adaptor;
-
-const mockTools: Tool.Definition[] = [
-	{
-		name: 'read_file',
-		description: 'read a file',
-		schema: { type: 'object', properties: {} },
-		execute: async () => ({ isError: false, content: '' }),
-	},
-];
 
 function estimateToken(text: string) {
 	if (!text) return 0;
@@ -96,7 +86,6 @@ async function buildContext(
 	overrides: Partial<{
 		prompts: { name: string; content: string }[];
 		skills: string[];
-		tools: Tool.Definition[];
 	}> = {},
 ) {
 	return contextBuilder({
@@ -105,7 +94,6 @@ async function buildContext(
 		events,
 		lastWindowTokens,
 		venderAdaptor: mockVenderAdaptor,
-		tools: overrides.tools ?? mockTools,
 	});
 }
 
@@ -209,7 +197,7 @@ describe('contextBuilder', () => {
 			const hotResult = findToolResults(result.events, ROUND_ID, 4);
 
 			expect(coldResult?.tool_results[0].result).toContain('[Indexed:tool_result:');
-			expect(coldResult?.tool_results[0].result).toContain('recall_indexed("call_1_');
+			expect(coldResult?.tool_results[0].result).toContain('recall_indexed("call_1")');
 			expect(hotResult?.tool_results[0].result).toBe(fullText);
 		});
 
@@ -259,7 +247,7 @@ describe('contextBuilder', () => {
 			expect(coldResult?.tool_results[0].result).not.toContain('[Indexed:tool_result:');
 		});
 
-		it('cold turn 的大 write_file args 应 index，hot turn 保留全文', async () => {
+		it('tool args 不应被 index', async () => {
 			const fileContent = `export const value = '${'x'.repeat(500)}';`;
 			const events = [
 				inputEvent(ROUND_ID, 1, 'start'),
@@ -272,7 +260,7 @@ describe('contextBuilder', () => {
 			const coldToolCall = findToolCalls(result.events, ROUND_ID, 1)?.tool_calls[0];
 			const hotToolCall = findToolCalls(result.events, ROUND_ID, 3)?.tool_calls[0];
 
-			expect(String(coldToolCall?.args.content)).toContain('[Indexed:tool_arg:content:');
+			expect(coldToolCall?.args.content).toBe(fileContent);
 			expect(coldToolCall?.args.path).toBe('src/file-1.ts');
 			expect(hotToolCall?.args.content).toBe(fileContent);
 		});
@@ -413,13 +401,6 @@ describe('contextBuilder', () => {
 		});
 	});
 
-	describe('BuildResult', () => {
-		it('应原样回传 tools', async () => {
-			const result = await buildContext([], 0, { tools: mockTools });
-			expect(result.tools).toBe(mockTools);
-		});
-	});
-
 	describe('strategyEnabled', () => {
 		it('关闭策略时应原样返回 events，不 index、不 summary', async () => {
 			const fullText = `full-${'x'.repeat(500)}`;
@@ -436,7 +417,6 @@ describe('contextBuilder', () => {
 				events,
 				lastWindowTokens: MAX_WINDOW_TOKENS,
 				venderAdaptor: mockVenderAdaptor,
-				tools: mockTools,
 				strategyEnabled: false,
 			});
 

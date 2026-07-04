@@ -7,18 +7,7 @@ export namespace Vender {
 	export type ToolMeta = {
 		name: string;
 		description: string;
-		schema: {
-			type: 'object';
-			properties: Record<
-				string,
-				{
-					type: unknown;
-					description: string;
-				}
-			>;
-			required?: string[];
-			additionalProperties?: boolean;
-		};
+		schema: Record<string, unknown>;
 	};
 
 	export type Config = {

@@ -14,7 +14,6 @@ import runtimePrompts, { historyCompressionSystemPrompt } from './prompts.consts
 
 import type { Vender } from '@light-agent/ai';
 import type { AgentEvent, SummaryEvent, ToolCallsEvent, ToolResultsEvent } from '@light-agent/protocol/events';
-import type { Tool } from '../tool.ts';
 
 export namespace Context {
 	export type Config = {
@@ -27,7 +26,6 @@ export namespace Context {
 		events: AgentEvent[];
 		systemPrompt: string;
 		summaryEvent: SummaryEvent | null;
-		tools: Tool.Definition[];
 	};
 }
 
@@ -156,8 +154,8 @@ type ToolCall = ToolCallsEvent['tool_calls'][number];
 type ToolResult = ToolResultsEvent['tool_results'][number];
 const INDEX_MIN_CHARS = 100;
 
-function buildIndexedCallId(actionId: string, roundId: string, turn: number) {
-	return `${actionId}_${roundId}_${turn}`;
+function buildIndexedCallId(actionId: string) {
+	return actionId;
 }
 
 function buildIndexedToolResultPlaceholder(callId: string, toolName: string, intent: string) {
@@ -171,49 +169,11 @@ function buildIndexedToolResultPlaceholder(callId: string, toolName: string, int
 		.join('\n');
 }
 
-function buildIndexedToolArgPlaceholder(callId: string, toolName: string, fieldName: string, intent: string) {
-	return [
-		`[Indexed:tool_arg:${fieldName}:${callId}]`,
-		`tool: ${toolName}`,
-		`field: ${fieldName}`,
-		intent ? `intent: ${intent}` : undefined,
-		`Recall if need: recall_indexed("${callId}")`,
-	]
-		.filter(Boolean)
-		.join('\n');
-}
-
-function measureArgValue(value: unknown) {
-	if (typeof value === 'string') return value.length;
-	return JSON.stringify(value).length;
-}
-
 // 尽可能给模型视角提供线索: 这是什么历史结果，状态是什么, 调用目的是什么，如果需要细节，恢复指令是什么
-function compressObsContent(obs: ToolResult, action: ToolCall, roundId: string, turn: number) {
+function compressObsContent(obs: ToolResult, action: ToolCall) {
 	if (obs.result.length <= INDEX_MIN_CHARS) return obs.result;
-	const callId = buildIndexedCallId(obs.id, roundId, turn);
+	const callId = buildIndexedCallId(obs.id);
 	return buildIndexedToolResultPlaceholder(callId, obs.name, getIntent(action.args));
-}
-
-function compressActionArgs(action: ToolCall, roundId: string, turn: number, isError: boolean) {
-	if (isError) return action.args;
-
-	const callId = buildIndexedCallId(action.id, roundId, turn);
-	const intent = getIntent(action.args);
-	const compressedArgs: Record<string, unknown> = {};
-	let changed = false;
-
-	for (const [fieldName, value] of Object.entries(action.args)) {
-		if (measureArgValue(value) <= INDEX_MIN_CHARS) {
-			compressedArgs[fieldName] = value;
-			continue;
-		}
-
-		changed = true;
-		compressedArgs[fieldName] = buildIndexedToolArgPlaceholder(callId, action.name, fieldName, intent);
-	}
-
-	return changed ? compressedArgs : action.args;
 }
 
 function compressEvents(events: AgentEvent[]) {
@@ -226,21 +186,7 @@ function compressEvents(events: AgentEvent[]) {
 
 		switch (event.type) {
 			case EventType.Tool_Calls: {
-				const toolResultsEvent = events.find(
-					(obs) =>
-						obs.type === EventType.Tool_Results && obs.meta?.roundId === roundId && obs.meta?.turn === turn,
-				) as ToolResultsEvent;
-
-				compressedEvent.push({
-					...event,
-					tool_calls: event.tool_calls.map((action) => {
-						const observation = toolResultsEvent?.tool_results.find((obs) => obs.id === action.id);
-						return {
-							...action,
-							args: compressActionArgs(action, roundId, turn, observation?.isError ?? false),
-						};
-					}),
-				});
+				compressedEvent.push(event);
 				break;
 			}
 			case EventType.Tool_Results: {
@@ -257,7 +203,7 @@ function compressEvents(events: AgentEvent[]) {
 					...event,
 					tool_results: event.tool_results.map((obs) => {
 						const action = toolCalls.find((item) => item.id === obs.id);
-						const compressedContent = action ? compressObsContent(obs, action, roundId, turn) : '';
+						const compressedContent = action ? compressObsContent(obs, action) : '';
 
 						return {
 							...obs,
@@ -444,10 +390,9 @@ export default async function contextBuilder(config: {
 	lastWindowTokens: number;
 	// 摘要压缩模型
 	venderAdaptor: Vender.Adaptor;
-	tools: Tool.Definition[];
 	strategyEnabled?: boolean;
 }): Promise<Context.BuildResult> {
-	const { prompts, skills, events, lastWindowTokens, venderAdaptor, tools, strategyEnabled = true } = config;
+	const { prompts, skills, events, lastWindowTokens, venderAdaptor, strategyEnabled = true } = config;
 
 	const systemPrompt = [buildPromptsToXML(prompts), buildPromptsToXML(runtimePrompts), buildSkillsToXML(skills)].join(
 		'\n',
@@ -459,7 +404,6 @@ export default async function contextBuilder(config: {
 		return {
 			systemPrompt,
 			events: preProcessEvents,
-			tools,
 			summaryEvent: null,
 		};
 	}
@@ -508,7 +452,6 @@ export default async function contextBuilder(config: {
 	return {
 		systemPrompt,
 		events: [...compressedColdEvents, ...hotEvents],
-		tools,
 		summaryEvent,
 	};
 }
