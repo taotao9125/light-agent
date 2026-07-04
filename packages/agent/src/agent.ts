@@ -5,7 +5,6 @@ import contextBuilder from './context/contextBuilder.ts';
 
 import type { Vender } from '@light-agent/ai';
 import type { AgentEvent, TraceEvent } from '@light-agent/protocol/events';
-import type { AgentLoopInterface } from './agentLoop.ts';
 import type { Context } from './context/contextBuilder.ts';
 import type { AgentViewEvent, AgentViewListener } from './helpers.ts';
 
@@ -28,13 +27,6 @@ type Config = {
 	context: Context.Config;
 };
 
-export interface AgentInterface {
-	prompt: (prompt: string) => Promise<void>;
-	on: (listener: AgentViewListener) => () => void;
-	registerTool: (name: string, tool: Tool.Definition) => void;
-	interrupt: () => void;
-	getState: () => Record<string, any>;
-}
 
 type Job = {
 	prompt: string;
@@ -43,10 +35,10 @@ type Job = {
 	abortController: AbortController;
 };
 
-export default class Agent implements AgentInterface {
+export default class Agent {
 	private sessionId: string;
 	private store?: SessionStoreInterface;
-	private agentLoop: AgentLoopInterface;
+	private agentLoop: AgentLoop;
 
 	private runRecords = {
 		queue: [] as Job[],
@@ -135,15 +127,7 @@ export default class Agent implements AgentInterface {
 						await this.commitEvent(snap.summaryEvent);
 					}
 
-					await this.store?.appendContextSnap(
-						this.sessionId,
-						buildContextSnap({
-							snap,
-							canonicalEvents: this.canonicalEvents,
-							strategyEnabled,
-							lastWindowTokens,
-						}),
-					);
+	
 
 					return snap;
 				},

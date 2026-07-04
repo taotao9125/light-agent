@@ -22,12 +22,6 @@ type LoopDeps = {
 	pullContextSnap: () => Promise<Context.BuildResult>;
 };
 
-export interface AgentLoopInterface {
-	prompt: (prompt: string, options: LoopDeps) => Promise<void>;
-	on: (listener: AgentEventListener) => void;
-	getVenderAdaptor: () => Vender.Adaptor;
-}
-
 function randomId() {
 	return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -48,7 +42,7 @@ function toToolsMeta(tools: Tool.Definition[]) {
 	}));
 }
 
-class AgentLoop implements AgentLoopInterface {
+class AgentLoop {
 	private venderAdaptor: Vender.Adaptor;
 	private listeners: AgentEventListener[] = [];
 	private maxTurns: number;
