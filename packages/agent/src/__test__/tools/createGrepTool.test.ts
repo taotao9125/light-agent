@@ -16,14 +16,11 @@ describe('grep', () => {
 	it('应清晰描述 grep 只用于定位已知线索', () => {
 		const tool = createGrepTool();
 
-		expect(tool.description).toContain('只有当你已经知道要搜索的具体字符串或正则时才使用 grep');
-		expect(tool.description).toContain('不要用 grep 浏览项目');
-		expect(tool.description).toContain('Searched for Tool_Calls|Tool_Results');
-		expect(tool.schema.shape.pattern.description).toContain('要定位的具体关键词、符号名、函数名');
-		expect(tool.schema.shape.pattern.description).toContain('pattern 是要搜索的内容，不是目录路径');
-		expect(tool.schema.shape.pattern.description).toContain('不要传 "."、"./packages"、".*"');
-		expect(tool.schema.shape.path.description).toContain('已知大致目录时应优先缩小到具体目录');
-		expect(tool.schema.shape.glob.description).toContain('已知文件类型时应填写');
+		expect(tool.description).toContain('搜索一个已知字符串或正则表达式');
+		expect(tool.description).toContain('grep 只有一个参数 searchStr');
+		expect(tool.description).toContain('不接收 path/glob/ignoreCase/fixedStrings');
+		expect(tool.schema.shape.searchStr.description).toContain('要搜索的具体字符串或正则表达式');
+		expect(tool.schema.shape.searchStr.description).toContain('不要传目录路径、文件路径');
 	});
 
 	it('应在 cwd 内搜索匹配内容', async () => {
@@ -32,52 +29,42 @@ describe('grep', () => {
 
 		const result = await tool.execute(
 			{
-				pattern: 'city',
-				path: 'src',
-				glob: '*.ts',
-				ignoreCase: false,
-				fixedStrings: true,
+				searchStr: 'city',
 			},
 			{ cwd },
 		);
 
 		expect(result.isError).toBe(false);
 		expect(result.content).toContain('## grep 匹配结果');
-		expect(result.content).toContain('Searched for `city` in `src`.');
+		expect(result.content).toContain('Searched for `city`.');
 		expect(result.content).toContain('- src/app.ts:1');
 		expect(result.content).toContain('  const city = "上海";');
 	});
 
-	it('应拒绝把泛匹配或目录路径当作 pattern', async () => {
+	it('应拒绝把泛匹配或目录文件路径当作 searchStr', async () => {
 		const cwd = await createWorkspace();
 		const tool = createGrepTool();
 
 		const dotResult = await tool.execute(
 			{
-				pattern: '.',
-				path: '.',
-				ignoreCase: false,
-				fixedStrings: false,
+				searchStr: '.',
 			},
 			{ cwd },
 		);
 		const pathResult = await tool.execute(
 			{
-				pattern: './packages',
-				path: '.',
-				ignoreCase: false,
-				fixedStrings: false,
+				searchStr: 'packages/agent/src/agent.ts',
 			},
 			{ cwd },
 		);
 
 		expect(dotResult.isError).toBe(true);
-		expect(dotResult.content).toContain('[what]: grep pattern 无效');
-		expect(dotResult.content).toContain('[bad]: grep({ pattern: ".", path: "." })');
+		expect(dotResult.content).toContain('[what]: grep searchStr 无效');
+		expect(dotResult.content).toContain('[bad]: grep({ searchStr: "." })');
 		expect(pathResult.isError).toBe(true);
-		expect(pathResult.content).toContain('[bad]: grep({ pattern: "./packages", path: "." })');
+		expect(pathResult.content).toContain('[bad]: grep({ searchStr: "packages/agent" })');
 		expect(pathResult.content).toContain(
-			'[good]: grep({ pattern: "Tool_Calls|Tool_Results|tool_call|tool_calls|tool_result|tool_call_id", path: "packages" })',
+			'[good]: grep({ searchStr: "Tool_Calls|Tool_Results|tool_call|tool_calls|tool_result|tool_call_id" })',
 		);
 	});
 
@@ -87,10 +74,7 @@ describe('grep', () => {
 
 		const result = await tool.execute(
 			{
-				pattern: '不存在的内容',
-				path: '.',
-				ignoreCase: false,
-				fixedStrings: true,
+				searchStr: '不存在的内容',
 			},
 			{ cwd },
 		);
@@ -104,15 +88,12 @@ describe('grep', () => {
 
 		const result = await tool.execute(
 			{
-				pattern: 'anything',
-				path: '..',
-				ignoreCase: false,
-				fixedStrings: true,
+				searchStr: '../outside',
 			},
 			{ cwd },
 		);
 
 		expect(result.isError).toBe(true);
-		expect(result.content).toContain('[what]: 你传入的路径不在当前工作目录内');
+		expect(result.content).toContain('[what]: grep searchStr 无效');
 	});
 });

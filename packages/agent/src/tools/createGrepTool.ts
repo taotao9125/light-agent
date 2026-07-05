@@ -1,6 +1,5 @@
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { validatePathInCwd } from '../pathSafety.ts';
 import { childSpawn } from './helper.ts';
 
 import type { Tool } from '../tool.ts';
@@ -13,22 +12,18 @@ const MAX_LINE_CHARS = 500;
 
 const GREP_USAGE_HINT = [
 	'[how]: grep 只能用于按已知线索定位文本位置，不用于浏览目录或了解项目结构。',
-	'[good]: grep({ pattern: "Tool_Calls|Tool_Results|tool_call|tool_calls|tool_result|tool_call_id", path: "packages" })',
-	'[bad]: grep({ pattern: ".", path: "." })',
-	'[bad]: grep({ pattern: "./packages", path: "." })',
+	'- [good]: grep({ searchStr: "Tool_Calls|Tool_Results|tool_call|tool_calls|tool_result|tool_call_id" })',
+	'- [bad]: grep({ searchStr: "." })',
+	'- [bad]: grep({ searchStr: "packages/agent" })',
 ].join('\n');
 
 const grepSchema = z.object({
-	pattern: z
+	searchStr: z
 		.string()
 		.min(1)
 		.describe(
-			'要定位的具体关键词、符号名、函数名、类型名、错误信息、文件内容片段或正则表达式。pattern 是要搜索的内容，不是目录路径；必须已经知道明确线索时才填写。正确示例："Tool_Calls|Tool_Results|tool_call|tool_calls|tool_result|tool_call_id"。不要传 "."、"./packages"、".*"、".+"、空白或只包含通配符的表达式。',
+			'要搜索的具体字符串或正则表达式，例如符号名、函数名、类型名、错误信息或文件内容片段。不要传目录路径、文件路径、"."、".*"、".+"、空白或只包含通配符的表达式。',
 		),
-	path: z.string().default('.').describe('搜索范围。必须是 cwd 内的相对路径；已知大致目录时应优先缩小到具体目录。'),
-	glob: z.string().optional().describe('文件过滤，例如 "*.ts"、"src/**/*.ts"；已知文件类型时应填写。'),
-	ignoreCase: z.boolean().default(false).describe('是否忽略大小写。'),
-	fixedStrings: z.boolean().default(false).describe('是否按普通字符串搜索，而不是正则表达式。'),
 });
 
 type RgMatchEvent = {
@@ -46,20 +41,20 @@ type GrepMatch = {
 	content: string;
 };
 
-function isUselessPattern(pattern: string) {
-	const normalized = pattern.trim();
+function isInvalidSearchStr(searchStr: string) {
+	const normalized = searchStr.trim();
 	if (!normalized) return true;
 
 	const patterns = new Set(['.', '.*', '.+', '^.*$', '^.+$', '*']);
 	if (patterns.has(normalized)) return true;
 
-	return /^\.?\.?\//.test(normalized);
+	return normalized.includes('/') && !/[|()[\]{}+?^$\\]/.test(normalized);
 }
 
-function buildInvalidPatternContent(pattern: string) {
+function buildInvalidSearchStrContent(searchStr: string) {
 	return [
-		'[what]: grep pattern 无效，模型把目录/通配搜索当成了要搜索的内容',
-		`[pattern]: ${pattern}`,
+		'[what]: grep searchStr 无效，模型把目录、文件路径或通配搜索当成了要搜索的内容',
+		`[searchStr]: ${searchStr}`,
 		GREP_USAGE_HINT,
 	].join('\n');
 }
@@ -67,6 +62,10 @@ function buildInvalidPatternContent(pattern: string) {
 function normalizeLine(text: string) {
 	const line = text.replace(/\r?\n$/, '');
 	return line.length > MAX_LINE_CHARS ? `${line.slice(0, MAX_LINE_CHARS)}...[truncated]` : line;
+}
+
+function normalizePath(filePath: string) {
+	return filePath.replace(/^\.\//, '');
 }
 
 function parseRgJson(stdout: string) {
@@ -93,7 +92,7 @@ function parseRgJson(stdout: string) {
 		if (!path || typeof line !== 'number') continue;
 
 		matches.push({
-			path,
+			path: normalizePath(path),
 			line,
 			content: normalizeLine(content),
 		});
@@ -109,13 +108,12 @@ function parseRgJson(stdout: string) {
 }
 
 function formatGrepMatches(input: {
-	pattern: string;
-	path: string;
+	searchStr: string;
 	matches: GrepMatch[];
 	truncated: boolean;
 	parseErrorCount: number;
 }) {
-	const lines = ['## grep 匹配结果', '', `Searched for \`${input.pattern}\` in \`${input.path}\`.`, ''];
+	const lines = ['## grep 匹配结果', '', `Searched for \`${input.searchStr}\`.`, ''];
 
 	for (const match of input.matches) {
 		lines.push(`- ${match.path}:${match.line}`);
@@ -123,7 +121,10 @@ function formatGrepMatches(input: {
 	}
 
 	if (input.truncated) {
-		lines.push('', '> 结果过多，已截断。请缩小 path、glob 或 pattern 后重新搜索。');
+		lines.push(
+			'',
+			'> 结果过多，已截断。请换用更具体的 searchStr；如果是在探索项目结构，请使用 list_project_files_tree。',
+		);
 	}
 
 	if (input.parseErrorCount > 0) {
@@ -135,13 +136,10 @@ function formatGrepMatches(input: {
 
 function buildRgArgs(args: z.infer<typeof grepSchema>, searchPath: string) {
 	// 内置 rg 15.1.0 不支持 --relative；这里传入相对 searchPath，让 JSON 结果保持 cwd 相对路径。
-	const rgArgs = ['--json', '--line-number', '--glob=!.git/*', '--color', 'never'];
+	const rgArgs = ['--json', '-I', '--line-number', '--glob=!.git/*', '--color', 'never'];
 
-	if (args.ignoreCase) rgArgs.push('--ignore-case');
-	if (args.fixedStrings) rgArgs.push('--fixed-strings');
-	if (args.glob) rgArgs.push('--glob', args.glob);
-
-	rgArgs.push('--', args.pattern, searchPath);
+	// -- 后面参数都当走普通参数处理, 非命令行项
+	rgArgs.push('--', args.searchStr, searchPath);
 	return rgArgs;
 }
 
@@ -149,7 +147,10 @@ function createGrepTool(): Tool.Definition<typeof grepSchema> {
 	return {
 		name: 'grep',
 		description:
-			'在当前工作目录内定位已知关键词、符号名、错误信息或具体文本出现的位置。只有当你已经知道要搜索的具体字符串或正则时才使用 grep。不要用 grep 浏览项目、列目录、读取文件、搜索所有内容，尤其不要使用 "."、"./packages"、".*" 这类目录或泛匹配 pattern。grep 的正确用法类似：Searched for Tool_Calls|Tool_Results|tool_call|tool_calls|tool_result|tool_call_id in packages。grep 的结果只用于获得文件路径、行号和匹配行；需要阅读上下文时继续调用 read_file。',
+			[
+				'[what] 在当前工作目录内搜索一个已知字符串或正则表达式，并返回匹配到的文件路径、行号和匹配行。grep 只有一个参数 searchStr；它不是目录浏览工具，不接收 path/glob/ignoreCase/fixedStrings。需要探索项目目录结构时使用 list_project_files_tree；需要读取文件时使用 read_file。',
+				GREP_USAGE_HINT
+			].join('\n'),
 		schema: grepSchema,
 		async execute(args, context) {
 			if (!context) {
@@ -158,19 +159,13 @@ function createGrepTool(): Tool.Definition<typeof grepSchema> {
 
 			context.signal?.throwIfAborted();
 
-			if (isUselessPattern(args.pattern)) {
-				return { isError: true, content: buildInvalidPatternContent(args.pattern) };
+			if (isInvalidSearchStr(args.searchStr)) {
+				return { isError: true, content: buildInvalidSearchStrContent(args.searchStr) };
 			}
 
-			const safePath = await validatePathInCwd(context.cwd, args.path);
-			if (!safePath.ok) {
-				return { isError: true, content: safePath.content };
-			}
-
-			const searchPath = safePath.relativePath || '.';
 			const result = await childSpawn({
 				command: rgBinaryPath,
-				args: buildRgArgs(args, searchPath),
+				args: buildRgArgs(args, '.'),
 				cwd: context.cwd,
 				signal: context.signal,
 				maxStdoutBytes: MAX_STDOUT_BYTES,
@@ -198,8 +193,7 @@ function createGrepTool(): Tool.Definition<typeof grepSchema> {
 
 			const parsed = parseRgJson(result.stdout);
 			const content = formatGrepMatches({
-				pattern: args.pattern,
-				path: searchPath,
+				searchStr: args.searchStr,
 				matches: parsed.matches,
 				truncated: result.stdoutTruncated || parsed.truncatedByMatches,
 				parseErrorCount: parsed.parseErrorCount,
