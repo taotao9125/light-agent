@@ -12,7 +12,8 @@ const MAX_LINE_CHARS = 500;
 
 const GREP_USAGE_HINT = [
 	'[how]: grep 只能用于按已知线索定位文本位置，不用于浏览目录或了解项目结构。',
-	'- [good]: grep({ searchStr: "Tool_Calls|Tool_Results|tool_call|tool_calls|tool_result|tool_call_id" })',
+	'- [good]: grep({ searchStr: "Tool_Calls" })',
+	'- [good]: grep({ searchStr: "tool_call_id" })',
 	'- [bad]: grep({ searchStr: "." })',
 	'- [bad]: grep({ searchStr: "packages/agent" })',
 ].join('\n');
@@ -22,7 +23,7 @@ const grepSchema = z.object({
 		.string()
 		.min(1)
 		.describe(
-			'要搜索的具体字符串或正则表达式，例如符号名、函数名、类型名、错误信息或文件内容片段。不要传目录路径、文件路径、"."、".*"、".+"、空白或只包含通配符的表达式。',
+			'要搜索的具体普通字符串，例如符号名、函数名、类型名、错误信息或文件内容片段。不要传正则表达式、目录路径、文件路径、"."、".*"、".+"、空白或只包含通配符的表达式。',
 		),
 });
 
@@ -48,7 +49,7 @@ function isInvalidSearchStr(searchStr: string) {
 	const patterns = new Set(['.', '.*', '.+', '^.*$', '^.+$', '*']);
 	if (patterns.has(normalized)) return true;
 
-	return normalized.includes('/') && !/[|()[\]{}+?^$\\]/.test(normalized);
+	return normalized.includes('/');
 }
 
 function buildInvalidSearchStrContent(searchStr: string) {
@@ -136,7 +137,7 @@ function formatGrepMatches(input: {
 
 function buildRgArgs(args: z.infer<typeof grepSchema>, searchPath: string) {
 	// 内置 rg 15.1.0 不支持 --relative；这里传入相对 searchPath，让 JSON 结果保持 cwd 相对路径。
-	const rgArgs = ['--json', '-I', '--line-number', '--glob=!.git/*', '--color', 'never'];
+	const rgArgs = ['--json', '-I', '--line-number', '--glob=!.git/*', '--color', 'never', '--fixed-strings'];
 
 	// -- 后面参数都当走普通参数处理, 非命令行项
 	rgArgs.push('--', args.searchStr, searchPath);
@@ -146,11 +147,11 @@ function buildRgArgs(args: z.infer<typeof grepSchema>, searchPath: string) {
 function createGrepTool(): Tool.Definition<typeof grepSchema> {
 	return {
 		name: 'grep',
-		description:
-			[
-				'[what] 在当前工作目录内搜索一个已知字符串或正则表达式，并返回匹配到的文件路径、行号和匹配行。grep 只有一个参数 searchStr；它不是目录浏览工具，不接收 path/glob/ignoreCase/fixedStrings。需要探索项目目录结构时使用 list_project_files_tree；需要读取文件时使用 read_file。',
-				GREP_USAGE_HINT
-			].join('\n'),
+		description: [
+			'[what] 在当前工作目录内搜索一个已知普通字符串，并返回匹配到的文件路径、行号和匹配行。grep 只有一个参数 searchStr；它不是目录浏览工具，也不是正则搜索工具，不接收 path/glob/ignoreCase/fixedStrings。需要探索项目目录结构时使用 list_project_files_tree；需要读取文件时使用 read_file。',
+			'[note] searchStr 会按固定字符串匹配；不要写正则。要找 class 定义时，搜索 "class " 这类普通文本片段。',
+			GREP_USAGE_HINT,
+		].join('\n'),
 		schema: grepSchema,
 		async execute(args, context) {
 			if (!context) {

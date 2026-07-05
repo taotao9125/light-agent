@@ -199,14 +199,11 @@ function createListProjectFilesTreeTool(): Tool.Definition<typeof listProjectFil
 				path: searchPath,
 				files,
 				truncated: result.stdoutTruncated || allPaths.length > visiblePaths.length,
-			})
-
-			console.log(content)
-
+			});
 
 			return {
 				isError: false,
-				content
+				content,
 			};
 		},
 	};

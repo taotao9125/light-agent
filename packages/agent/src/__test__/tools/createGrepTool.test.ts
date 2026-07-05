@@ -16,11 +16,12 @@ describe('grep', () => {
 	it('应清晰描述 grep 只用于定位已知线索', () => {
 		const tool = createGrepTool();
 
-		expect(tool.description).toContain('搜索一个已知字符串或正则表达式');
+		expect(tool.description).toContain('搜索一个已知普通字符串');
 		expect(tool.description).toContain('grep 只有一个参数 searchStr');
 		expect(tool.description).toContain('不接收 path/glob/ignoreCase/fixedStrings');
-		expect(tool.schema.shape.searchStr.description).toContain('要搜索的具体字符串或正则表达式');
-		expect(tool.schema.shape.searchStr.description).toContain('不要传目录路径、文件路径');
+		expect(tool.description).toContain('不要写正则');
+		expect(tool.schema.shape.searchStr.description).toContain('要搜索的具体普通字符串');
+		expect(tool.schema.shape.searchStr.description).toContain('目录路径、文件路径');
 	});
 
 	it('应在 cwd 内搜索匹配内容', async () => {
@@ -63,9 +64,21 @@ describe('grep', () => {
 		expect(dotResult.content).toContain('[bad]: grep({ searchStr: "." })');
 		expect(pathResult.isError).toBe(true);
 		expect(pathResult.content).toContain('[bad]: grep({ searchStr: "packages/agent" })');
-		expect(pathResult.content).toContain(
-			'[good]: grep({ searchStr: "Tool_Calls|Tool_Results|tool_call|tool_calls|tool_result|tool_call_id" })',
+		expect(pathResult.content).toContain('[good]: grep({ searchStr: "Tool_Calls" })');
+	});
+
+	it('应把正则样式输入当作固定字符串处理', async () => {
+		const cwd = await createWorkspace();
+		const tool = createGrepTool();
+
+		const result = await tool.execute(
+			{
+				searchStr: 'class .* (extends|implements|{)',
+			},
+			{ cwd },
 		);
+
+		expect(result).toEqual({ isError: false, content: '未找到匹配结果。' });
 	});
 
 	it('未找到匹配时应返回可读结果', async () => {
