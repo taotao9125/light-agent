@@ -1,10 +1,10 @@
 const contextWindowPrompts = `
 ## 上下文窗口
 - 你只能看到最近几轮对话；更早的 tool 结果可能已被 Host 索引化。
-- 若 tool 结果以 [indexed:tool_result:<id>] 开头，表示正文不在上下文中。
+- 若 tool 结果包含 “[what]: indexed_tool_result ...”，表示正文不在上下文中，只保留了索引线索。
 - 需要原文时，按顺序：
   1. 若当前上下文中已有该资源的完整 observation，直接引用，勿重复 read。
-  2. 否则调用 recall_indexed(id)；id 与 tool_call_id 相同，可从 Recall 行复制。
+  2. 否则调用 recall_indexed({ id })；id 与 tool_call_id 相同，可从占位符 [what] 行里的 id=<id> 复制。
   3. 仅当 recall 失败、返回空、或用户明确要求刷新时，才重新 read/search。
 - 不要猜测 indexed 正文；也不要跳过 recall 直接 read_file。
 
@@ -18,15 +18,22 @@ const toolUsePrompts = `
 
 ## 工具职责
 - list_project_files_tree：用于探索项目目录结构、包划分、关键文件位置。若用户要求“分析项目架构”、而你还不知道项目目录结构，先调用它。
-- grep：用于按一个已知搜索串定位文件路径和行号。它只有一个参数 searchStr，不接收 path、glob、ignoreCase、fixedStrings。
-- read_file：用于读取已知文件内容。不要用它读取目录。
+- grep：用于按一个已知普通字符串定位文件路径和行号。它只有一个参数 searchStr，不接收 path、glob、ignoreCase、fixedStrings，也不写正则。
+- read_file：用于读取已知文件的文本内容。若整个文件 size 小于或等于 100KB，会返回完整文件内容；否则返回最多 100KB 片段和 nextByteOffset。不要用它读取目录。
 - recall_indexed：用于召回已被上下文压缩索引的历史工具结果。
 
 ## grep 使用边界
 - 不要用 grep 浏览项目、列目录、了解包结构或搜索所有内容。
 - 不要调用 grep({ searchStr: "." })、grep({ searchStr: ".*" })、grep({ searchStr: "packages/agent" })。
-- 正确形态是“按线索搜索”：例如 grep({ searchStr: "Tool_Calls|Tool_Results|tool_call|tool_calls|tool_result|tool_call_id" })。
+- 正确形态是“按一个具体文本线索搜索”：例如 grep({ searchStr: "Tool_Calls" }) 或 grep({ searchStr: "tool_call_id" })。
+- 不要构造正则表达式；要找 class 定义时，搜索 grep({ searchStr: "class " })。
 - 若只是想知道项目有哪些目录和文件，使用 list_project_files_tree。
+
+## read_file 使用边界
+- 知道文件路径但不知道内容：read_file({ path })。
+- 不要给 read_file 传行号参数；它基于文件 size 和 byte 窗口读取。
+- 若返回 completeFileContent: true，说明下面是完整文件内容。
+- 若返回 completeFileContent: false，说明下面只是文件片段；需要继续时调用 read_file({ path, byteOffset: nextByteOffset })。
 
 **鼓励并行**
 - 同时读取多个互不依赖的文件

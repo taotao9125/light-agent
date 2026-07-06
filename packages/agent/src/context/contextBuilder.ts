@@ -160,10 +160,9 @@ function buildIndexedCallId(actionId: string) {
 
 function buildIndexedToolResultPlaceholder(callId: string, toolName: string, intent: string) {
 	return [
-		`[Indexed:tool_result:${callId}]] success`,
-		`tool: ${toolName}`,
-		intent ? `intent: ${intent}` : undefined,
-		`Recall if need: recall_indexed("${callId}")`,
+		`[what]: indexed_tool_result id=${callId} tool=${toolName}；完整正文已从当前上下文移出，并保存在历史索引中`,
+		intent ? `[intent]: ${intent}` : undefined,
+		`[how]: 如果后续判断必须依赖完整原文，调用 recall_indexed({ id: "${callId}" }) 召回；否则不要召回。`,
 	]
 		.filter(Boolean)
 		.join('\n');

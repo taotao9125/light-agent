@@ -11,13 +11,27 @@ function parseRecallId(id: string) {
 }
 
 const recallIndexSchema = z.object({
-	id: z.string().describe('从 [Indexed:tool_result:<id>] 或 Recall 行复制的 tool result id。'),
+	id: z.string().describe('从 [what]: indexed_tool_result ... 中的 id=<id> 复制的 tool result id。'),
 });
 
-function createRecallIndexTool(getAgentEvents: () => AgentEvent[]): Tool.Definition<typeof recallIndexSchema> {
+function findToolResult(events: AgentEvent[], callId: string) {
+	const toolResultEvent = events.findLast(
+		(event) => event.type === EventType.Tool_Results && event.tool_results.some((item) => item.id === callId),
+	) as ToolResultsEvent | undefined;
+	return toolResultEvent?.tool_results.find((item) => item.id === callId);
+}
+
+function createRecallIndexTool(
+	getAgentEvents: () => AgentEvent[],
+	loadSessionEvents?: () => Promise<AgentEvent[]>,
+): Tool.Definition<typeof recallIndexSchema> {
 	return {
 		name: 'recall_indexed',
-		description: '召回被索引压缩的完整工具结果。仅用于历史中出现 [Indexed:tool_result:<id>] 的场景。',
+		description: [
+			'[what] 召回已从当前上下文移出、但保存在历史索引中的完整 tool result 正文。',
+			'[when] 仅当上下文中出现 [what]: indexed_tool_result ...，并且当前判断必须依赖完整原文时使用；如果占位符提供的 tool、intent 线索已经足够，不要调用。',
+			'[how] 传入占位符里的 id，例如 recall_indexed({ id: "call_1" })。工具会先查最近内存事件；若未命中，再从 session 历史中查找。',
+		].join('\n'),
 		schema: recallIndexSchema,
 		async execute(p, context) {
 			context?.signal?.throwIfAborted();
@@ -28,21 +42,25 @@ function createRecallIndexTool(getAgentEvents: () => AgentEvent[]): Tool.Definit
 
 			const { callId } = parsed;
 			const events = getAgentEvents();
+			const inMemoryToolResult = findToolResult(events, callId);
 
-			const toolResultEvent = events.findLast(
-				(event) =>
-					event.type === EventType.Tool_Results && event.tool_results.some((item) => item.id === callId),
-			) as ToolResultsEvent | undefined;
-			const toolResult = toolResultEvent?.tool_results.find((item) => item.id === callId);
+			if (inMemoryToolResult) {
+				return {
+					isError: false,
+					content: inMemoryToolResult.result,
+				};
+			}
 
-			if (!toolResult) {
+			const sessionEvents = loadSessionEvents ? await loadSessionEvents() : [];
+			const sessionToolResult = findToolResult(sessionEvents, callId);
+
+			if (!sessionToolResult) {
 				return { isError: true, content: '' };
 			}
 
-			console.log(`<-----[召回] 成功${p.id}`);
 			return {
 				isError: false,
-				content: toolResult.result,
+				content: sessionToolResult.result,
 			};
 		},
 	};
