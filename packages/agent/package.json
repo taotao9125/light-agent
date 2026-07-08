@@ -15,6 +15,11 @@
       "types": "./dist/store.d.ts",
       "import": "./dist/store.js"
     },
+    "./session": {
+      "development": "./src/session.ts",
+      "types": "./dist/session.d.ts",
+      "import": "./dist/session.js"
+    },
     "./tool": {
       "development": "./src/tool.ts",
       "types": "./dist/tool.d.ts",

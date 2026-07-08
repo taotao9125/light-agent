@@ -6,6 +6,7 @@ import type { Vender } from '@light-agent/ai';
 import type { AgentEvent, SummaryEvent } from '@light-agent/protocol/events';
 import type { Context } from './context/contextBuilder.ts';
 import type { AgentViewEvent, AgentViewListener } from './helpers.ts';
+import type { AgentSession } from './session.ts';
 
 export type { AgentViewEvent, AgentViewListener } from './helpers.ts';
 
@@ -16,12 +17,9 @@ import createListProjectFilesTreeTool from './tools/createListProjectFilesTreeTo
 import createReadFileTool from './tools/createReadFileTool.ts';
 import createRecallTool from './tools/createRecallTool.ts';
 
-import type { SessionStoreInterface } from './store.ts';
-
 type Config = {
-	sessionId: string;
 	cwd: string;
-	store?: SessionStoreInterface;
+	session?: AgentSession;
 	venderAdaptor: Vender.Adaptor;
 	context: Context.Config;
 };
@@ -35,7 +33,7 @@ type Job = {
 
 export default class Agent {
 	private cwd: string;
-	private store?: SessionStoreInterface;
+	private session?: AgentSession;
 	private agentLoop: AgentLoop;
 	private venderAdaptor: Vender.Adaptor;
 
@@ -51,7 +49,7 @@ export default class Agent {
 
 	constructor(config: Config) {
 		this.cwd = config.cwd;
-		this.store = config.store;
+		this.session = config.session;
 		this.context = config.context;
 		this.venderAdaptor = config.venderAdaptor;
 		this.tool = new ToolRegistry(() => ({
@@ -98,7 +96,7 @@ export default class Agent {
 			case EventType.AGENT_SUMMARY:
 			case EventType.AGENT_TRACE:
 				this.canonicalEvents.push(event);
-				await this.store?.append(event);
+				await this.session?.append(event);
 				if (event.type === EventType.AGENT_SUMMARY) {
 					this.pruneCanonicalEventsAfterSummary(event);
 				}
@@ -210,7 +208,7 @@ export default class Agent {
 	}
 
 	async loadSession(): Promise<void> {
-		if (!this.store) return;
-		this.canonicalEvents = await this.store.load();
+		if (!this.session) return;
+		this.canonicalEvents = await this.session.load();
 	}
 }

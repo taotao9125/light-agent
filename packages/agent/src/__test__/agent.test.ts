@@ -22,7 +22,6 @@ const mockVenderAdaptor: Vender.Adaptor = {
 
 function createAgent() {
 	return new Agent({
-		sessionId: 'test-session',
 		cwd: '/tmp/workspace',
 		venderAdaptor: mockVenderAdaptor,
 		context: {},

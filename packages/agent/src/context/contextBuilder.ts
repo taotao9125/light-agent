@@ -9,7 +9,6 @@
 // 展示用 api 返回的真值, 决策压缩用 api 返回的真值 + 本次 turn 的 agent 本地增量 token (如工具调用的结果)
 
 import { EventType } from '@light-agent/protocol/events';
-import { pipe } from '../helpers.ts';
 import runtimePrompts, { historyCompressionSystemPrompt } from './prompts.consts.ts';
 
 import type { Vender } from '@light-agent/ai';
