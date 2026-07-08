@@ -15,11 +15,8 @@ export namespace Session {
 }
 
 export interface SessionStoreInterface {
-	load: (sessionId: string) => Promise<AgentEvent[]>;
-	loadTraces: (sessionId: string) => Promise<TraceEvent[]>;
-	append: (sessionId: string, event: AgentEvent) => Promise<void>;
-	appendTrace: (sessionId: string, event: TraceEvent) => Promise<void>;
-	appendContextSnap: (sessionId: string, record: Record<string, unknown>) => Promise<void>;
+	load: () => Promise<AgentEvent[]>;
+	append: (event: AgentEvent) => Promise<void>;
 	flush: () => Promise<void>;
 }
 
@@ -50,13 +47,7 @@ export default class SessionStore implements SessionStoreInterface {
 		return this.sessionFile ?? path.join(this.rootDir, `${sessionId}.jsonl`);
 	}
 
-	private getTraceFilePath(sessionId: string) {
-		return this.traceFile ?? path.join(this.rootDir, `${sessionId}.trace.jsonl`);
-	}
 
-	private getContextFilePath(sessionId: string) {
-		return this.contextFile ?? path.join(this.rootDir, `${sessionId}.context.jsonl`);
-	}
 
 	private async readJsonl<T>(filePath: string): Promise<T[]> {
 		try {
@@ -75,18 +66,7 @@ export default class SessionStore implements SessionStoreInterface {
 
 	async load(sessionId: string): Promise<AgentEvent[]> {
 		const events = await this.readJsonl<AgentEvent>(this.getCanonicalFilePath(sessionId));
-		// 兼容旧版混写在一个 jsonl 里的 trace
-		return events.filter((event) => event.type !== EventType.AGENT_TRACE);
-	}
-
-	async loadTraces(sessionId: string): Promise<TraceEvent[]> {
-		const traceFileEvents = await this.readJsonl<TraceEvent>(this.getTraceFilePath(sessionId));
-		if (traceFileEvents.length > 0) {
-			return traceFileEvents;
-		}
-
-		const legacyEvents = await this.readJsonl<AgentEvent>(this.getCanonicalFilePath(sessionId));
-		return legacyEvents.filter((event): event is TraceEvent => event.type === EventType.AGENT_TRACE);
+		return events;
 	}
 
 	private resolveFlushWaiters() {
@@ -140,14 +120,6 @@ export default class SessionStore implements SessionStoreInterface {
 
 	async append(sessionId: string, event: AgentEvent): Promise<void> {
 		return this.enqueueAppend(this.getCanonicalFilePath(sessionId), event);
-	}
-
-	async appendTrace(sessionId: string, event: TraceEvent): Promise<void> {
-		return this.enqueueAppend(this.getTraceFilePath(sessionId), event);
-	}
-
-	async appendContextSnap(sessionId: string, record: Record<string, unknown>): Promise<void> {
-		return this.enqueueAppend(this.getContextFilePath(sessionId), record);
 	}
 
 	async flush(): Promise<void> {

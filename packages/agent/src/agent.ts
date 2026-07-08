@@ -3,7 +3,7 @@ import AgentLoop from './agentLoop.ts';
 import contextBuilder from './context/contextBuilder.ts';
 
 import type { Vender } from '@light-agent/ai';
-import type { AgentEvent } from '@light-agent/protocol/events';
+import type { AgentEvent, SummaryEvent } from '@light-agent/protocol/events';
 import type { Context } from './context/contextBuilder.ts';
 import type { AgentViewEvent, AgentViewListener } from './helpers.ts';
 
@@ -34,7 +34,6 @@ type Job = {
 };
 
 export default class Agent {
-	private sessionId: string;
 	private cwd: string;
 	private store?: SessionStoreInterface;
 	private agentLoop: AgentLoop;
@@ -51,7 +50,6 @@ export default class Agent {
 	public tool: ToolRegistry;
 
 	constructor(config: Config) {
-		this.sessionId = config.sessionId;
 		this.cwd = config.cwd;
 		this.store = config.store;
 		this.context = config.context;
@@ -67,7 +65,7 @@ export default class Agent {
 		});
 
 		this.agentLoop.on((event) => {
-			void this.handleAgentEvent(event);
+			this.handleAgentEvent(event);
 		});
 
 		const recallTool = createRecallTool(() => this.canonicalEvents);
@@ -100,9 +98,31 @@ export default class Agent {
 			case EventType.AGENT_SUMMARY:
 			case EventType.AGENT_TRACE:
 				this.canonicalEvents.push(event);
-				await this.store?.append(this.sessionId, event);
+				await this.store?.append(event);
+				if (event.type === EventType.AGENT_SUMMARY) {
+					this.pruneCanonicalEventsAfterSummary(event);
+				}
 				break;
 		}
+	}
+
+	private pruneCanonicalEventsAfterSummary(summaryEvent: SummaryEvent) {
+		const endRoundId = summaryEvent.meta?.endRoundId;
+		const endTurn = summaryEvent.meta?.endTurn;
+
+		if (!endRoundId || typeof endTurn !== 'number') return;
+
+		const endEventIndex = this.canonicalEvents.findLastIndex(
+			(event) => event.meta?.roundId === endRoundId && event.meta?.turn === endTurn,
+		);
+
+		if (endEventIndex === -1) return;
+
+		const eventsAfterSummaryBoundary = this.canonicalEvents
+			.slice(endEventIndex + 1)
+			.filter((event) => event.type !== EventType.AGENT_SUMMARY);
+
+		this.canonicalEvents = [summaryEvent, ...eventsAfterSummaryBoundary];
 	}
 
 	private emit(event: AgentViewEvent) {
@@ -146,7 +166,7 @@ export default class Agent {
 			currentJob.reject(e);
 		} finally {
 			this.runRecords.activeJob = null;
-			void this.processQueue();
+			this.processQueue();
 		}
 	}
 
@@ -191,6 +211,6 @@ export default class Agent {
 
 	async loadSession(): Promise<void> {
 		if (!this.store) return;
-		this.canonicalEvents = await this.store.load(this.sessionId);
+		this.canonicalEvents = await this.store.load();
 	}
 }

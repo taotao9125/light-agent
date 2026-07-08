@@ -325,7 +325,7 @@ function buildEventsToXML(events: AgentEvent[]) {
 }
 
 function cleanEvents(events: AgentEvent[]) {
-	return events.filter((event) => event.type !== EventType.AGENT_STOP);
+	return events.filter((event) => event.type !== EventType.AGENT_STOP && event.type !== EventType.AGENT_TRACE);
 }
 
 function splitEventsBoundary(events: AgentEvent[], hotTurnLength = 2) {
@@ -347,31 +347,6 @@ function splitEventsBoundary(events: AgentEvent[], hotTurnLength = 2) {
 	};
 }
 
-// 丢弃最近 summary 之前的 event
-// ...manyEvents, summaryV1, ...manyEvents, summaryV2, ...manyEvenys
-// ↓
-// summaryV2, ...manyEvenys
-function resortSummaryEvents(events: AgentEvent[]) {
-	const lastSummaryEvent = events.findLast((event) => event.type === EventType.AGENT_SUMMARY);
-	if (!lastSummaryEvent) return events;
-
-	const lastInvolvedRoundId = lastSummaryEvent.meta?.endRoundId;
-	const lastInvolvedTurn = lastSummaryEvent.meta?.endTurn;
-
-	if (!lastInvolvedRoundId || typeof lastInvolvedTurn !== 'number') return events;
-
-	const lastInvolvedSummaryCompressionEventIndex = events.findLastIndex(
-		(event) => event.meta?.roundId === lastInvolvedRoundId && event.meta?.turn === lastInvolvedTurn,
-	);
-
-	if (lastInvolvedSummaryCompressionEventIndex === -1) return events;
-
-	// 较早参与压缩的 events 丢弃掉, 不要发给模型
-	const availableEvents = events.slice(lastInvolvedSummaryCompressionEventIndex + 1);
-
-	// 重组 event 顺序, 摘要 event 要放到前面
-	return [lastSummaryEvent, ...availableEvents.filter((event) => event.type !== EventType.AGENT_SUMMARY)];
-}
 
 const recentHotTurnsLength = 2;
 const maxWindowTokens = 30_000;
@@ -397,7 +372,7 @@ export default async function contextBuilder(config: {
 		'\n',
 	);
 
-	const preProcessEvents = pipe(cleanEvents, resortSummaryEvents)(events);
+	const preProcessEvents = cleanEvents(events);
 
 	if (!strategyEnabled) {
 		return {
