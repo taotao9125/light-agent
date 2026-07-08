@@ -1,397 +1,284 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
 import os from 'node:os';
-import { stdin, stdout } from 'node:process';
-import readline from 'node:readline/promises';
+import path from 'node:path';
 import Agent from '@light-agent/agent';
-import SessionStore from '@light-agent/agent/store';
+import FileSessionManager from '@light-agent/agent/session';
 import { createClient } from '@light-agent/ai';
-import path from 'path';
-import { parseCliArgs, printCliHelp } from './parseCliArgs.ts';
-import { cliPrompts } from './prompts.ts';
-import { drainStdinBuffer, isSubmittableCliInput, readCliInput } from './readCliInput.ts';
-import gitDiffTool from './tools/gitDiff.ts';
-import gitStatusTool from './tools/gitStatus.ts';
-import grepTool from './tools/grep.ts';
-import readFileTool from './tools/readFile.ts';
-import runCommandTool from './tools/runCommand.ts';
-import searchDoc from './tools/searchdoc.ts';
-import writeFileTool from './tools/writeFile.ts';
-
-import type { Interface } from 'node:readline/promises';
+import { Box, render, Text, useApp, useInput, useStdout } from 'ink';
+import React, { useEffect, useMemo, useState } from 'react';
 import 'dotenv/config';
 
-const home = os.homedir();
+import type { AgentViewEvent } from '@light-agent/agent';
+import type { AgentSession, SessionManager } from '@light-agent/agent/session';
+import type { Vender } from '@light-agent/ai';
 
-const configPath = path.join(home, '.light-agent/config.json');
+const h = React.createElement;
 
-const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
-
-const color = {
-	reset: '\x1b[0m',
-	dim: '\x1b[90m',
-	green: '\x1b[32m',
-	yellow: '\x1b[33m',
-	red: '\x1b[31m',
+type Config = {
+	API_KEY: string;
+	API_HOST: string;
 };
 
-function isReadlineClosedError(error: unknown) {
+type Runtime = {
+	agent: Agent;
+	session: AgentSession;
+	sessionManager: SessionManager;
+};
+
+type LogItem =
+	| { type: 'info'; text: string }
+	| { type: 'error'; text: string }
+	| { type: 'thought'; text: string }
+	| { type: 'output'; text: string }
+	| { type: 'tool'; text: string };
+
+const MIN_INPUT_WIDTH = 10;
+
+function isConfig(value: unknown): value is Config {
 	return (
-		error instanceof Error &&
-		'code' in error &&
-		(error.code === 'ABORT_ERR' || error.code === 'ERR_USE_AFTER_CLOSE')
+		typeof value === 'object' &&
+		value !== null &&
+		'API_KEY' in value &&
+		'API_HOST' in value &&
+		typeof value.API_KEY === 'string' &&
+		typeof value.API_HOST === 'string'
 	);
 }
 
-function formatToolLabel(name: string, args: Record<string, unknown>) {
-	if (name === 'git_status' || name === 'git_diff') {
-		const staged = args.staged ? ' staged' : '';
-		const pathArg = typeof args.path === 'string' ? ` ${args.path}` : '';
-		return `${name}${staged}${pathArg}`.trim();
+async function loadConfig(): Promise<Config> {
+	const configPath = path.join(os.homedir(), '.light-agent/config.json');
+	const config = JSON.parse(await fs.readFile(configPath, 'utf8')) as unknown;
+	if (!isConfig(config)) {
+		throw new Error(`配置文件无效: ${configPath}`);
 	}
-	if (name === 'run_command' && typeof args.command === 'string') {
-		const cwd = typeof args.cwd === 'string' ? ` (cwd: ${args.cwd})` : '';
-		return `${name}  ${args.command}${cwd}`;
-	}
-	if (name === 'grep') {
-		const mode = typeof args.mode === 'string' ? ` ${args.mode}` : '';
-		const query = typeof args.query === 'string' && args.query ? ` ${args.query}` : '';
-		const pathArg = typeof args.path === 'string' ? ` ${args.path}` : '';
-		return `${name}${mode}${query}${pathArg}`.trim();
-	}
-	if (typeof args.path === 'string') {
-		return `${name}  ${args.path}`;
-	}
-	if (typeof args.query === 'string') {
-		return `${name}  ${args.query}`;
-	}
-	return `${name}  ${JSON.stringify(args)}`;
+	return config;
 }
 
-function cursorUp(lines: number) {
-	if (lines > 0) {
-		process.stdout.write(`\x1b[${lines}A`);
+async function openSession(sessionManager: SessionManager, cwd: string) {
+	const existingSession = await sessionManager.openLatest({ cwd });
+	if (existingSession) return existingSession;
+
+	return sessionManager.create({
+		cwd,
+		title: path.basename(cwd),
+		metadata: { source: 'ink-cli' },
+	});
+}
+
+function formatToolArgs(args: Record<string, unknown>) {
+	const entries = Object.entries(args).filter(([key]) => key !== '_intent');
+	if (!entries.length) return '';
+	return entries
+		.map(([key, value]) => `${key}=${typeof value === 'string' ? value : JSON.stringify(value)}`)
+		.join(' ');
+}
+
+function appendLog(logs: LogItem[], item: LogItem) {
+	return [...logs, item].slice(-80);
+}
+
+function appendStreamLog(logs: LogItem[], type: 'thought' | 'output', text: string) {
+	const last = logs.at(-1);
+	if (last?.type === type) {
+		return [...logs.slice(0, -1), { type, text: `${last.text}${text}` }];
+	}
+	return appendLog(logs, { type, text });
+}
+
+function projectViewEvent(event: AgentViewEvent): LogItem | null {
+	switch (event.type) {
+		case 'agent_start':
+			return { type: 'info', text: '开始执行 agent' };
+		case 'tool_calls':
+			return {
+				type: 'tool',
+				text: event.tool_calls
+					.map((toolCall) => {
+						const args = formatToolArgs(toolCall.args);
+						return args ? `tool: ${toolCall.name} ${args}` : `tool: ${toolCall.name}`;
+					})
+					.join('\n'),
+			};
+		case 'tool_results':
+			return {
+				type: 'tool',
+				text: event.tool_results
+					.map((toolResult) =>
+						toolResult.isError ? `tool error: ${toolResult.name}` : `tool done: ${toolResult.name}`,
+					)
+					.join('\n'),
+			};
+		case 'agent_stop':
+			return {
+				type: event.cause === 'llm' ? 'error' : 'info',
+				text: `agent stopped (${event.cause}): ${event.message}`,
+			};
+		default:
+			return null;
 	}
 }
 
-function rewriteLine(text: string) {
-	writeStdout(`\x1b[2K\r${text}\n`);
+function LogLine({ item }: { item: LogItem }) {
+	const color = {
+		info: 'gray',
+		error: 'red',
+		thought: 'gray',
+		output: 'green',
+		tool: 'yellow',
+	}[item.type];
+
+	return h(Text, { color }, item.text);
 }
 
-function writeStdout(text: string) {
-	if (!stdout.write(text)) {
-		stdout.once('drain', () => {});
-	}
-}
+function PromptLine({ input, isReady, isRunning }: { input: string; isReady: boolean; isRunning: boolean }) {
+	const { stdout } = useStdout();
+	const columns = stdout.columns || 80;
+	const prompt = isRunning ? 'running ' : '> ';
+	const inputWidth = Math.max(MIN_INPUT_WIDTH, columns - prompt.length - 3);
+	const visibleInput = input.length > inputWidth ? input.slice(-inputWidth) : input;
+	const hiddenPrefix = input.length > inputWidth ? '…' : '';
+	const cursor = isRunning ? ' ' : ' ';
 
-async function main() {
-	const cliArgs = parseCliArgs();
-	if (cliArgs.help) {
-		process.stdout.write(`${printCliHelp()}\n`);
-		return;
-	}
-
-	const sessionId = path.basename(cliArgs.sessionFile, '.jsonl');
-	let activeReadline: Interface | null = null;
-
-	const sessionStore = new SessionStore({
-		rootDir: path.dirname(cliArgs.sessionFile),
-		sessionFile: cliArgs.sessionFile,
-		traceFile: cliArgs.traceFile,
-		contextFile: cliArgs.contextFile,
-	});
-
-	// -------------------------------------------
-
-	const venderAdaptor = createClient({
-		name: 'deepseek',
-		apiKey: config.API_KEY as string,
-		baseURL: config.API_HOST as string,
-		model: 'deepseek-v4-flash',
-	});
-
-	const agent = new Agent({
-		venderAdaptor,
-		strategy: {
-			maxTurns: cliArgs.maxTurns,
-		},
-		sessionId,
-		store: sessionStore,
-		context: {
-			prompts: cliPrompts,
-			strategyEnabled: cliArgs.contextStrategy,
-		},
-	});
-
-	await agent.loadSession();
-
-	agent.registerTool(readFileTool.name, readFileTool);
-	agent.registerTool(writeFileTool.name, writeFileTool);
-	agent.registerTool(grepTool.name, grepTool);
-	agent.registerTool(searchDoc.name, searchDoc);
-	agent.registerTool(gitStatusTool.name, gitStatusTool);
-	agent.registerTool(gitDiffTool.name, gitDiffTool);
-	agent.registerTool(runCommandTool.name, runCommandTool);
-
-	// -------------------------------------------
-	let isThinking = false;
-	let isOutputting = false;
-	let isExiting = false;
-	let isWaitingForPrompt = false;
-	let resolvePromptWait: (() => void) | null = null;
-	let interruptPrinted = false;
-	let toolBatchStartedAt = 0;
-	let pendingToolCalls = new Map<string, { name: string; args: Record<string, unknown> }>();
-	let parallelToolLineCount = 0;
-
-	function endThinkingLine() {
-		if (isThinking) {
-			writeStdout(`${color.reset}\n`);
-			isThinking = false;
-		}
-	}
-
-	function closeReadline() {
-		if (!activeReadline) {
-			return;
-		}
-		activeReadline.close();
-		activeReadline = null;
-	}
-
-	function shutdown() {
-		if (isExiting) {
-			return;
-		}
-		isExiting = true;
-		closeReadline();
-	}
-
-	function createReadline() {
-		closeReadline();
-		drainStdinBuffer();
-		activeReadline = readline.createInterface({
-			input: stdin,
-			output: stdout,
-			terminal: Boolean(stdin.isTTY),
-		});
-		return activeReadline;
-	}
-
-	function resetStreamState() {
-		if (isThinking) {
-			writeStdout(color.reset);
-		}
-		isThinking = false;
-		isOutputting = false;
-	}
-
-	process.on('SIGINT', () => {
-		if (isWaitingForPrompt) {
-			agent.interrupt();
-			resolvePromptWait?.();
-			resolvePromptWait = null;
-			return;
-		}
-
-		shutdown();
-	});
-
-	agent.on((event) => {
-		switch (event.type) {
-			case 'agent_start':
-				writeStdout(`${color.green}开始执行 agent${color.reset}\n`);
-				break;
-
-			case 'thought_delta':
-				if (isOutputting) {
-					writeStdout('\n');
-					isOutputting = false;
-				}
-				if (!isThinking) {
-					writeStdout(`${color.dim}thinking: `);
-					isThinking = true;
-				}
-				writeStdout(event.text);
-				break;
-
-			case 'tool_calls': {
-				endThinkingLine();
-
-				toolBatchStartedAt = Date.now();
-				pendingToolCalls = new Map(
-					event.tool_calls.map((toolCall) => [toolCall.id, { name: toolCall.name, args: toolCall.args }]),
-				);
-
-				if (event.tool_calls.length === 1) {
-					const toolCall = event.tool_calls[0];
-					writeStdout(
-						`${color.yellow}tool: ${formatToolLabel(toolCall.name, toolCall.args)}${color.reset}\n`,
-					);
-					break;
-				}
-
-				writeStdout(`${color.yellow}parallel tools (${event.tool_calls.length}):${color.reset}\n`);
-				parallelToolLineCount = event.tool_calls.length;
-				for (const toolCall of event.tool_calls) {
-					writeStdout(`  ${color.dim}⟳${color.reset} ${formatToolLabel(toolCall.name, toolCall.args)}\n`);
-				}
-				break;
-			}
-
-			case 'tool_results': {
-				const elapsedMs = Date.now() - toolBatchStartedAt;
-				const isParallel = event.tool_results.length > 1;
-
-				if (!isParallel) {
-					const toolResult = event.tool_results[0];
-					const toolCall = pendingToolCalls.get(toolResult.id);
-					const label = toolCall ? formatToolLabel(toolCall.name, toolCall.args) : toolResult.name;
-
-					if (toolResult.isError) {
-						writeStdout(
-							`${color.red}tool error: ${label}${color.reset} ${color.dim}${toolResult.result}${color.reset}\n`,
-						);
-					} else {
-						writeStdout(`${color.dim}tool done: ${label}${color.reset}\n`);
-					}
-					pendingToolCalls.clear();
-					break;
-				}
-
-				cursorUp(parallelToolLineCount);
-
-				for (const toolResult of event.tool_results) {
-					const toolCall = pendingToolCalls.get(toolResult.id);
-					const label = toolCall ? formatToolLabel(toolCall.name, toolCall.args) : toolResult.name;
-
-					if (toolResult.isError) {
-						rewriteLine(
-							`  ${color.red}✗${color.reset} ${label} ${color.dim}${toolResult.result}${color.reset}`,
-						);
-					} else {
-						rewriteLine(`  ${color.green}✓${color.reset} ${label}`);
-					}
-				}
-
-				writeStdout(`${color.dim}  completed in ${elapsedMs}ms (parallel)${color.reset}\n`);
-				pendingToolCalls.clear();
-				parallelToolLineCount = 0;
-				break;
-			}
-
-			case 'output_delta':
-				if (isThinking) {
-					writeStdout(`${color.reset}\n`);
-					isThinking = false;
-				}
-				if (!isOutputting) {
-					writeStdout(`${color.green}output:${color.reset}\n`);
-					isOutputting = true;
-				}
-				writeStdout(event.text);
-				break;
-
-			case 'agent_stop':
-				resetStreamState();
-				if (event.cause === 'user') {
-					if (!interruptPrinted) {
-						interruptPrinted = true;
-						const suffix = event.message && event.message !== 'aborted' ? `: ${event.message}` : '';
-						writeStdout(`\n${color.yellow}Agent interrupted${suffix}${color.reset}\n`);
-					}
-				} else {
-					process.stderr.write(
-						`\n${color.red}Agent stopped (${event.cause}): ${event.message}${color.reset}\n`,
-					);
-				}
-				break;
-
-			default:
-				break;
-		}
-	});
-
-	process.stdout.write(
-		[
-			`${color.dim}Session: ${cliArgs.sessionFile}${color.reset}`,
-			`${color.dim}Trace:   ${cliArgs.traceFile}${color.reset}`,
-			`${color.dim}Context: ${cliArgs.contextFile}${color.reset}`,
-			`${color.dim}Context strategy: ${cliArgs.contextStrategy ? 'on' : 'off'}${color.reset}`,
-			`${color.dim}Tip: paste multi-line prompts directly; or type """ for multiline mode. While agent runs, wait before typing.${color.reset}`,
-		].join('\n') + '\n',
+	return h(
+		Box,
+		{ flexShrink: 0 },
+		h(Text, { bold: true, color: isReady && !isRunning ? 'green' : 'gray' }, prompt),
+		h(Text, { color: 'white', wrap: 'truncate-end' }, `${hiddenPrefix}${visibleInput}`),
+		h(Text, { inverse: true, color: isReady && !isRunning ? 'green' : 'gray' }, cursor),
 	);
-
-	while (!isExiting) {
-		let text = '';
-		const rl = createReadline();
-		try {
-			text = (await readCliInput(rl, { onCancel: () => shutdown() })).trim();
-		} catch (e) {
-			closeReadline();
-			if (isReadlineClosedError(e) || isExiting) {
-				break;
-			}
-
-			throw e;
-		} finally {
-			closeReadline();
-		}
-
-		if (!isSubmittableCliInput(text)) {
-			continue;
-		}
-
-		if (text === 'exit' || text === 'quit') {
-			shutdown();
-			break;
-		}
-
-		try {
-			isWaitingForPrompt = true;
-			interruptPrinted = false;
-			isThinking = false;
-			isOutputting = false;
-			drainStdinBuffer();
-
-			const promptPromise = agent.prompt(text);
-			const promptWaitPromise = new Promise<'interrupted'>((resolve) => {
-				resolvePromptWait = () => resolve('interrupted');
-			});
-
-			const raceResult = await Promise.race([
-				promptPromise.then(() => ({ kind: 'completed' as const })),
-				promptWaitPromise.then(() => ({ kind: 'interrupted' as const })),
-			]);
-
-			if (raceResult.kind === 'interrupted') {
-				promptPromise.catch(() => {});
-				continue;
-			}
-
-			resetStreamState();
-			process.stdout.write('\n');
-		} catch (e) {
-			resetStreamState();
-			process.stderr.write(`\n${color.red}Internal error: ${String(e)}${color.reset}\n`);
-
-			if (agent.getState().isRunning) {
-				continue;
-			}
-
-			throw e;
-		} finally {
-			isWaitingForPrompt = false;
-			resolvePromptWait = null;
-			drainStdinBuffer();
-		}
-	}
 }
 
-main().catch((e) => {
-	if (isReadlineClosedError(e)) {
-		process.exit(0);
+function App() {
+	const { exit } = useApp();
+	const cwd = useMemo(() => process.cwd(), []);
+	const [runtime, setRuntime] = useState<Runtime | null>(null);
+	const [logs, setLogs] = useState<LogItem[]>([{ type: 'info', text: '正在启动 light-agent...' }]);
+	const [input, setInput] = useState('');
+	const [isRunning, setIsRunning] = useState(false);
+
+	useEffect(() => {
+		let disposed = false;
+
+		async function boot() {
+			try {
+				const config = await loadConfig();
+				const venderAdaptor: Vender.Adaptor = createClient({
+					name: 'deepseek',
+					apiKey: config.API_KEY,
+					baseURL: config.API_HOST,
+					model: 'deepseek-v4-flash',
+				});
+				const sessionManager = new FileSessionManager({
+					rootDir: path.join(cwd, '.agent', 'sessions'),
+				});
+				const session = await openSession(sessionManager, cwd);
+				const agent = new Agent({
+					cwd,
+					session,
+					venderAdaptor,
+					context: {},
+				});
+
+				await agent.loadSession();
+				agent.on((event) => {
+					setLogs((currentLogs) => {
+						if (event.type === 'thought_delta') return appendStreamLog(currentLogs, 'thought', event.text);
+						if (event.type === 'output_delta') return appendStreamLog(currentLogs, 'output', event.text);
+
+						const logItem = projectViewEvent(event);
+						return logItem ? appendLog(currentLogs, logItem) : currentLogs;
+					});
+				});
+
+				if (!disposed) {
+					setRuntime({ agent, session, sessionManager });
+					setLogs([
+						{ type: 'info', text: `cwd: ${cwd}` },
+						{ type: 'info', text: `session: ${session.id}` },
+					]);
+				}
+			} catch (error) {
+				if (!disposed) {
+					setLogs([{ type: 'error', text: error instanceof Error ? error.message : String(error) }]);
+				}
+			}
+		}
+
+		void boot();
+		return () => {
+			disposed = true;
+		};
+	}, [cwd]);
+
+	async function submitPrompt(text: string) {
+		if (!runtime || isRunning) return;
+
+		setInput('');
+		setIsRunning(true);
+		setLogs((currentLogs) => appendLog(currentLogs, { type: 'info', text: `user: ${text}` }));
+
+		await runtime.sessionManager.markRunning(runtime.session.id);
+		try {
+			await runtime.agent.prompt(text);
+		} catch (error) {
+			setLogs((currentLogs) =>
+				appendLog(currentLogs, { type: 'error', text: error instanceof Error ? error.message : String(error) }),
+			);
+		} finally {
+			await runtime.sessionManager.markIdle(runtime.session.id);
+			setIsRunning(false);
+		}
 	}
 
-	throw e;
-});
+	useInput((value, key) => {
+		if (key.ctrl && value === 'c') {
+			if (isRunning) {
+				runtime?.agent.interrupt();
+				return;
+			}
+			exit();
+			return;
+		}
+
+		if (isRunning || !runtime) return;
+
+		if (key.return) {
+			const text = input.trim();
+			if (text === 'exit' || text === 'quit') {
+				exit();
+				return;
+			}
+			if (text) void submitPrompt(text);
+			return;
+		}
+
+		if (key.backspace || key.delete) {
+			setInput((currentInput) => currentInput.slice(0, -1));
+			return;
+		}
+
+		if (value && !key.ctrl && !key.meta) {
+			setInput((currentInput) => `${currentInput}${value.replace(/\s*\r?\n\s*/g, ' ')}`);
+		}
+	});
+
+	return h(
+		Box,
+		{ flexDirection: 'column' },
+		h(
+			Box,
+			{ marginBottom: 1 },
+			h(Text, { bold: true, color: 'cyan' }, 'light-agent'),
+			h(Text, { color: 'gray' }, `  Ctrl+C ${isRunning ? '中断' : '退出'}，输入 exit 退出`),
+		),
+		h(
+			Box,
+			{ flexDirection: 'column', marginBottom: 1 },
+			logs.map((item, index) => h(LogLine, { key: `${index}-${item.type}`, item })),
+		),
+		h(PromptLine, { input, isReady: !!runtime, isRunning }),
+	);
+}
+
+render(h(App));
