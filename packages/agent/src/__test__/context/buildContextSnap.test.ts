@@ -25,8 +25,8 @@ describe('buildContextSnap', () => {
 				meta: { roundId: 'round-1', turn: 1 },
 			},
 			{
-				type: EventType.Tool_Results,
-				tool_results: [{ id: 'a1', name: 'read_file', result: longResult, isError: false }],
+				type: EventType.Tool_Result,
+				tool_result: { id: 'a1', name: 'read_file', result: longResult, isError: false },
 				meta: { roundId: 'round-1', turn: 1 },
 			},
 		];
@@ -60,8 +60,8 @@ describe('buildContextSnap', () => {
 					meta: { roundId: 'round-1', turn: 1 },
 				},
 				{
-					type: EventType.Tool_Results,
-					tool_results: [{ id: 'a1', name: 'read_file', result: indexedResult, isError: false }],
+					type: EventType.Tool_Result,
+					tool_result: { id: 'a1', name: 'read_file', result: indexedResult, isError: false },
 					meta: { roundId: 'round-1', turn: 1 },
 				},
 			] as AgentEvent[],

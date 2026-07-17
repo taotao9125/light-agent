@@ -20,15 +20,13 @@ describe('recall_indexed', () => {
 				meta: { roundId, turn: 1 },
 			},
 			{
-				type: EventType.Tool_Results,
-				tool_results: [
-					{
-						id: 'call_1',
-						name: 'write_file',
-						result: 'File written successfully.',
-						isError: false,
-					},
-				],
+				type: EventType.Tool_Result,
+				tool_result: {
+					id: 'call_1',
+					name: 'write_file',
+					result: 'File written successfully.',
+					isError: false,
+				},
 				meta: { roundId, turn: 1 },
 			},
 		];

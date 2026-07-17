@@ -1,7 +1,7 @@
 import { EventType } from '@light-agent/protocol/events';
 import { z } from 'zod';
 
-import type { AgentEvent, ToolResultsEvent } from '@light-agent/protocol/events';
+import type { AgentEvent } from '@light-agent/protocol/events';
 import type { Tool } from '../tool.ts';
 
 function parseRecallId(id: string) {
@@ -16,9 +16,9 @@ const recallIndexSchema = z.object({
 
 function findToolResult(events: AgentEvent[], callId: string) {
 	const toolResultEvent = events.findLast(
-		(event) => event.type === EventType.Tool_Results && event.tool_results.some((item) => item.id === callId),
-	) as ToolResultsEvent | undefined;
-	return toolResultEvent?.tool_results.find((item) => item.id === callId);
+		(event) => event.type === EventType.Tool_Result && event.tool_result.id === callId,
+	);
+	return toolResultEvent?.type === EventType.Tool_Result ? toolResultEvent.tool_result : undefined;
 }
 
 function createRecallIndexTool(

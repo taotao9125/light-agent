@@ -1,6 +1,6 @@
 import { EventType } from '@light-agent/protocol/events';
 import OpenAI, { APIConnectionError, APIConnectionTimeoutError, APIError, APIUserAbortError } from 'openai';
-import { parseEventsIntoRoundMap, stringifyContent } from '../helpers.ts';
+import { collectToolResultsForTurn, parseEventsIntoRoundMap, stringifyContent } from '../helpers.ts';
 import { AIError } from '../retry.ts';
 
 import type { AgentEvent } from '@light-agent/protocol/events';
@@ -173,10 +173,12 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 
 			const thoughtEvent = turn.find((event) => event.type === EventType.THOUGHT);
 			const toolCallsEvent = turn.find((event) => event.type === EventType.Tool_Calls);
-			const toolResultsEvent = turn.find((event) => event.type === EventType.Tool_Results);
 			const outputEvent = turn.find((event) => event.type === EventType.OUTPUT);
 
 			if (toolCallsEvent?.tool_calls.length) {
+				const toolCallIds = toolCallsEvent.tool_calls.map((action) => action.id);
+				const toolResults = collectToolResultsForTurn(turn, toolCallIds);
+
 				roundMessage.push({
 					role: 'assistant',
 					content: outputEvent?.text ?? '',
@@ -191,7 +193,7 @@ const normalizeDeepSeekInputMessage = (events: AgentEvent[]): ChatCompletionMess
 					})),
 				} as ChatCompletionAssistantMessageParam);
 
-				for (const observation of toolResultsEvent?.tool_results ?? []) {
+				for (const observation of toolResults) {
 					roundMessage.push({
 						role: 'tool',
 						tool_call_id: observation.id,

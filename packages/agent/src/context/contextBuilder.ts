@@ -9,10 +9,11 @@
 // 展示用 api 返回的真值, 决策压缩用 api 返回的真值 + 本次 turn 的 agent 本地增量 token (如工具调用的结果)
 
 import { EventType } from '@light-agent/protocol/events';
+import { collectToolResultsForTurn } from '../helpers.ts';
 import runtimePrompts, { historyCompressionSystemPrompt } from './prompts.consts.ts';
 
 import type { Vender } from '@light-agent/ai';
-import type { AgentEvent, SummaryEvent, ToolCallsEvent, ToolResultsEvent } from '@light-agent/protocol/events';
+import type { AgentEvent, SummaryEvent, ToolCallsEvent, ToolResultEvent } from '@light-agent/protocol/events';
 
 export namespace Context {
 	export type Config = {
@@ -150,7 +151,7 @@ function parseEventsIntoRoundMap(events: AgentEvent[]): RoundMap {
 }
 
 type ToolCall = ToolCallsEvent['tool_calls'][number];
-type ToolResult = ToolResultsEvent['tool_results'][number];
+type ToolResult = ToolResultEvent['tool_result'];
 const INDEX_MIN_CHARS = 100;
 
 function buildIndexedCallId(actionId: string) {
@@ -187,7 +188,7 @@ function compressEvents(events: AgentEvent[]) {
 				compressedEvent.push(event);
 				break;
 			}
-			case EventType.Tool_Results: {
+			case EventType.Tool_Result: {
 				const toolCallsEvent = events.find(
 					(item) =>
 						item.type === EventType.Tool_Calls &&
@@ -196,18 +197,16 @@ function compressEvents(events: AgentEvent[]) {
 				) as ToolCallsEvent;
 
 				const toolCalls = toolCallsEvent?.tool_calls || [];
+				const obs = event.tool_result;
+				const action = toolCalls.find((item) => item.id === obs.id);
+				const compressedContent = action ? compressObsContent(obs, action) : '';
 
 				compressedEvent.push({
 					...event,
-					tool_results: event.tool_results.map((obs) => {
-						const action = toolCalls.find((item) => item.id === obs.id);
-						const compressedContent = action ? compressObsContent(obs, action) : '';
-
-						return {
-							...obs,
-							result: obs.isError ? obs.result : compressedContent || obs.result,
-						};
-					}),
+					tool_result: {
+						...obs,
+						result: obs.isError ? obs.result : compressedContent || obs.result,
+					},
 				});
 				break;
 			}
@@ -234,10 +233,18 @@ function countDeltaTokens(events: AgentEvent[]) {
 		return 0;
 	}
 
-	if (lastEvent.type === EventType.Tool_Results) {
-		return lastEvent.tool_results.reduce((acc, obs) => {
-			acc += estimateToken(obs.result);
-			return acc;
+	if (lastEvent.type === EventType.Tool_Result) {
+		const roundId = lastEvent.meta?.roundId;
+		const turn = lastEvent.meta?.turn;
+
+		if (!roundId || typeof turn !== 'number') {
+			return estimateToken(lastEvent.tool_result.result);
+		}
+
+		return events.reduce((acc, event) => {
+			if (event.type !== EventType.Tool_Result) return acc;
+			if (event.meta?.roundId !== roundId || event.meta?.turn !== turn) return acc;
+			return acc + estimateToken(event.tool_result.result);
 		}, 0);
 	}
 
@@ -278,23 +285,31 @@ function buildEventToXML(events: AgentEvent[]) {
 						'</toolCalls>',
 					].join('\n'),
 				);
+				{
+					const toolResults = collectToolResultsForTurn(
+						events,
+						event.tool_calls.map((action) => action.id),
+					);
+					if (toolResults.length) {
+						lines.push(
+							[
+								'<toolResults>',
+								toolResults
+									.map((obs) => {
+										return [`<toolResult isError="${obs.isError}">`, obs.result, '</toolResult>'];
+									})
+									.join('\n'),
+								'</toolResults>',
+							].join('\n'),
+						);
+					}
+				}
 				break;
 			// 如果工具结果索引压缩后，运行多次任务后又超过窗口阈值，要进行摘要压缩，摘要压缩发给模型
 			// 的是全量工具结果还是索引信息呢
 			// 如果是索引信息？摘要后，会不会丢失索引
 			// 如果是全量工具结果，那会不会可能直接撑爆模型的窗口大小，退一步，即使没撑爆，这么多信息模型会不会失焦点
-			case EventType.Tool_Results:
-				lines.push(
-					[
-						'<toolResults>',
-						event.tool_results
-							.map((obs) => {
-								return [`<toolResult isError="${obs.isError}">`, obs.result, '</toolResult>'];
-							})
-							.join('\n'),
-						'</toolResults>',
-					].join('\n'),
-				);
+			case EventType.Tool_Result:
 				break;
 		}
 	}
@@ -346,9 +361,8 @@ function splitEventsBoundary(events: AgentEvent[], hotTurnLength = 2) {
 	};
 }
 
-
 const recentHotTurnsLength = 2;
-const maxWindowTokens = 30_000;
+const maxWindowTokens = 200_000;
 // |--------------------------------- round1 -------------------------------------------|
 // |------------- turn1 ---------------|  |------------- turn2 --------|  |--- turn3 ---|
 // input, thought, toolCalls, toolResults, thought, toolCalls, toolResults, thought, output

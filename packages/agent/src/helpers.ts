@@ -1,13 +1,13 @@
 import { EventType } from '@light-agent/protocol/events';
 
-import type { AgentEvent, AgentStopCause, Meta, ToolCallsEvent, ToolResultsEvent } from '@light-agent/protocol/events';
+import type { AgentEvent, AgentStopCause, Meta, ToolCallsEvent, ToolResultEvent } from '@light-agent/protocol/events';
 
 export type AgentViewEvent =
 	| { type: 'agent_start'; meta?: Meta }
 	| { type: 'thought_delta'; text: string; meta?: Meta }
 	| { type: 'output_delta'; text: string; meta?: Meta }
 	| { type: 'tool_calls'; tool_calls: ToolCallsEvent['tool_calls']; meta?: Meta }
-	| { type: 'tool_results'; tool_results: ToolResultsEvent['tool_results']; meta?: Meta }
+	| { type: 'tool_results'; tool_results: Array<ToolResultEvent['tool_result']>; meta?: Meta }
 	| { type: 'agent_stop'; cause: AgentStopCause; message: string; meta?: Meta };
 
 export type AgentViewListener = (event: AgentViewEvent) => void;
@@ -26,8 +26,8 @@ export function projectAgentView(event: AgentEvent): AgentViewEvent[] {
 		case EventType.Tool_Calls:
 			return [{ type: 'tool_calls', tool_calls: event.tool_calls, meta: event.meta }];
 
-		case EventType.Tool_Results:
-			return [{ type: 'tool_results', tool_results: event.tool_results, meta: event.meta }];
+		case EventType.Tool_Result:
+			return [{ type: 'tool_results', tool_results: [event.tool_result], meta: event.meta }];
 
 		case EventType.AGENT_STOP:
 			return [
@@ -41,6 +41,30 @@ export function projectAgentView(event: AgentEvent): AgentViewEvent[] {
 		default:
 			return [];
 	}
+}
+
+export function collectToolResultsForTurn(
+	events: AgentEvent[],
+	toolCallIds: string[],
+): Array<ToolResultEvent['tool_result']> {
+	const resultsById = new Map<string, ToolResultEvent['tool_result']>();
+
+	for (const event of events) {
+		if (event.type === EventType.Tool_Result) {
+			resultsById.set(event.tool_result.id, event.tool_result);
+		}
+	}
+
+	const results: Array<ToolResultEvent['tool_result']> = [];
+
+	for (const id of toolCallIds) {
+		const result = resultsById.get(id);
+		if (result) {
+			results.push(result);
+		}
+	}
+
+	return results;
 }
 
 type Task<T> = (p: T) => T;

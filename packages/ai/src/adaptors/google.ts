@@ -1,7 +1,6 @@
 import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
 import { EventType } from '@light-agent/protocol/events';
-import { formatLlmError } from '../formatLlmError.ts';
-import { parseEventsIntoRoundMap, stringifyContent } from '../helpers.ts';
+import { collectToolResultsForTurn, parseEventsIntoRoundMap, stringifyContent } from '../helpers.ts';
 
 import type { Content, FunctionCall, FunctionDeclaration, GenerateContentParameters } from '@google/genai';
 import type { AgentEvent } from '@light-agent/protocol/events';
@@ -17,7 +16,6 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 			const inputEvent = oneTurnEvents.find((event) => event.type === EventType.INPUT);
 			const thoughtEvent = oneTurnEvents.find((event) => event.type === EventType.THOUGHT);
 			const toolCallsEvent = oneTurnEvents.find((event) => event.type === EventType.Tool_Calls);
-			const toolResultsEvent = oneTurnEvents.find((event) => event.type === EventType.Tool_Results);
 			const outputEvent = oneTurnEvents.find((event) => event.type === EventType.OUTPUT);
 
 			if (inputEvent) {
@@ -28,6 +26,9 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 			}
 
 			if (toolCallsEvent?.tool_calls.length) {
+				const toolCallIds = toolCallsEvent.tool_calls.map((action) => action.id);
+				const toolResults = collectToolResultsForTurn(oneTurnEvents, toolCallIds);
+
 				roundContents.push({
 					role: 'model',
 					parts: [
@@ -43,20 +44,18 @@ const normalizeGoogleContents = (events: AgentEvent[]): Content[] => {
 					],
 				});
 
-				if (toolResultsEvent?.tool_results.length) {
-					roundContents.push({
-						role: 'user',
-						parts: toolResultsEvent.tool_results.map((observation) => ({
-							functionResponse: {
-								id: observation.id,
-								name: observation.name,
-								response: {
-									output: stringifyContent(observation.result),
-								},
+				roundContents.push({
+					role: 'user',
+					parts: toolResults.map((observation) => ({
+						functionResponse: {
+							id: observation.id,
+							name: observation.name,
+							response: {
+								output: stringifyContent(observation.result),
 							},
-						})),
-					});
-				}
+						},
+					})),
+				});
 			} else if (outputEvent || thoughtEvent) {
 				roundContents.push({
 					role: 'model',
@@ -117,67 +116,54 @@ export default class GoogleAdaptor implements Vender.Adaptor {
 		let thoughtTextBuffer = '';
 		let outputTextBuffer = '';
 
-		try {
-			const stream = await this.client.models.generateContentStream(config);
+		const stream = await this.client.models.generateContentStream(config);
 
-			for await (const chunk of stream) {
-				const parts = chunk.candidates?.[0]?.content?.parts ?? [];
+		for await (const chunk of stream) {
+			const parts = chunk.candidates?.[0]?.content?.parts ?? [];
 
-				for (const part of parts) {
-					if (part.text) {
-						if (part.thought) {
-							thoughtTextBuffer += part.text;
-							yield { type: EventType.THOUGHT_DELTA, text: part.text };
-						} else {
-							outputTextBuffer += part.text;
-							yield { type: EventType.OUTPUT_DELTA, text: part.text };
-						}
-					}
-
-					if (part.functionCall) {
-						functionCalls.push(part.functionCall);
+			for (const part of parts) {
+				if (part.text) {
+					if (part.thought) {
+						thoughtTextBuffer += part.text;
+						yield { type: EventType.THOUGHT_DELTA, text: part.text };
+					} else {
+						outputTextBuffer += part.text;
+						yield { type: EventType.OUTPUT_DELTA, text: part.text };
 					}
 				}
 
-				if (!parts.length && chunk.functionCalls?.length) {
-					functionCalls.push(...chunk.functionCalls);
+				if (part.functionCall) {
+					functionCalls.push(part.functionCall);
 				}
 			}
 
-			// thought -> action -> output
-			if (!functionCalls.length && !outputTextBuffer) {
-				yield {
-					type: EventType.AGENT_STOP,
-					cause: 'llm',
-					message: 'LLM did not return an action or output.',
-				};
+			if (!parts.length && chunk.functionCalls?.length) {
+				functionCalls.push(...chunk.functionCalls);
 			}
+		}
 
-			if (thoughtTextBuffer) {
-				yield { type: EventType.THOUGHT, text: thoughtTextBuffer };
-			}
+		if (thoughtTextBuffer) {
+			yield { type: EventType.THOUGHT, text: thoughtTextBuffer };
+		}
 
-			const toolCalls = functionCalls.flatMap((call, index) => {
-				if (!call.name) return [];
+		const toolCalls = functionCalls.flatMap((call, index) => {
+			if (!call.name) return [];
 
-				return [
-					{
-						id: call.id ?? `google_call_${index}_${call.name}`,
-						name: call.name,
-						args: call.args ?? {},
-					},
-				];
-			});
+			return [
+				{
+					id: call.id ?? `google_call_${index}_${call.name}`,
+					name: call.name,
+					args: call.args ?? {},
+				},
+			];
+		});
 
-			if (toolCalls.length) {
-				yield { type: EventType.Tool_Calls, tool_calls: toolCalls };
-			}
+		if (toolCalls.length) {
+			yield { type: EventType.Tool_Calls, tool_calls: toolCalls };
+		}
 
-			if (outputTextBuffer) {
-				yield { type: EventType.OUTPUT, text: outputTextBuffer };
-			}
-		} catch (e) {
-			yield { type: EventType.AGENT_STOP, cause: 'llm', message: formatLlmError(e) };
+		if (outputTextBuffer) {
+			yield { type: EventType.OUTPUT, text: outputTextBuffer };
 		}
 	}
 

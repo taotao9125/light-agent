@@ -95,7 +95,7 @@ export default class Agent {
 			case EventType.INPUT:
 			case EventType.THOUGHT:
 			case EventType.Tool_Calls:
-			case EventType.Tool_Results:
+			case EventType.Tool_Result:
 			case EventType.OUTPUT:
 			case EventType.AGENT_STOP:
 			case EventType.AGENT_SUMMARY:

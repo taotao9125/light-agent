@@ -74,6 +74,17 @@ function formatToolArgs(args: Record<string, unknown>) {
 		.join(' ');
 }
 
+function formatToolLabel(name: string, id: string) {
+	return `${name}#${id}`;
+}
+
+function formatToolError(result: string) {
+	const text = result.trim();
+	if (!text) return '';
+	const firstLine = text.split('\n')[0];
+	return firstLine.length > 160 ? `${firstLine.slice(0, 157)}...` : firstLine;
+}
+
 function appendLog(logs: LogItem[], item: LogItem) {
 	return [...logs, item].slice(-80);
 }
@@ -96,7 +107,8 @@ function projectViewEvent(event: AgentViewEvent): LogItem | null {
 				text: event.tool_calls
 					.map((toolCall) => {
 						const args = formatToolArgs(toolCall.args);
-						return args ? `tool: ${toolCall.name} ${args}` : `tool: ${toolCall.name}`;
+						const label = formatToolLabel(toolCall.name, toolCall.id);
+						return args ? `tool: ${label} ${args}` : `tool: ${label}`;
 					})
 					.join('\n'),
 			};
@@ -104,9 +116,13 @@ function projectViewEvent(event: AgentViewEvent): LogItem | null {
 			return {
 				type: 'tool',
 				text: event.tool_results
-					.map((toolResult) =>
-						toolResult.isError ? `tool error: ${toolResult.name}` : `tool done: ${toolResult.name}`,
-					)
+					.map((toolResult) => {
+						const label = formatToolLabel(toolResult.name, toolResult.id);
+						if (!toolResult.isError) return `tool done: ${label}`;
+
+						const message = formatToolError(toolResult.result);
+						return message ? `tool error: ${label} ${message}` : `tool error: ${label}`;
+					})
 					.join('\n'),
 			};
 		case 'agent_stop':

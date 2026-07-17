@@ -7,10 +7,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import contextBuilder from '../../context/contextBuilder.ts';
 
 import type { Vender } from '@light-agent/ai';
-import type { AgentEvent, ThoughtEvent, ToolCallsEvent, ToolResultsEvent } from '@light-agent/protocol/events';
+import type { AgentEvent, ThoughtEvent, ToolCallsEvent, ToolResultEvent } from '@light-agent/protocol/events';
 
 const ROUND_ID = 'round-1';
-const MAX_WINDOW_TOKENS = 30_000;
+const MAX_WINDOW_TOKENS = 200_000;
 const CHAR_LENGTH_PER_TOKEN = 4;
 
 const mockGenerateText = vi.fn();
@@ -53,15 +53,13 @@ function toolTurn(
 			meta: { roundId, turn },
 		},
 		{
-			type: EventType.Tool_Results,
-			tool_results: [
-				{
-					id: obsId,
-					name: 'read_file',
-					result: obsResult,
-					isError: options.isError ?? false,
-				},
-			],
+			type: EventType.Tool_Result,
+			tool_result: {
+				id: obsId,
+				name: 'read_file',
+				result: obsResult,
+				isError: options.isError ?? false,
+			},
 			meta: { roundId, turn },
 		},
 	];
@@ -99,9 +97,8 @@ async function buildContext(
 
 function findToolResults(events: AgentEvent[], roundId: string, turn: number) {
 	return events.find(
-		(event) =>
-			event.type === EventType.Tool_Results && event.meta?.roundId === roundId && event.meta?.turn === turn,
-	) as ToolResultsEvent | undefined;
+		(event) => event.type === EventType.Tool_Result && event.meta?.roundId === roundId && event.meta?.turn === turn,
+	) as ToolResultEvent | undefined;
 }
 
 function findThought(events: AgentEvent[], roundId: string, turn: number) {
@@ -139,15 +136,13 @@ function writeFileTurn(roundId: string, turn: number, fileContent: string, obsId
 			meta: { roundId, turn },
 		},
 		{
-			type: EventType.Tool_Results,
-			tool_results: [
-				{
-					id,
-					name: 'write_file',
-					result: `File written successfully.\nPath: src/file-${turn}.ts\nBytes: ${fileContent.length}`,
-					isError: false,
-				},
-			],
+			type: EventType.Tool_Result,
+			tool_result: {
+				id,
+				name: 'write_file',
+				result: `File written successfully.\nPath: src/file-${turn}.ts\nBytes: ${fileContent.length}`,
+				isError: false,
+			},
 			meta: { roundId, turn },
 		},
 	];
@@ -208,9 +203,9 @@ describe('contextBuilder', () => {
 			const coldResult = findToolResults(result.events, ROUND_ID, 1);
 			const hotResult = findToolResults(result.events, ROUND_ID, 4);
 
-			expect(coldResult?.tool_results[0].result).toContain('[what]: indexed_tool_result id=call_1 tool=read_file');
-			expect(coldResult?.tool_results[0].result).toContain('recall_indexed({ id: "call_1" })');
-			expect(hotResult?.tool_results[0].result).toBe(fullText);
+			expect(coldResult?.tool_result.result).toContain('[what]: indexed_tool_result id=call_1 tool=read_file');
+			expect(coldResult?.tool_result.result).toContain('recall_indexed({ id: "call_1" })');
+			expect(hotResult?.tool_result.result).toBe(fullText);
 		});
 
 		it('cold turn 的 THOUGHT 应被清空，hot turn 保留', async () => {
@@ -240,7 +235,7 @@ describe('contextBuilder', () => {
 			const result = await buildContext(events);
 			const coldResult = findToolResults(result.events, ROUND_ID, 1);
 
-			expect(coldResult?.tool_results[0].result).toBe(smallText);
+			expect(coldResult?.tool_result.result).toBe(smallText);
 		});
 
 		it('isError 的 OBS 不 index', async () => {
@@ -255,8 +250,8 @@ describe('contextBuilder', () => {
 			const result = await buildContext(events);
 			const coldResult = findToolResults(result.events, ROUND_ID, 1);
 
-			expect(coldResult?.tool_results[0].result).toBe(errorText);
-			expect(coldResult?.tool_results[0].result).not.toContain('[what]: indexed_tool_result');
+			expect(coldResult?.tool_result.result).toBe(errorText);
+			expect(coldResult?.tool_result.result).not.toContain('[what]: indexed_tool_result');
 		});
 
 		it('tool args 不应被 index', async () => {
@@ -285,8 +280,8 @@ describe('contextBuilder', () => {
 				inputEvent(ROUND_ID, 1, 'start'),
 				...buildManyToolTurns(ROUND_ID, [1, 2, 3, 4], `chunk-${'a'.repeat(500)}`),
 				{
-					type: EventType.Tool_Results,
-					tool_results: [{ id: 'call_final', name: 'read_file', result: obsText, isError: false }],
+					type: EventType.Tool_Result,
+					tool_result: { id: 'call_final', name: 'read_file', result: obsText, isError: false },
 					meta: { roundId: ROUND_ID, turn: 5 },
 				},
 			];
@@ -382,8 +377,8 @@ describe('contextBuilder', () => {
 		});
 	});
 
-	describe('preProcess after AGENT_SUMMARY', () => {
-		it('应裁掉 summary checkpoint 之前的 history，summary 置于 view 前部', async () => {
+	describe('AGENT_SUMMARY 输入行为', () => {
+		it('contextBuilder 不负责按 summary checkpoint 裁剪 history', async () => {
 			const archived = `archived-${'z'.repeat(500)}`;
 			const recent = `recent-${'r'.repeat(100)}`;
 			const events: AgentEvent[] = [
@@ -406,9 +401,9 @@ describe('contextBuilder', () => {
 
 			const result = await buildContext(events, 0);
 
-			expect(result.events[0].type).toBe(EventType.AGENT_SUMMARY);
-			expect(result.events[0]).toMatchObject({ text: 'checkpoint summary' });
-			expect(findToolResults(result.events, ROUND_ID, 1)).toBeUndefined();
+			expect(result.events[0].type).toBe(EventType.INPUT);
+			expect(result.events.some((event) => event.type === EventType.AGENT_SUMMARY)).toBe(true);
+			expect(findToolResults(result.events, ROUND_ID, 1)).toBeDefined();
 			expect(findToolResults(result.events, ROUND_ID, 3)).toBeDefined();
 		});
 	});
@@ -434,7 +429,7 @@ describe('contextBuilder', () => {
 
 			expect(mockGenerateText).not.toHaveBeenCalled();
 			expect(result.summaryEvent).toBeNull();
-			expect(findToolResults(result.events, ROUND_ID, 1)?.tool_results[0].result).toBe(fullText);
+			expect(findToolResults(result.events, ROUND_ID, 1)?.tool_result.result).toBe(fullText);
 			expect(findThought(result.events, ROUND_ID, 1)?.text).toBe('thought-1');
 		});
 	});

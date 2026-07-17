@@ -3,7 +3,7 @@ import { EventType } from '@light-agent/protocol/events';
 import pRetry, { AbortError } from 'p-retry';
 
 import type { Vender } from '@light-agent/ai';
-import type { AgentEvent, ToolCallsEvent, ToolResultsEvent } from '@light-agent/protocol/events';
+import type { AgentEvent, ToolCallsEvent, ToolResultEvent } from '@light-agent/protocol/events';
 import type { Context } from './context/contextBuilder.ts';
 import type ToolRegistry from './tool.ts';
 
@@ -53,9 +53,7 @@ class AgentLoop {
 		});
 	}
 
-	private async runToolAction(
-		action: ToolCallsEvent['tool_calls'][number],
-	): Promise<ToolResultsEvent['tool_results'][number]> {
+	private async runToolAction(action: ToolCallsEvent['tool_calls'][number]): Promise<ToolResultEvent['tool_result']> {
 		const { name, id, args } = action;
 		const toolCommand = this.toolRegistry.get(name);
 
@@ -234,33 +232,21 @@ class AgentLoop {
 				meta,
 			});
 
-			const settled = await Promise.allSettled(turnToolCalls.map((action) => this.runToolAction(action)));
+			const toolTasks = turnToolCalls.map(async (action) => {
+				const toolResult = await this.runToolAction(action);
+				this.emit({
+					type: EventType.Tool_Result,
+					tool_result: toolResult,
+					meta,
+				});
+			});
+
+			await Promise.all(toolTasks);
 
 			if (abortSignal.aborted) {
 				emitAbort();
 				return;
 			}
-
-			const toolResults = settled.map((result, index) => {
-				if (result.status === 'fulfilled') {
-					return result.value;
-				}
-
-				const action = turnToolCalls[index];
-				const rejectReason = result.reason;
-				return {
-					id: action.id,
-					name: action.name,
-					isError: true,
-					result: rejectReason instanceof Error ? rejectReason.message : String(result.reason),
-				};
-			});
-
-			this.emit({
-				type: EventType.Tool_Results,
-				tool_results: toolResults,
-				meta,
-			});
 
 			turn++;
 		}

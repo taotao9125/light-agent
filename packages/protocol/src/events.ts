@@ -1,11 +1,11 @@
-// 推理重复循环 {Input → Thought → Tool_Calls → Tool_Results → Output}
+// 推理重复循环 {Input → Thought → Tool_Calls → Tool_Result → Output}
 
 export const EventType = {
 	INPUT: 'input',
 	THOUGHT: 'thought',
 	THOUGHT_DELTA: 'thought_delta',
 	Tool_Calls: 'tool_calls',
-	Tool_Results: 'tool_results',
+	Tool_Result: 'tool_result',
 	OUTPUT: 'output',
 	OUTPUT_DELTA: 'output_delta',
 	AGENT_STOP: 'agent_stop',
@@ -57,14 +57,14 @@ export type ToolCallsEvent = {
 	meta?: Meta;
 };
 
-export type ToolResultsEvent = {
-	type: typeof EventType.Tool_Results;
-	tool_results: {
+export type ToolResultEvent = {
+	type: typeof EventType.Tool_Result;
+	tool_result: {
 		id: string;
 		name: string;
 		result: string;
 		isError: boolean;
-	}[];
+	};
 	meta?: Meta;
 };
 
@@ -106,7 +106,7 @@ export type AgentEvent =
 	| InputEvent
 	| ThoughtEvent
 	| ToolCallsEvent
-	| ToolResultsEvent
+	| ToolResultEvent
 	| OutputEvent
 	| AgentStop
 	| ThoughtDeltaEvent

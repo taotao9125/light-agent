@@ -1,4 +1,6 @@
-import type { AgentEvent } from '@light-agent/protocol/events';
+import { EventType } from '@light-agent/protocol/events';
+
+import type { AgentEvent, ToolResultEvent } from '@light-agent/protocol/events';
 
 export const stringifyContent = (content: unknown): string => {
 	if (typeof content === 'string') return content;
@@ -30,4 +32,28 @@ export function parseEventsIntoRoundMap(events: AgentEvent[]): RoundMap {
 	}
 
 	return roundMap;
+}
+
+export function collectToolResultsForTurn(
+	events: AgentEvent[],
+	toolCallIds: string[],
+): Array<ToolResultEvent['tool_result']> {
+	const resultsById = new Map<string, ToolResultEvent['tool_result']>();
+
+	for (const event of events) {
+		if (event.type === EventType.Tool_Result) {
+			resultsById.set(event.tool_result.id, event.tool_result);
+		}
+	}
+
+	const results: Array<ToolResultEvent['tool_result']> = [];
+
+	for (const id of toolCallIds) {
+		const result = resultsById.get(id);
+		if (result) {
+			results.push(result);
+		}
+	}
+
+	return results;
 }
