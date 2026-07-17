@@ -1,4 +1,6 @@
+import { shouldRetryAIError } from '@light-agent/ai';
 import { EventType } from '@light-agent/protocol/events';
+import pRetry, { AbortError } from 'p-retry';
 
 import type { Vender } from '@light-agent/ai';
 import type { AgentEvent, ToolCallsEvent, ToolResultsEvent } from '@light-agent/protocol/events';
@@ -7,9 +9,14 @@ import type ToolRegistry from './tool.ts';
 
 /** Agent loop runtime configuration. */
 export namespace Loop {
+	export type RetryConfig = {
+		retries?: number;
+	};
+
 	export type Config = {
 		venderAdaptor: Vender.Adaptor;
 		toolRegistry: ToolRegistry;
+		retry?: RetryConfig;
 	};
 }
 
@@ -27,11 +34,17 @@ function randomId() {
 class AgentLoop {
 	private venderAdaptor: Vender.Adaptor;
 	private toolRegistry: ToolRegistry;
+	private retry: {
+		retries: number;
+	};
 	private listeners: AgentEventListener[] = [];
 
 	constructor(config: Loop.Config) {
 		this.venderAdaptor = config.venderAdaptor;
 		this.toolRegistry = config.toolRegistry;
+		this.retry = {
+			retries: config.retry?.retries ?? 3,
+		};
 	}
 
 	private emit(event: AgentEvent): void {
@@ -72,6 +85,54 @@ class AgentLoop {
 				result: e instanceof Error ? e.message : String(e),
 			};
 		}
+	}
+
+	/**
+	 * 只负责消费一次模型 stream，并把 retry 边界收口在这里：
+	 * - 未收到任何 chunk 前失败：交给 p-retry 按错误类型判断是否重试。
+	 * - 已收到任意 chunk 后失败：终止自动重试，避免两次模型输出混在同一轮事件流里。
+	 */
+	private async consumeVenderStream(
+		input: Vender.StreamInput,
+		onChunk: (chunk: Vender.StreamEvent) => void,
+	): Promise<void> {
+		const runOnce = async () => {
+			let hasEmitted = false;
+
+			try {
+				for await (const chunk of this.venderAdaptor.stream(input)) {
+					hasEmitted = true;
+					onChunk(chunk);
+				}
+			} catch (error) {
+				if (hasEmitted) {
+					// 已经有 chunk 进入外部事件流后，不再重试，上层接口暴露 runLastPrompt，重新尝试 round
+					throw new AbortError(error instanceof Error ? error : new Error(String(error)));
+				}
+
+				throw error;
+			}
+		};
+
+		if (this.retry.retries <= 0) {
+			await runOnce();
+			return;
+		}
+
+		await pRetry(runOnce, {
+			retries: this.retry.retries,
+			shouldRetry: ({ error }) => shouldRetryAIError(error),
+		});
+	}
+
+	private formatLlmError(error: unknown): string {
+		const cause = error instanceof AbortError ? error.originalError : error;
+
+		if (cause instanceof Error) {
+			return cause.message;
+		}
+
+		return String(cause);
 	}
 
 	/**
@@ -119,38 +180,48 @@ class AgentLoop {
 			// 刷新 context
 			const { systemPrompt = '', events = [] } = await loopDeps.pullContextSnap();
 
-			const stream = this.venderAdaptor.stream({
+			const streamInput = {
 				systemPrompt: systemPrompt,
 				input: events,
 				tools: this.toolRegistry.getTools(),
-			});
+			};
 
-			for await (const chunk of stream) {
-				if (abortSignal.aborted) {
-					emitAbort();
-					return;
-				}
-
-				switch (chunk.type) {
-					case EventType.THOUGHT_DELTA:
-					case EventType.THOUGHT:
-					case EventType.OUTPUT_DELTA:
-					case EventType.OUTPUT:
-					case EventType.AGENT_TRACE:
-						this.emit({ ...chunk, meta: { roundId, turn } });
-						break;
-
-					case EventType.Tool_Calls:
-						turnToolCalls = chunk.tool_calls;
-						break;
-
-					case EventType.AGENT_STOP:
-						// LLM 厂商的错误, 我们无能为力, 但要进 canonicalEvents, 需要审计, 但不进下一轮的 prompt context ,对 LLM 来说没用。
-						this.emit({ ...chunk, meta: { roundId, turn } });
+			try {
+				await this.consumeVenderStream(streamInput, (chunk) => {
+					if (abortSignal.aborted) {
 						return;
-				}
+					}
+
+					switch (chunk.type) {
+						case EventType.THOUGHT_DELTA:
+						case EventType.THOUGHT:
+						case EventType.OUTPUT_DELTA:
+						case EventType.OUTPUT:
+						case EventType.AGENT_TRACE:
+							this.emit({ ...chunk, meta: { roundId, turn } });
+							break;
+
+						case EventType.Tool_Calls:
+							turnToolCalls = chunk.tool_calls;
+							break;
+					}
+				});
+			} catch (error) {
+				this.emit({
+					type: EventType.AGENT_STOP,
+					cause: 'llm',
+					message: this.formatLlmError(error),
+					meta: { roundId, turn },
+				});
+				return;
 			}
 
+			if (abortSignal.aborted) {
+				emitAbort();
+				return;
+			}
+
+			// 有最终 output 且没有工具调用，说明本轮已经正常结束。
 			if (!turnToolCalls.length) {
 				return;
 			}
@@ -205,7 +276,6 @@ class AgentLoop {
 			this.listeners = this.listeners.filter((item) => item !== listener);
 		};
 	}
-
 }
 
 export default AgentLoop;

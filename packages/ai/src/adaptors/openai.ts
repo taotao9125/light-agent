@@ -1,7 +1,7 @@
 import { EventType } from '@light-agent/protocol/events';
-import OpenAI from 'openai';
-import { formatLlmError } from '../formatLlmError.ts';
+import OpenAI, { APIConnectionError, APIConnectionTimeoutError, APIError, APIUserAbortError } from 'openai';
 import { parseEventsIntoRoundMap, stringifyContent } from '../helpers.ts';
+import { AIError } from '../retry.ts';
 
 import type { AgentEvent } from '@light-agent/protocol/events';
 import type {
@@ -10,6 +10,112 @@ import type {
 	ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions';
 import type { Vender } from '../index.ts';
+
+const nonRetryableApiCodes = ['insufficient_quota', 'context_length_exceeded', 'content_filter'];
+const retryableApiCodes = ['rate_limit_exceeded'];
+
+function readOpenAICode(error: APIError): string | undefined {
+	return typeof error.code === 'string' ? error.code : undefined;
+}
+
+function isRetryableProviderStatus(status: number | undefined): boolean {
+	return status !== undefined && status >= 500;
+}
+
+function isRequestErrorStatus(status: number | undefined): boolean {
+	return status !== undefined && status >= 400 && status < 500;
+}
+
+function isTransportError(error: unknown): error is APIConnectionError {
+	return error instanceof APIConnectionError || error instanceof APIConnectionTimeoutError;
+}
+
+function getMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+// 传输层错误, 可重试
+// 5XX 错误, 可重试
+// 4XX 错误, 优先根据 code 语意重试, 典型的就是 429 的 code 可能是账单问题, 可能是限流问题, 账单问题不重试, 限流的可以
+function normalizeOpenAIError(error: unknown): AIError {
+	if (error instanceof AIError) return error;
+
+	if (isTransportError(error)) {
+		return new AIError({
+			kind: 'transport_error',
+			message: error.message,
+			retryable: true,
+			cause: error,
+		});
+	}
+
+	if (error instanceof APIUserAbortError) {
+		return new AIError({
+			kind: 'abort_error',
+			message: error.message,
+			retryable: false,
+			cause: error,
+		});
+	}
+
+	if (error instanceof APIError) {
+		const code = readOpenAICode(error);
+
+		// https://developers.openai.com/api/docs/guides/error-codes
+		// 5xx 属于 provider 基础设施错误，按 status 可直接重试。
+		if (isRetryableProviderStatus(error.status)) {
+			return new AIError({
+				kind: 'provider_error',
+				message: error.message,
+				retryable: true,
+				status: error.status,
+				code,
+				cause: error,
+			});
+		}
+
+		// 4xx 是请求已被 provider 理解后的业务语义错误。
+		// 同一个 HTTP status 下可能有不同语义，例如 429 rate_limit 可重试，429 insufficient_quota 不可重试。
+		// 所以 4xx 必须先判断 provider code，不能只按 status 粗判。
+		if (code && nonRetryableApiCodes.includes(code)) {
+			return new AIError({
+				kind: 'request_error',
+				message: error.message,
+				retryable: false,
+				status: error.status,
+				code,
+				cause: error,
+			});
+		}
+
+		if (code && retryableApiCodes.includes(code)) {
+			return new AIError({
+				kind: 'provider_error',
+				message: error.message,
+				retryable: true,
+				status: error.status,
+				code,
+				cause: error,
+			});
+		}
+
+		return new AIError({
+			kind: isRequestErrorStatus(error.status) ? 'request_error' : 'unknown_error',
+			message: error.message,
+			retryable: false,
+			status: error.status,
+			code,
+			cause: error,
+		});
+	}
+
+	return new AIError({
+		kind: 'unknown_error',
+		message: getMessage(error),
+		retryable: false,
+		cause: error,
+	});
+}
 
 /** deepseek 的每一轮思考模式 message 结构
  * const messages: Messages = [
@@ -125,6 +231,7 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 		this.client = new OpenAI({
 			apiKey: vender.apiKey,
 			baseURL: vender.baseURL,
+			maxRetries: 0,
 			// logLevel: 'debug',
 		});
 	}
@@ -206,6 +313,7 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 			totalTokens: 0,
 		};
 		const startAt = Date.now();
+		let completed = false;
 
 		try {
 			const { data: stream } = await this.client.chat.completions.create(config).withResponse();
@@ -263,12 +371,6 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 				}
 			}
 
-			// thought -> action -> output
-
-			if (!pendingToolCalls.size && !outputTextBuffer) {
-				yield { type: EventType.AGENT_STOP, cause: 'llm', message: 'LLM did not return an action or output.' };
-			}
-
 			if (thoughtTextBuffer) {
 				yield { type: EventType.THOUGHT, text: thoughtTextBuffer };
 			}
@@ -288,16 +390,19 @@ export default class OpenAIAdaptor implements Vender.Adaptor {
 			}
 
 			pendingToolCalls.clear();
-		} catch (e) {
-			yield { type: EventType.AGENT_STOP, cause: 'llm', message: formatLlmError(e) };
+			completed = true;
+		} catch (error) {
+			throw normalizeOpenAIError(error);
 		} finally {
-			yield {
-				type: EventType.AGENT_TRACE,
-				startAt,
-				endAt: Date.now(),
-				model: config.model,
-				costs,
-			};
+			if (completed) {
+				yield {
+					type: EventType.AGENT_TRACE,
+					startAt,
+					endAt: Date.now(),
+					model: config.model,
+					costs,
+				};
+			}
 		}
 	}
 }

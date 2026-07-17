@@ -1,7 +1,11 @@
 import GoogleAdaptor from './adaptors/google.ts';
 import OpenAIAdaptor from './adaptors/openai.ts';
 
-import type { AgentEvent } from '@light-agent/protocol';
+export { AIError, shouldRetryAIError } from './retry.ts';
+
+export type { AIErrorKind } from './retry.ts';
+
+import type { AgentEvent, AgentStop } from '@light-agent/protocol/events';
 
 export namespace Vender {
 	export type ToolMeta = {
@@ -25,6 +29,8 @@ export namespace Vender {
 		systemPrompt?: string;
 	};
 
+	export type StreamEvent = Exclude<AgentEvent, AgentStop>;
+
 	export type GenerateTextInput = {
 		systemPrompt?: string;
 		messages: Array<{ role: 'user'; content: string }>;
@@ -40,7 +46,7 @@ export namespace Vender {
 	};
 
 	export interface Adaptor {
-		stream(input: StreamInput): AsyncIterable<AgentEvent>;
+		stream(input: StreamInput): AsyncIterable<StreamEvent>;
 		_generateText(input: GenerateTextInput): Promise<GenerateTextResult>;
 	}
 }

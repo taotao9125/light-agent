@@ -4,6 +4,7 @@ import contextBuilder from './context/contextBuilder.ts';
 
 import type { Vender } from '@light-agent/ai';
 import type { AgentEvent, SummaryEvent } from '@light-agent/protocol/events';
+import type { Loop } from './agentLoop.ts';
 import type { Context } from './context/contextBuilder.ts';
 import type { AgentViewEvent, AgentViewListener } from './helpers.ts';
 import type { AgentSession } from './session.ts';
@@ -22,6 +23,9 @@ type Config = {
 	session?: AgentSession;
 	venderAdaptor: Vender.Adaptor;
 	context: Context.Config;
+	loop?: {
+		retry?: Loop.RetryConfig;
+	};
 };
 
 type Job = {
@@ -60,6 +64,7 @@ export default class Agent {
 		this.agentLoop = new AgentLoop({
 			venderAdaptor: this.venderAdaptor,
 			toolRegistry: this.tool,
+			retry: config.loop?.retry,
 		});
 
 		this.agentLoop.on((event) => {
