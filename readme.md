@@ -4,15 +4,7 @@ https://github.com/user-attachments/assets/78560566-6359-4a48-9eb4-a407cd146afc
 -----------------------
 
 
-# plan
-## 工具层
-### 原则, 当模型工具选错（unknown tool），传参数出错，工具执行出错，反馈给模型，不要退出进程
-- 重构工具层注册, schema 强制为 zod object。
-- 内置 grep(rg), find(fd) 工具, sed, shell 工具。
-- 重构召回工具。
-- 格式化工具的读取结果，错误信息，线索信心等。
-- 路径逃逸问题。
-
+# TODO 
 
 ## 事件协议
 - 生命周期事件统一从 agent emit 出来
@@ -21,13 +13,9 @@ https://github.com/user-attachments/assets/78560566-6359-4a48-9eb4-a407cd146afc
 - `event(round, turn) => event(turn, step)`
 
 
-## 内存
-- 内存不全量存 canonical event log, 保留最近两个 turn
-  - 召回优先从 canonical event log, 如果没有，去 grep 文件。
+### ---------------------- 以下记录下架构, 不稳定, 持续更新中 ----------------------
 
-
-
-  # light-agent 架构
+# light-agent 架构
 
 `light-agent` 是一个基于事件流的 Agent Runtime。核心边界是：
 
@@ -43,10 +31,10 @@ https://github.com/user-attachments/assets/78560566-6359-4a48-9eb4-a407cd146afc
 ```ts
 import Agent from '@light-agent/agent';
 import { createClient } from '@light-agent/ai';
+import { builtinToolPrompts, createGrepTool, createReadFileTool, createTreeTool } from '@light-agent/agent/builtin-tools';
 import { z } from 'zod';
 
 const agent = new Agent({
-	sessionId: 'session-id',
 	cwd: process.cwd(),
 	venderAdaptor: createClient({
 		name: 'openai',
@@ -55,10 +43,14 @@ const agent = new Agent({
 		model: 'gpt-4.1',
 	}),
 	context: {
-		prompts: [],
+		prompts: [builtinToolPrompts],
 		skills: [],
 	},
 });
+
+agent.tool.register(createTreeTool());
+agent.tool.register(createGrepTool());
+agent.tool.register(createReadFileTool());
 
 agent.tool.register({
 	name: 'weather',
@@ -86,6 +78,7 @@ type AgentPublicAPI = {
 	on(listener: AgentViewListener): () => void;
 	getState(): {
 		isRunning: boolean;
+		queuedPrompts: number;
 		currentWindowTokens: number;
 		contextStrategyEnabled: boolean;
 	};
@@ -100,18 +93,13 @@ type AgentPublicAPI = {
 
 ```ts
 type AgentConfig = {
-	sessionId: string;
 	cwd: string;
-	store?: SessionStoreInterface;
+	session?: AgentSession;
 	venderAdaptor: Vender.Adaptor;
 	context: Context.Config;
-};
-
-type Job = {
-	prompt: string;
-	resolve: () => void;
-	reject: (reason?: unknown) => void;
-	abortController: AbortController;
+	loop?: {
+		retry?: Loop.RetryConfig;
+	};
 };
 
 class Agent {
@@ -127,9 +115,9 @@ class Agent {
 
 职责：
 
-- 串行处理用户 `prompt` 队列。
-- 为每个运行中的任务创建 `AbortController`。
-- 持有 canonical event log，并把稳定事件写入 `SessionStoreInterface`。
+- 使用 `p-queue` 串行处理用户 `prompt` 队列。
+- 为当前运行中的 prompt 保留 `runningPromptAbortController`，用于 `interrupt()` 和工具执行期 `signal`。
+- 持有 canonical event log，并把稳定事件写入 `AgentSession`。
 - 在每次模型调用前调用 `contextBuilder` 生成上下文快照。
 - 构造 `ToolRegistry`，并通过 `pullToolContext` 把 `cwd`、`signal` 注入工具执行期。
 
@@ -176,7 +164,7 @@ type LoopFlow =
 
 - `AgentLoop` 只把模型传来的 `args` 交给工具。
 - 运行时上下文由 `ToolRegistry` 内部拉取。
-- unknown tool、参数错误、工具执行错误都会形成 `Tool_Results`，返回给模型继续决策，而不是退出进程。
+- unknown tool、参数错误、工具执行错误都会形成 `Tool_Result`，返回给模型继续决策，而不是退出进程。
 
 ## Tool
 
@@ -257,11 +245,25 @@ type RegisterValidation =
 
 ## 内置工具
 
-当前 `Agent` 构造时注册三类内置工具：
+当前 `Agent` 只内置 runtime 级别的 `recall_indexed` 工具。文件探索类工具不再默认注册，需要调用方显式注册。
 
 ```ts
-type BuiltinTools = 'recall' | 'grep' | 'read_file';
+import { builtinToolPrompts, createGrepTool, createReadFileTool, createTreeTool } from '@light-agent/agent/builtin-tools';
+
+const agent = new Agent({
+	cwd: process.cwd(),
+	venderAdaptor,
+	context: {
+		prompts: [builtinToolPrompts],
+	},
+});
+
+agent.tool.register(createTreeTool());
+agent.tool.register(createGrepTool());
+agent.tool.register(createReadFileTool());
 ```
+
+`tree -> grep -> read_file` 这类文件工具策略放在 `builtinToolPrompts` 中。只有注册了对应工具时，才应该把这段 prompt 传入 `context.prompts`。
 
 路径相关工具必须经过统一路径校验：
 
@@ -337,7 +339,7 @@ type AgentEvent =
 	| ThoughtEvent
 	| ThoughtDeltaEvent
 	| ToolCallsEvent
-	| ToolResultsEvent
+	| ToolResultEvent
 	| OutputEvent
 	| OutputDeltaEvent
 	| AgentStop
@@ -358,14 +360,14 @@ type ToolCallsEvent = {
 	meta?: Meta;
 };
 
-type ToolResultsEvent = {
-	type: 'tool_results';
-	tool_results: {
+type ToolResultEvent = {
+	type: 'tool_result';
+	tool_result: {
 		id: string;
 		name: string;
 		result: string;
 		isError: boolean;
-	}[];
+	};
 	meta?: Meta;
 };
 ```
@@ -377,7 +379,7 @@ type EventFlow = [
 	'user input',
 	'input',
 	'thought | output | tool_calls',
-	'tool_results',
+	'tool_result',
 	'thought | output | agent_stop',
 ];
 ```
@@ -411,18 +413,50 @@ namespace Context {
 
 `Context.BuildResult` 不携带 tools。工具列表由 `AgentLoop` 在调用模型时直接从 `ToolRegistry.getTools()` 获取。
 
-## Store
+## Session
 
-持久化层只处理事件和上下文快照。
+Session 是 Agent 的外挂持久化能力。`Agent` 只依赖单个 `AgentSession`，不依赖 `SessionManager`。
 
 ```ts
-interface SessionStoreInterface {
-	load(sessionId: string): Promise<AgentEvent[]>;
-	loadTraces(sessionId: string): Promise<TraceEvent[]>;
-	append(sessionId: string, event: AgentEvent): Promise<void>;
-	appendTrace(sessionId: string, event: TraceEvent): Promise<void>;
-	appendContextSnap(sessionId: string, record: Record<string, unknown>): Promise<void>;
-	flush(): Promise<void>;
+type SessionStatus = 'idle' | 'running';
+
+interface SessionMetadata {
+	id: string;
+	cwd: string;
+	title?: string;
+	createdAt: string;
+	updatedAt: string;
+	status: SessionStatus;
+	metadata?: Record<string, unknown>;
+}
+
+interface AgentSession {
+	readonly id: string;
+	append(event: AgentEvent): Promise<void>;
+	load(): Promise<AgentEvent[]>;
+}
+
+interface SessionManager {
+	create(input: { cwd: string; title?: string; metadata?: Record<string, unknown> }): Promise<AgentSession>;
+	open(sessionId: string): Promise<AgentSession>;
+	openLatest(input?: { cwd?: string }): Promise<AgentSession | undefined>;
+	list(input?: { cwd?: string; limit?: number }): Promise<SessionMetadata[]>;
+	markRunning(sessionId: string): Promise<void>;
+	markIdle(sessionId: string): Promise<void>;
+}
+```
+
+宿主层负责 session 生命周期：
+
+```ts
+const session = await sessionManager.openLatest({ cwd }) ?? await sessionManager.create({ cwd });
+const agent = new Agent({ cwd, session, venderAdaptor, context });
+
+try {
+	await sessionManager.markRunning(session.id);
+	await agent.prompt(input);
+} finally {
+	await sessionManager.markIdle(session.id);
 }
 ```
 
@@ -433,7 +467,7 @@ type CanonicalEvents =
 	| 'input'
 	| 'thought'
 	| 'tool_calls'
-	| 'tool_results'
+	| 'tool_result'
 	| 'output'
 	| 'agent_stop'
 	| 'agent_summary'
@@ -444,13 +478,13 @@ type CanonicalEvents =
 
 ```ts
 type DependencyDirection = {
-	agent: ['agentLoop', 'tool', 'context', 'store', 'protocol', 'ai'];
+	agent: ['agentLoop', 'tool', 'context', 'session', 'protocol', 'ai'];
 	agentLoop: ['tool', 'context types', 'protocol', 'ai'];
 	tool: ['zod'];
 	context: ['protocol', 'ai'];
 	ai: ['protocol'];
 	protocol: [];
-	store: ['protocol'];
+	session: ['protocol'];
 };
 ```
 
