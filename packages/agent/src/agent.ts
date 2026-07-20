@@ -1,4 +1,5 @@
 import { EventType } from '@light-agent/protocol/events';
+import PQueue from 'p-queue';
 import AgentLoop from './agentLoop.ts';
 import contextBuilder from './context/contextBuilder.ts';
 
@@ -25,23 +26,13 @@ type Config = {
 	};
 };
 
-type Job = {
-	prompt: string;
-	resolve: () => void;
-	reject: (reason?: unknown) => void;
-	abortController: AbortController;
-};
-
 export default class Agent {
 	private cwd: string;
 	private session?: AgentSession;
 	private agentLoop: AgentLoop;
 	private venderAdaptor: Vender.Adaptor;
-
-	private runRecords = {
-		queue: [] as Job[],
-		activeJob: null as Job | null,
-	};
+	private promptQueue = new PQueue({ concurrency: 1 });
+	private runningPromptAbortController: AbortController | null = null;
 
 	private context: Context.Config;
 	private canonicalEvents: AgentEvent[] = [];
@@ -55,7 +46,7 @@ export default class Agent {
 		this.venderAdaptor = config.venderAdaptor;
 		this.tool = new ToolRegistry(() => ({
 			cwd: this.cwd,
-			signal: this.runRecords.activeJob?.abortController.signal,
+			signal: this.runningPromptAbortController?.signal,
 		}));
 
 		this.agentLoop = new AgentLoop({
@@ -133,56 +124,36 @@ export default class Agent {
 		}
 	}
 
-	private async processQueue() {
-		if (!this.runRecords.queue.length) return;
-		if (this.runRecords.activeJob) return;
-
-		const currentJob = this.runRecords.queue.shift();
-		if (!currentJob) return;
-
-		try {
-			this.runRecords.activeJob = currentJob;
-			await this.agentLoop.prompt(currentJob.prompt, {
-				abortSignal: currentJob.abortController.signal,
-				pullContextSnap: async () => {
-					const lastWindowTokens = this.getLastWindowCosts()?.costs.totalTokens || 0;
-					const strategyEnabled = this.context.strategyEnabled ?? true;
-					const snap = await contextBuilder({
-						prompts: this.context.prompts,
-						skills: this.context.skills,
-						events: this.canonicalEvents,
-						venderAdaptor: this.venderAdaptor,
-						lastWindowTokens,
-						strategyEnabled,
-					});
-
-					if (snap.summaryEvent) {
-						await this.commitEvent(snap.summaryEvent);
-					}
-
-					return snap;
-				},
-			});
-			currentJob.resolve();
-		} catch (e) {
-			currentJob.reject(e);
-		} finally {
-			this.runRecords.activeJob = null;
-			this.processQueue();
-		}
-	}
-
 	prompt(prompt: string) {
-		const { promise, resolve, reject } = Promise.withResolvers<void>();
 		const abortController = new AbortController();
-		this.runRecords.queue.push({
-			prompt,
-			abortController,
-			resolve,
-			reject,
+		return this.promptQueue.add(async () => {
+			this.runningPromptAbortController = abortController;
+			try {
+				await this.agentLoop.prompt(prompt, {
+					abortSignal: abortController.signal,
+					pullContextSnap: async () => {
+						const lastWindowTokens = this.getLastWindowCosts()?.costs.totalTokens || 0;
+						const strategyEnabled = this.context.strategyEnabled ?? true;
+						const snap = await contextBuilder({
+							prompts: this.context.prompts,
+							skills: this.context.skills,
+							events: this.canonicalEvents,
+							venderAdaptor: this.venderAdaptor,
+							lastWindowTokens,
+							strategyEnabled,
+						});
+
+						if (snap.summaryEvent) {
+							await this.commitEvent(snap.summaryEvent);
+						}
+
+						return snap;
+					},
+				});
+			} finally {
+				this.runningPromptAbortController = null;
+			}
 		});
-		void this.processQueue();
-		return promise;
 	}
 
 	on(listener: AgentViewListener): () => void {
@@ -193,9 +164,7 @@ export default class Agent {
 	}
 
 	interrupt(reason = 'user interrupted') {
-		const activeJob = this.runRecords.activeJob;
-		if (!activeJob) return;
-		activeJob.abortController.abort(reason);
+		this.runningPromptAbortController?.abort(reason);
 	}
 
 	getLastWindowCosts() {
@@ -204,7 +173,8 @@ export default class Agent {
 
 	getState() {
 		return {
-			isRunning: !!this.runRecords.activeJob,
+			isRunning: this.promptQueue.pending > 0,
+			queuedPrompts: this.promptQueue.size,
 			// 这里如果需要更加精细化的 UI 显示如 system prompt token, tool token 等, 需要本地估算, 暂时不做
 			currentWindowTokens: this.getLastWindowCosts()?.costs.totalTokens || 0,
 			contextStrategyEnabled: this.context.strategyEnabled ?? true,

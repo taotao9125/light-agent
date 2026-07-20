@@ -42,6 +42,7 @@
   "dependencies": {
     "@light-agent/ai": "workspace:*",
     "@light-agent/protocol": "workspace:*",
+    "p-queue": "^9.3.1",
     "p-retry": "^8.0.0",
     "zod": "^4.4.3"
   }

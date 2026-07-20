@@ -21,12 +21,27 @@ const mockVenderAdaptor: Vender.Adaptor = {
 	},
 };
 
-function createAgent() {
+function createAgent(venderAdaptor: Vender.Adaptor = mockVenderAdaptor) {
 	return new Agent({
 		cwd: '/tmp/workspace',
-		venderAdaptor: mockVenderAdaptor,
+		venderAdaptor,
 		context: {},
 	});
+}
+
+function createDeferred<T = void>() {
+	const { promise, resolve, reject } = Promise.withResolvers<T>();
+	return { promise, resolve, reject };
+}
+
+async function waitFor(assertion: () => boolean) {
+	const startedAt = Date.now();
+	while (!assertion()) {
+		if (Date.now() - startedAt > 1000) {
+			throw new Error('等待条件超时');
+		}
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	}
 }
 
 describe('Agent 工具接口', () => {
@@ -91,6 +106,139 @@ describe('Agent 工具接口', () => {
 		const result = await recallTool?.execute({ id: 'call_1', _intent: '召回历史结果' }, { cwd: '/tmp/workspace' });
 
 		expect(result).toEqual({ isError: false, content: '完整历史结果' });
+	});
+});
+
+describe('Agent prompt 队列', () => {
+	it('应按顺序串行执行多个 prompt', async () => {
+		const gates = [createDeferred(), createDeferred()];
+		const startedPrompts: number[] = [];
+		const venderAdaptor: Vender.Adaptor = {
+			async *stream() {
+				const index = startedPrompts.length;
+				startedPrompts.push(index);
+				await gates[index].promise;
+				yield { type: EventType.OUTPUT, text: `第 ${index + 1} 次输出` };
+			},
+			async _generateText() {
+				return {
+					text: '',
+					usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+				};
+			},
+		};
+		const agent = createAgent(venderAdaptor);
+
+		const firstPrompt = agent.prompt('第一个问题');
+		const secondPrompt = agent.prompt('第二个问题');
+
+		await waitFor(() => startedPrompts.length === 1);
+		expect(agent.getState()).toMatchObject({
+			isRunning: true,
+			queuedPrompts: 1,
+		});
+
+		gates[0].resolve();
+		await firstPrompt;
+
+		await waitFor(() => startedPrompts.length === 2);
+		expect(startedPrompts).toEqual([0, 1]);
+
+		gates[1].resolve();
+		await secondPrompt;
+		expect(agent.getState()).toMatchObject({
+			isRunning: false,
+			queuedPrompts: 0,
+		});
+	});
+
+	it('interrupt 应取消当前运行 prompt，但不清空等待队列', async () => {
+		const gates = [createDeferred(), createDeferred()];
+		const startedPrompts: number[] = [];
+		const venderAdaptor: Vender.Adaptor = {
+			async *stream() {
+				const index = startedPrompts.length;
+				startedPrompts.push(index);
+				await gates[index].promise;
+				yield { type: EventType.OUTPUT, text: `第 ${index + 1} 次输出` };
+			},
+			async _generateText() {
+				return {
+					text: '',
+					usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+				};
+			},
+		};
+		const agent = createAgent(venderAdaptor);
+
+		const firstPrompt = agent.prompt('第一个问题');
+		const secondPrompt = agent.prompt('第二个问题');
+
+		await waitFor(() => startedPrompts.length === 1);
+		agent.interrupt('用户取消');
+		expect(agent.getState().queuedPrompts).toBe(1);
+
+		gates[0].resolve();
+		await firstPrompt;
+
+		await waitFor(() => startedPrompts.length === 2);
+		gates[1].resolve();
+		await secondPrompt;
+		expect(startedPrompts).toEqual([0, 1]);
+	});
+
+	it('工具执行时应拿到当前 prompt 的 signal', async () => {
+		const toolGate = createDeferred();
+		let capturedSignal: AbortSignal | undefined;
+		let streamCalls = 0;
+		const venderAdaptor: Vender.Adaptor = {
+			async *stream() {
+				streamCalls++;
+				if (streamCalls === 1) {
+					yield {
+						type: EventType.Tool_Calls,
+						tool_calls: [
+							{
+								id: 'call_1',
+								name: 'capture_signal',
+								args: { _intent: '验证工具中断信号' },
+							},
+						],
+					};
+					return;
+				}
+
+				yield { type: EventType.OUTPUT, text: '完成' };
+			},
+			async _generateText() {
+				return {
+					text: '',
+					usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+				};
+			},
+		};
+		const agent = createAgent(venderAdaptor);
+		agent.tool.register({
+			name: 'capture_signal',
+			description: '捕获当前 prompt 的中断信号',
+			schema: z.object({}),
+			execute: async (_args, context) => {
+				capturedSignal = context?.signal;
+				await toolGate.promise;
+				return { isError: false, content: 'ok' };
+			},
+		});
+
+		const runningPrompt = agent.prompt('调用工具');
+
+		await waitFor(() => !!capturedSignal);
+		expect(capturedSignal?.aborted).toBe(false);
+
+		agent.interrupt('用户取消');
+		expect(capturedSignal?.aborted).toBe(true);
+
+		toolGate.resolve();
+		await runningPrompt;
 	});
 });
 

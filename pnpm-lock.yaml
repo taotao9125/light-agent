@@ -35,6 +35,9 @@ importers:
       '@light-agent/protocol':
         specifier: workspace:*
         version: link:../protocol
+      p-queue:
+        specifier: ^9.3.1
+        version: 9.3.1
       p-retry:
         specifier: ^8.0.0
         version: 8.0.0
@@ -534,6 +537,9 @@ packages:
   estree-walker@3.0.3:
     resolution: {integrity: sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==}
 
+  eventemitter3@5.0.4:
+    resolution: {integrity: sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw==}
+
   execa@1.0.0:
     resolution: {integrity: sha512-adbxcyWV46qiHyvSp50TKt05tB4tK3HcmF7/nxfAdhnox83seTDbwnaqKO4sXRy7roHAIFqJP/Rw/AuEbX61LA==}
     engines: {node: '>=6'}
@@ -837,6 +843,10 @@ packages:
     resolution: {integrity: sha512-LICb2p9CB7FS+0eR1oqWnHhp0FljGLZCWBE9aix0Uye9W8LTQPwMTYVGWQWIw9RdQiDg4+epXQODwIYJtSJaow==}
     engines: {node: '>=4'}
 
+  p-queue@9.3.1:
+    resolution: {integrity: sha512-POWdiIPmsUPGwb4FeQ4OBg46aqmcInSWe45CKDsGHiOBiVQM9chqfQTuqhuTzcg2Vz9faTI65at0KkVyVEiCHw==}
+    engines: {node: '>=20'}
+
   p-retry@4.6.2:
     resolution: {integrity: sha512-312Id396EbJdvRONlngUx0NydfrIQ5lsYu0znKVUzVvArzEIt08V1qhtyESbGVd1FGX7UKtiFp5uwKZdM8wIuQ==}
     engines: {node: '>=8'}
@@ -844,6 +854,10 @@ packages:
   p-retry@8.0.0:
     resolution: {integrity: sha512-kFVqH1HxOHp8LupNsOys7bSV09VYTRLxarH/mokO4Rqhk6wGi70E0jh4VzvVGXfEVNggHoHLAMWsQqHyU1Ey9A==}
     engines: {node: '>=22'}
+
+  p-timeout@7.0.1:
+    resolution: {integrity: sha512-AxTM2wDGORHGEkPCt8yqxOTMgpfbEHqF51f/5fJCmwFC3C/zNcGT63SymH2ttOAaiIws2zVg4+izQCjrakcwHg==}
+    engines: {node: '>=20'}
 
   patch-console@2.0.0:
     resolution: {integrity: sha512-0YNdUceMdaQwoKce1gatDScmMo5pu/tfABfnzEqeG0gtTmd7mh/WcwgUjtAeOU7N8nFFlbQBnFK2gXW5fGvmMA==}
@@ -1528,6 +1542,8 @@ snapshots:
     dependencies:
       '@types/estree': 1.0.9
 
+  eventemitter3@5.0.4: {}
+
   execa@1.0.0:
     dependencies:
       cross-spawn: 6.0.6
@@ -1805,6 +1821,11 @@ snapshots:
 
   p-finally@1.0.0: {}
 
+  p-queue@9.3.1:
+    dependencies:
+      eventemitter3: 5.0.4
+      p-timeout: 7.0.1
+
   p-retry@4.6.2:
     dependencies:
       '@types/retry': 0.12.0
@@ -1813,6 +1834,8 @@ snapshots:
   p-retry@8.0.0:
     dependencies:
       is-network-error: 1.3.2
+
+  p-timeout@7.0.1: {}
 
   patch-console@2.0.0: {}
 
