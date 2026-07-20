@@ -171,7 +171,7 @@ describe('contextBuilder', () => {
 			const result = await buildContext([]);
 
 			expect(result.systemPrompt).not.toContain('tree：用于探索项目目录结构');
-			expect(result.systemPrompt).not.toContain('不要调用 grep({ searchStr: "." })');
+			expect(result.systemPrompt).not.toContain('不要调用 grep({ searchStrs: ["."] })');
 			expect(result.systemPrompt).not.toContain('项目结构未知：先 tree');
 		});
 
@@ -182,9 +182,10 @@ describe('contextBuilder', () => {
 
 			expect(result.systemPrompt).toContain('tree：用于探索项目目录结构');
 			expect(result.systemPrompt).toContain('若用户要求“分析项目架构”、而你还不知道项目目录结构，先调用它');
-			expect(result.systemPrompt).toContain('它只有一个参数 searchStr');
-			expect(result.systemPrompt).toContain('不要调用 grep({ searchStr: "." })');
-			expect(result.systemPrompt).toContain('grep({ searchStr: "Tool_Calls" })');
+			expect(result.systemPrompt).toContain('参数是 searchStrs 数组，可选 scope 目录');
+			expect(result.systemPrompt).toContain('不要调用 grep({ searchStrs: ["."] })');
+			expect(result.systemPrompt).toContain('grep({ searchStrs: ["Tool_Calls"] })');
+			expect(result.systemPrompt).toContain('scope 只支持目录，不支持文件');
 			expect(result.systemPrompt).toContain('不要构造正则表达式');
 			expect(result.systemPrompt).toContain('项目结构未知：先 tree');
 		});

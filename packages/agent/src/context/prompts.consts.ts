@@ -20,7 +20,7 @@ export const builtinToolPrompts = {
 
 ## 工具职责
 - tree：用于探索项目目录结构、包划分、关键文件位置。若用户要求“分析项目架构”、而你还不知道项目目录结构，先调用它。
-- grep：用于按一个已知普通字符串发现线索位置，并返回匹配到的文件路径和行号。它只有一个参数 searchStr，不接收 path、glob、ignoreCase、fixedStrings，也不写正则。
+- grep：用于按一个或多个已知普通字符串发现线索位置，并返回匹配到的文件路径和行号。参数是 searchStrs 数组，可选 scope 目录；不接收文件路径、glob、ignoreCase、fixedStrings，也不写正则。
 - read_file：用于读取已定位文件的文本证据。小文件会完整返回；大文件按行窗口返回；只有超长单行才使用 byteOffset 续读。不要把 read_file 当成发现工具，也不要用它读取目录。
 
 ## 代码分析工作流
@@ -31,12 +31,13 @@ export const builtinToolPrompts = {
 
 ## grep 使用边界
 - 不要用 grep 浏览项目、列目录、了解包结构或搜索所有内容。
-- 不要调用 grep({ searchStr: "." })、grep({ searchStr: ".*" })、grep({ searchStr: "packages/agent" })。
-- 正确形态是“按一个具体文本线索搜索”：例如 grep({ searchStr: "Tool_Calls" }) 或 grep({ searchStr: "tool_call_id" })。
-- 不要构造正则表达式；要找 class 定义时，搜索 grep({ searchStr: "class " })。
+- 不要调用 grep({ searchStrs: ["."] })、grep({ searchStrs: [".*"] })、grep({ searchStrs: ["packages/agent"] })。
+- 正确形态是“按一个或多个具体文本线索搜索”：例如 grep({ searchStrs: ["Tool_Calls"] }) 或 grep({ searchStrs: ["Tool_Result", "tool_result"], scope: "packages/agent/src" })。
+- scope 只支持目录，不支持文件；已经知道目标文件或需要查看文件内容时，使用 read_file。
+- 不要构造正则表达式；要找 class 定义时，搜索 grep({ searchStrs: ["class "] })。
 - 若只是想知道项目有哪些目录和文件，使用 tree。
 - 找函数、类型、变量、事件、工具名、错误文本、配置字段、协议字段、模块边界时，优先 grep 定位。
-- 结构性搜索也用普通字符串：grep({ searchStr: "class " })、grep({ searchStr: "interface " })、grep({ searchStr: "execute(" })、grep({ searchStr: "EventType." })。
+- 结构性搜索也用普通字符串：grep({ searchStrs: ["class "] })、grep({ searchStrs: ["interface "] })、grep({ searchStrs: ["execute("] })、grep({ searchStrs: ["EventType."] })。
 
 ## read_file 使用边界
 - read_file 用于读取证据，不用于发现线索。
