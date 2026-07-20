@@ -154,25 +154,19 @@ type ToolCall = ToolCallsEvent['tool_calls'][number];
 type ToolResult = ToolResultEvent['tool_result'];
 const INDEX_MIN_CHARS = 100;
 
-function buildIndexedCallId(actionId: string) {
-	return actionId;
-}
-
-function buildIndexedToolResultPlaceholder(callId: string, toolName: string, intent: string) {
-	return [
-		`[what]: indexed_tool_result id=${callId} tool=${toolName}；完整正文已从当前上下文移出，并保存在历史索引中`,
-		intent ? `[intent]: ${intent}` : undefined,
-		`[how]: 如果后续判断必须依赖完整原文，调用 recall_indexed({ id: "${callId}" }) 召回；否则不要召回。`,
-	]
-		.filter(Boolean)
-		.join('\n');
-}
 
 // 尽可能给模型视角提供线索: 这是什么历史结果，状态是什么, 调用目的是什么，如果需要细节，恢复指令是什么
 function compressObsContent(obs: ToolResult, action: ToolCall) {
 	if (obs.result.length <= INDEX_MIN_CHARS) return obs.result;
-	const callId = buildIndexedCallId(obs.id);
-	return buildIndexedToolResultPlaceholder(callId, obs.name, getIntent(action.args));
+	const intent = getIntent(action.args);
+	return [
+		`[what]: indexed_tool_result id=${obs.id} tool=${obs.name}；完整正文已从当前上下文移出，并保存在历史索引中`,
+		intent ? `[intent]: ${intent}` : undefined,
+		`[how]: 如果后续判断必须依赖完整原文，调用 recall_indexed({ id: "${obs.id}" }) 召回；否则不要召回。`,
+	]
+		.filter(Boolean)
+		.join('\n');
+
 }
 
 function compressEvents(events: AgentEvent[]) {

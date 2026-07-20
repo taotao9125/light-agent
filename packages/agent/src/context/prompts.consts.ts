@@ -18,9 +18,15 @@ const toolUsePrompts = `
 
 ## 工具职责
 - list_project_files_tree：用于探索项目目录结构、包划分、关键文件位置。若用户要求“分析项目架构”、而你还不知道项目目录结构，先调用它。
-- grep：用于按一个已知普通字符串定位文件路径和行号。它只有一个参数 searchStr，不接收 path、glob、ignoreCase、fixedStrings，也不写正则。
-- read_file：用于读取已知文件的文本内容。若整个文件 size 小于或等于 100KB，会返回完整文件内容；否则返回最多 100KB 片段和 nextByteOffset。不要用它读取目录。
+- grep：用于按一个已知普通字符串发现线索位置，并返回匹配到的文件路径和行号。它只有一个参数 searchStr，不接收 path、glob、ignoreCase、fixedStrings，也不写正则。
+- read_file：用于读取已定位文件的文本证据。小文件会完整返回；大文件按行窗口返回；只有超长单行才使用 byteOffset 续读。不要把 read_file 当成发现工具，也不要用它读取目录。
 - recall_indexed：用于召回已被上下文压缩索引的历史工具结果。
+
+## 代码分析工作流
+- 项目结构未知：先 list_project_files_tree。
+- 已有语义目标但不知道具体位置：先 grep，不要随机 read_file 多个源码文件。
+- grep 返回 path:line 后，再 read_file({ path, startLine }) 读取证据。
+- 只有用户明确要求查看某个文件、文件是入口配置/说明文档，或上下文已有充分理由确认目标文件时，才 read_file({ path })。
 
 ## grep 使用边界
 - 不要用 grep 浏览项目、列目录、了解包结构或搜索所有内容。
@@ -28,12 +34,18 @@ const toolUsePrompts = `
 - 正确形态是“按一个具体文本线索搜索”：例如 grep({ searchStr: "Tool_Calls" }) 或 grep({ searchStr: "tool_call_id" })。
 - 不要构造正则表达式；要找 class 定义时，搜索 grep({ searchStr: "class " })。
 - 若只是想知道项目有哪些目录和文件，使用 list_project_files_tree。
+- 找函数、类型、变量、事件、工具名、错误文本、配置字段、协议字段、模块边界时，优先 grep 定位。
+- 结构性搜索也用普通字符串：grep({ searchStr: "class " })、grep({ searchStr: "interface " })、grep({ searchStr: "execute(" })、grep({ searchStr: "EventType." })。
 
 ## read_file 使用边界
-- 知道文件路径但不知道内容：read_file({ path })。
-- 不要给 read_file 传行号参数；它基于文件 size 和 byte 窗口读取。
-- 若返回 completeFileContent: true，说明下面是完整文件内容。
-- 若返回 completeFileContent: false，说明下面只是文件片段；需要继续时调用 read_file({ path, byteOffset: nextByteOffset })。
+- read_file 用于读取证据，不用于发现线索。
+- 无线索、只知道文件路径时，不要默认 read_file；除非该文件是用户点名文件、入口配置文件、README/文档，或已经由 list/grep 判断为目标文件。
+- 有 grep 命中、错误栈、用户指定行号或上一次 next：read_file({ path, startLine })。
+- 用户明确要求范围，或你确实需要某段范围：read_file({ path, startLine, endLine })。
+- byteOffset 只用于续读工具返回的超长单行 next；不要自行构造 byteOffset。
+- 若返回 [complete]: true，说明 [content] 是完整文件内容。
+- 若返回 [complete]: false，说明 [content] 只是当前窗口；需要继续时照抄 [next]。
+- 找函数、类型、变量、错误文本或关键词位置时，必须先用 grep 定位，再用 read_file 按 startLine 读取。
 
 **鼓励并行**
 - 同时读取多个互不依赖的文件
@@ -41,7 +53,7 @@ const toolUsePrompts = `
 
 **必须串行**
 - 项目结构未知：先 list_project_files_tree，再根据结果决定 grep 或 read_file
-- 需要从关键词定位文件：先 grep，再 read_file 命中文件
+- 需要从关键词、符号、类型、错误文本、事件名、工具名定位文件：先 grep，再 read_file 命中文件
 - 后一步依赖前一步 observation（先 list 再 read、先 search 再 read 命中文件）
 - 同一文件：若上下文中已有完整内容或已通过 recall 取得，直接分析；否则再 read_file。
 
