@@ -13,9 +13,6 @@ export type { AgentViewEvent, AgentViewListener } from './helpers.ts';
 
 import { projectAgentView } from './helpers.ts';
 import ToolRegistry from './tool.ts';
-import createGrepTool from './tools/createGrepTool.ts';
-import createListProjectFilesTreeTool from './tools/createListProjectFilesTreeTool.ts';
-import createReadFileTool from './tools/createReadFileTool.ts';
 import createRecallTool from './tools/createRecallTool.ts';
 
 type Config = {
@@ -71,15 +68,17 @@ export default class Agent {
 			this.handleAgentEvent(event);
 		});
 
-		const recallTool = createRecallTool(() => this.canonicalEvents);
-		const listProjectFilesTreeTool = createListProjectFilesTreeTool();
-		const grepTool = createGrepTool();
-		const readFileTool = createReadFileTool();
+		this.tool.register(this.createRecallTool());
+	}
 
-		this.tool.register(recallTool);
-		this.tool.register(listProjectFilesTreeTool);
-		this.tool.register(grepTool);
-		this.tool.register(readFileTool);
+	private createRecallTool() {
+		return createRecallTool(
+			() => this.canonicalEvents,
+			async () => {
+				if (!this.session) return [];
+				return await this.session.load();
+			},
+		);
 	}
 
 	private async handleAgentEvent(event: AgentEvent) {

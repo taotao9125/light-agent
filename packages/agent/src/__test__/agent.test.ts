@@ -2,6 +2,7 @@ import { EventType } from '@light-agent/protocol/events';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import Agent from '../agent.ts';
+import createGrepTool from '../tools/createGrepTool.ts';
 
 import type { Vender } from '@light-agent/ai';
 import type { AgentEvent } from '@light-agent/protocol/events';
@@ -29,10 +30,21 @@ function createAgent() {
 }
 
 describe('Agent 工具接口', () => {
-	it('应默认注册项目文件树工具', () => {
+	it('默认不应注册内置业务工具，但应注册 runtime recall 工具', () => {
 		const agent = createAgent();
 
-		expect(agent.tool.get('list_project_files_tree')?.description).toContain('查看当前工作目录内的项目文件树');
+		expect(agent.tool.get('tree')).toBeUndefined();
+		expect(agent.tool.get('grep')).toBeUndefined();
+		expect(agent.tool.get('read_file')).toBeUndefined();
+		expect(agent.tool.get('recall_indexed')?.description).toContain('召回已从当前上下文移出');
+	});
+
+	it('应允许调用方显式注册内置工具', () => {
+		const agent = createAgent();
+
+		agent.tool.register(createGrepTool());
+
+		expect(agent.tool.get('grep')?.description).toContain('搜索一个已知普通字符串');
 	});
 
 	it('应通过 agent.tool 注册和移除工具', () => {
@@ -56,6 +68,29 @@ describe('Agent 工具接口', () => {
 		const agent = createAgent();
 
 		expect('registerTool' in agent).toBe(false);
+	});
+
+	it('内置 recall 工具应绑定当前 Agent 事件', async () => {
+		const agent = createAgent() as unknown as {
+			commitEvent: (event: AgentEvent) => Promise<void>;
+			tool: Agent['tool'];
+		};
+
+		await agent.commitEvent({
+			type: EventType.Tool_Result,
+			tool_result: {
+				id: 'call_1',
+				name: 'read_file',
+				result: '完整历史结果',
+				isError: false,
+			},
+			meta: { roundId: 'round-1', turn: 1 },
+		});
+		const recallTool = agent.tool.get('recall_indexed');
+
+		const result = await recallTool?.execute({ id: 'call_1', _intent: '召回历史结果' }, { cwd: '/tmp/workspace' });
+
+		expect(result).toEqual({ isError: false, content: '完整历史结果' });
 	});
 });
 

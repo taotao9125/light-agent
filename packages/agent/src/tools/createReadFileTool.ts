@@ -434,7 +434,7 @@ function createReadFileTool(): Tool.Definition<typeof readFileSchema> {
 					content: [
 						'[what]: 你传入的是目录，不是文件，read_file 无法读取目录内容',
 						`[path]: ${args.path}`,
-						'[how]: 请传入具体文件路径；如果不确定文件位置，请先用 list_project_files_tree 查看目录结构，或用 grep 搜索具体文本线索。',
+						'[how]: 请传入具体文件路径；如果不确定文件位置，请先用 tree 查看目录结构，或用 grep 搜索具体文本线索。',
 					].join('\n'),
 				};
 			}

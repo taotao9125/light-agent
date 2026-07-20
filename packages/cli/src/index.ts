@@ -3,6 +3,12 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import Agent from '@light-agent/agent';
+import {
+	builtinToolPrompts,
+	createGrepTool,
+	createReadFileTool,
+	createTreeTool,
+} from '@light-agent/agent/builtin-tools';
 import FileSessionManager from '@light-agent/agent/session';
 import { createClient } from '@light-agent/ai';
 import { Box, render, Text, useApp, useInput, useStdout } from 'ink';
@@ -193,8 +199,13 @@ function App() {
 					cwd,
 					session,
 					venderAdaptor,
-					context: {},
+					context: {
+						prompts: [builtinToolPrompts],
+					},
 				});
+				agent.tool.register(createTreeTool());
+				agent.tool.register(createGrepTool());
+				agent.tool.register(createReadFileTool());
 
 				await agent.loadSession();
 				agent.on((event) => {

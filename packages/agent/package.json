@@ -24,6 +24,11 @@
       "development": "./src/tool.ts",
       "types": "./dist/tool.d.ts",
       "import": "./dist/tool.js"
+    },
+    "./builtin-tools": {
+      "development": "./src/builtin-tools.ts",
+      "types": "./dist/builtin-tools.d.ts",
+      "import": "./dist/builtin-tools.js"
     }
   },
   "files": [

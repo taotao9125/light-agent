@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import createListProjectFilesTreeTool from '../../tools/createListProjectFilesTreeTool.ts';
+import createTreeTool from '../../tools/createTreeTool.ts';
 
 async function createWorkspace() {
 	const root = await mkdtemp(join(tmpdir(), 'light-agent-list-tree-'));
@@ -17,10 +17,10 @@ async function createWorkspace() {
 	return root;
 }
 
-describe('list_project_files_tree', () => {
+describe('tree', () => {
 	it('应基于 rg --files 输出项目文件树和文件大小', async () => {
 		const cwd = await createWorkspace();
-		const tool = createListProjectFilesTreeTool();
+		const tool = createTreeTool();
 
 		const result = await tool.execute({ path: '.', maxFiles: 20 }, { cwd });
 
@@ -36,7 +36,7 @@ describe('list_project_files_tree', () => {
 
 	it('应支持查看子目录文件树', async () => {
 		const cwd = await createWorkspace();
-		const tool = createListProjectFilesTreeTool();
+		const tool = createTreeTool();
 
 		const result = await tool.execute({ path: 'packages/agent', maxFiles: 20 }, { cwd });
 
@@ -50,7 +50,7 @@ describe('list_project_files_tree', () => {
 
 	it('应按 maxFiles 截断输出', async () => {
 		const cwd = await createWorkspace();
-		const tool = createListProjectFilesTreeTool();
+		const tool = createTreeTool();
 
 		const result = await tool.execute({ path: '.', maxFiles: 1 }, { cwd });
 
@@ -61,7 +61,7 @@ describe('list_project_files_tree', () => {
 
 	it('应拒绝 cwd 外路径', async () => {
 		const cwd = await createWorkspace();
-		const tool = createListProjectFilesTreeTool();
+		const tool = createTreeTool();
 
 		const result = await tool.execute({ path: '..', maxFiles: 20 }, { cwd });
 

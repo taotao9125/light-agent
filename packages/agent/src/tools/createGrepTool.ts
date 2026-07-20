@@ -122,10 +122,7 @@ function formatGrepMatches(input: {
 	}
 
 	if (input.truncated) {
-		lines.push(
-			'',
-			'> 结果过多，已截断。请换用更具体的 searchStr；如果是在探索项目结构，请使用 list_project_files_tree。',
-		);
+		lines.push('', '> 结果过多，已截断。请换用更具体的 searchStr；如果是在探索项目结构，请使用 tree。');
 	}
 
 	if (input.parseErrorCount > 0) {
@@ -148,7 +145,7 @@ function createGrepTool(): Tool.Definition<typeof grepSchema> {
 	return {
 		name: 'grep',
 		description: [
-			'[what] 在当前工作目录内搜索一个已知普通字符串，并返回匹配到的文件路径、行号和匹配行。grep 只有一个参数 searchStr；它不是目录浏览工具，也不是正则搜索工具，不接收 path/glob/ignoreCase/fixedStrings。需要探索项目目录结构时使用 list_project_files_tree；需要读取文件时使用 read_file。',
+			'[what] 在当前工作目录内搜索一个已知普通字符串，并返回匹配到的文件路径、行号和匹配行。grep 只有一个参数 searchStr；它不是目录浏览工具，也不是正则搜索工具，不接收 path/glob/ignoreCase/fixedStrings。需要探索项目目录结构时使用 tree；需要读取文件时使用 read_file。',
 			'[note] searchStr 会按固定字符串匹配；不要写正则。要找 class 定义时，搜索 "class " 这类普通文本片段。',
 			GREP_USAGE_HINT,
 		].join('\n'),

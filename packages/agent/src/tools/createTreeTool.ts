@@ -13,7 +13,7 @@ const MAX_STDERR_BYTES = 64 * 1024;
 const DEFAULT_MAX_FILES = 300;
 const MAX_FILES_LIMIT = 1_000;
 
-const listProjectFilesTreeSchema = z.object({
+const treeSchema = z.object({
 	path: z.string().default('.').describe('要查看文件树的目录路径，必须在当前工作目录内。默认查看当前工作目录。'),
 	maxFiles: z
 		.number()
@@ -144,15 +144,15 @@ async function collectFileStats(cwd: string, filePaths: string[]) {
 	return files;
 }
 
-function createListProjectFilesTreeTool(): Tool.Definition<typeof listProjectFilesTreeSchema> {
+function createTreeTool(): Tool.Definition<typeof treeSchema> {
 	return {
-		name: 'list_project_files_tree',
+		name: 'tree',
 		description:
 			'查看当前工作目录内的项目文件树，用于探索项目结构、目录分层、包划分和关键文件位置。需要了解项目架构或不知道应该搜索什么关键词时，先使用这个工具；不要用 grep 浏览目录结构。',
-		schema: listProjectFilesTreeSchema,
+		schema: treeSchema,
 		async execute(args, context) {
 			if (!context) {
-				return { isError: true, content: '工具运行时上下文不存在，无法执行 list_project_files_tree。' };
+				return { isError: true, content: '工具运行时上下文不存在，无法执行 tree。' };
 			}
 
 			context.signal?.throwIfAborted();
@@ -173,11 +173,11 @@ function createListProjectFilesTreeTool(): Tool.Definition<typeof listProjectFil
 			});
 
 			if (result.aborted) {
-				return { isError: true, content: 'list_project_files_tree 已取消。' };
+				return { isError: true, content: 'tree 已取消。' };
 			}
 
 			if (result.timedOut) {
-				return { isError: true, content: 'list_project_files_tree 执行超时，已终止。' };
+				return { isError: true, content: 'tree 执行超时，已终止。' };
 			}
 
 			if (result.code !== 0) {
@@ -209,4 +209,4 @@ function createListProjectFilesTreeTool(): Tool.Definition<typeof listProjectFil
 	};
 }
 
-export default createListProjectFilesTreeTool;
+export default createTreeTool;

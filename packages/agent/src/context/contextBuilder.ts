@@ -91,11 +91,11 @@ function parseSkill(skillRaw: string): SkillJson {
 function buildSkillsToXML(skills: string[] = []) {
 	const SKILL_USAGE_INSTRUCTIONS = [
 		'当用户任务明显落在某个 skill 的领域内时：',
-		'1. 先用 read_file 读取对应 SKILL.md 的完整说明',
+		'1. 先使用调用方提供的可用读取工具获取对应 SKILL.md 的完整说明',
 		'2. 按 skill 中的流程与约束执行任务',
 		'3. skill 内的领域规则以 SKILL 为准，但不违背 identity 与上述 instructions',
 		'',
-		'不要假设 skill 内容；未 read_file 前不要声称已遵循某 skill。',
+		'不要假设 skill 内容；未读取完整说明前不要声称已遵循某 skill。',
 	].join('\n');
 
 	const skillIndexesXml = skills
@@ -154,7 +154,6 @@ type ToolCall = ToolCallsEvent['tool_calls'][number];
 type ToolResult = ToolResultEvent['tool_result'];
 const INDEX_MIN_CHARS = 100;
 
-
 // 尽可能给模型视角提供线索: 这是什么历史结果，状态是什么, 调用目的是什么，如果需要细节，恢复指令是什么
 function compressObsContent(obs: ToolResult, action: ToolCall) {
 	if (obs.result.length <= INDEX_MIN_CHARS) return obs.result;
@@ -166,7 +165,6 @@ function compressObsContent(obs: ToolResult, action: ToolCall) {
 	]
 		.filter(Boolean)
 		.join('\n');
-
 }
 
 function compressEvents(events: AgentEvent[]) {

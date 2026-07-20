@@ -13,17 +13,18 @@ const contextWindowPrompts = `
 - 若因缺少信息无法继续，明确说明阻塞点，停止或向用户提问。
 `.trim();
 
-const toolUsePrompts = `
+export const builtinToolPrompts = {
+	name: 'builtin_tools',
+	content: `
 若同一轮可发出多个彼此独立的 action，优先并行发起，以减少等待时间。
 
 ## 工具职责
-- list_project_files_tree：用于探索项目目录结构、包划分、关键文件位置。若用户要求“分析项目架构”、而你还不知道项目目录结构，先调用它。
+- tree：用于探索项目目录结构、包划分、关键文件位置。若用户要求“分析项目架构”、而你还不知道项目目录结构，先调用它。
 - grep：用于按一个已知普通字符串发现线索位置，并返回匹配到的文件路径和行号。它只有一个参数 searchStr，不接收 path、glob、ignoreCase、fixedStrings，也不写正则。
 - read_file：用于读取已定位文件的文本证据。小文件会完整返回；大文件按行窗口返回；只有超长单行才使用 byteOffset 续读。不要把 read_file 当成发现工具，也不要用它读取目录。
-- recall_indexed：用于召回已被上下文压缩索引的历史工具结果。
 
 ## 代码分析工作流
-- 项目结构未知：先 list_project_files_tree。
+- 项目结构未知：先 tree。
 - 已有语义目标但不知道具体位置：先 grep，不要随机 read_file 多个源码文件。
 - grep 返回 path:line 后，再 read_file({ path, startLine }) 读取证据。
 - 只有用户明确要求查看某个文件、文件是入口配置/说明文档，或上下文已有充分理由确认目标文件时，才 read_file({ path })。
@@ -33,13 +34,13 @@ const toolUsePrompts = `
 - 不要调用 grep({ searchStr: "." })、grep({ searchStr: ".*" })、grep({ searchStr: "packages/agent" })。
 - 正确形态是“按一个具体文本线索搜索”：例如 grep({ searchStr: "Tool_Calls" }) 或 grep({ searchStr: "tool_call_id" })。
 - 不要构造正则表达式；要找 class 定义时，搜索 grep({ searchStr: "class " })。
-- 若只是想知道项目有哪些目录和文件，使用 list_project_files_tree。
+- 若只是想知道项目有哪些目录和文件，使用 tree。
 - 找函数、类型、变量、事件、工具名、错误文本、配置字段、协议字段、模块边界时，优先 grep 定位。
 - 结构性搜索也用普通字符串：grep({ searchStr: "class " })、grep({ searchStr: "interface " })、grep({ searchStr: "execute(" })、grep({ searchStr: "EventType." })。
 
 ## read_file 使用边界
 - read_file 用于读取证据，不用于发现线索。
-- 无线索、只知道文件路径时，不要默认 read_file；除非该文件是用户点名文件、入口配置文件、README/文档，或已经由 list/grep 判断为目标文件。
+- 无线索、只知道文件路径时，不要默认 read_file；除非该文件是用户点名文件、入口配置文件、README/文档，或已经由 tree/grep 判断为目标文件。
 - 有 grep 命中、错误栈、用户指定行号或上一次 next：read_file({ path, startLine })。
 - 用户明确要求范围，或你确实需要某段范围：read_file({ path, startLine, endLine })。
 - byteOffset 只用于续读工具返回的超长单行 next；不要自行构造 byteOffset。
@@ -52,23 +53,20 @@ const toolUsePrompts = `
 - 已经知道多个具体文件路径时，可以并行 read_file
 
 **必须串行**
-- 项目结构未知：先 list_project_files_tree，再根据结果决定 grep 或 read_file
+- 项目结构未知：先 tree，再根据结果决定 grep 或 read_file
 - 需要从关键词、符号、类型、错误文本、事件名、工具名定位文件：先 grep，再 read_file 命中文件
-- 后一步依赖前一步 observation（先 list 再 read、先 search 再 read 命中文件）
+- 后一步依赖前一步 observation（先 tree 再 read、先 grep 再 read 命中文件）
 - 同一文件：若上下文中已有完整内容或已通过 recall 取得，直接分析；否则再 read_file。
 
 **限制**
 - 不要为同一目的、相同工具、相同参数重复调用。
-`.trim();
+`.trim(),
+};
 
 const runtimePrompts = [
 	{
 		name: 'context_window',
 		content: contextWindowPrompts,
-	},
-	{
-		name: 'parallel_tool_use',
-		content: toolUsePrompts,
 	},
 ];
 
